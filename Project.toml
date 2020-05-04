@@ -1,0 +1,10 @@
+name = "PiecewiseLinearApprox"
+uuid = "bc5b63fc-d94a-42ea-9f3c-2beb293a2178"
+authors = ["lhellemo "]
+version = "0.1.0"
+
+[deps]
+JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
+
+[compat]
+JuMP = "0.21"
