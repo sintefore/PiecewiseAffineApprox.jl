@@ -4,7 +4,9 @@ authors = ["lhellemo "]
 version = "0.1.0"
 
 [deps]
+Cbc = "9961bab8-2fa3-5c5a-9d89-47fab24efd76"
 JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
+Memoize = "c03570c3-d221-55d1-a50c-7939bbd78826"
 
 [compat]
 JuMP = "0.21"

@@ -1,6 +1,8 @@
 module PiecewiseLinearApprox
 
+using Cbc
 using JuMP
+using Memoize
 
 include("computelinearapprox.jl")
 

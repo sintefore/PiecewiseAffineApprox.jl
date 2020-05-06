@@ -1,22 +1,28 @@
 """ 
+```
+convexlinearization(m, x, d, fd; K, opt, y)
+````
 Compute and add constraints best fitting the given input points.
 
-input:
-    * m: JuMP Model
-    * x: JuMP variable, first axis of function to be approximated
-    * d: array of points to be approximated
-    * fd: function values of points d
-    * K: number of constraints to be calculated - higher improves accuracy and computation time
-    * opt: optimizer (e.g. Xpress.Optimizer or Cbc.Optimizer)
-    * y: JuMP variable, second axis, if not given, a variable y will be added to model m
-output:
-    * y: reference to y-variable in model m
+## Input
 
-    convexlinearization(m, x, d, fd; K=3, opt, y=nothing)
+* m: JuMP Model
+* x: JuMP variable, first axis of function to be approximated
+* d: array of points to be approximated
+* fd: function values of points d
+* K: number of constraints to be calculated - higher improves accuracy and computation time
+* opt: optimizer (e.g. Xpress.Optimizer or Cbc.Optimizer)
+* y: JuMP variable, second axis, if not given, a variable y will be added to model m
+
+## Output
+
+* y: reference to y-variable in model m
+
 """
-function convexlinearization(m, x, d, fd; K=3, opt,y=nothing)
+function convexlinearization(m, x, d, fd; K=3, opt=Cbc.Optimizer,y=nothing)
     @assert length(d) == length(fd)
     pts = [d[i] => fd[i] for i = 1:length(d)]
+
     prs = optimize_points(pts,opt;numpoints=K)
     # TODO: Check variable name not already used in m (will error)
     if isnothing(y)
@@ -29,13 +35,19 @@ function convexlinearization(m, x, d, fd; K=3, opt,y=nothing)
 end
 
 """
-Construct model to be used to compute best piecewise fit, using N segments
+```
+bestlinearization(points, K)
+```
+Construct model to be used to compute best piecewise fit, using K segments
 
-input: 
-    * points: array of points to be approximated
-    * K: number of segments to use (higher gives better accuracy and longer computation)
-output:
-    * m: JuMP model
+## input
+
+* points: array of points to be approximated
+* K: number of segments to use (higher gives better accuracy and longer computation)
+
+## output
+
+* m: JuMP model
 """
 function bestlinearization(points,K=3)
     
@@ -68,7 +80,7 @@ function bestlinearization(points,K=3)
     return m
 end
 
-function optimize_points(points,optimizer;numpoints=3)
+@memoize function optimize_points(points,optimizer=Cbc.Optimizer;numpoints=3)
     
     m = bestlinearization(points,numpoints)
     set_optimizer(m,optimizer)
