@@ -1,8 +1,11 @@
 # Points to approximate
 points = [i=>i^2 for i in 0:0.1:1]
 
+# Use Cbc without output as the solver
+Opt = optimizer_with_attributes(Cbc.Optimizer, "logLevel" => 0)
+
 # Check that generated points are as expected
-prs =  PiecewiseLinearApprox.optimize_points(points,Cbc.Optimizer;numpoints=3);
+prs =  PiecewiseLinearApprox.optimize_points(points,Opt;numpoints=3);
 
 sort!(prs) # Sort to avoid symmetrical solutions
 @test prs[1][1] ≈ -0.47115384615384626
@@ -11,9 +14,9 @@ sort!(prs) # Sort to avoid symmetrical solutions
 # Test with constraints added to existing model
 m = Model()
 @variable(m, x)
-y = PiecewiseLinearApprox.convexlinearization(m,x,[i.first for i ∈ points],[i.second for i ∈ points],opt=Cbc.Optimizer,K=5)
+y = PiecewiseLinearApprox.convexlinearization(m,x,[i.first for i ∈ points],[i.second for i ∈ points],opt=Opt,K=5)
 @objective(m, Min, y)
-set_optimizer(m,Cbc.Optimizer)
+set_optimizer(m,Opt)
 @constraint(m, x >= 0.3)
 optimize!(m)
 @test isapprox(value(m[:y]), 0.09, atol=0.01)
@@ -25,9 +28,9 @@ optimize!(m)
 m = Model()
 @variable(m, x)
 @variable(m, test_y)
-y = PiecewiseLinearApprox.convexlinearization(m,x,[i.first for i ∈ points],[i.second for i ∈ points],opt=Cbc.Optimizer,K=5,y=test_y)
+y = PiecewiseLinearApprox.convexlinearization(m,x,[i.first for i ∈ points],[i.second for i ∈ points],opt=Opt,K=5,y=test_y)
 @objective(m, Min, y)
-set_optimizer(m,Cbc.Optimizer)
+set_optimizer(m,Opt)
 @constraint(m, x >= 0.3)
 optimize!(m)
 @test isapprox(value(m[:test_y]), 0.09, atol=0.01)
