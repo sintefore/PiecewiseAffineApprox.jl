@@ -1,23 +1,15 @@
 """ 
+    convexlinearization(m, x, d, fd; K, opt, y)
+
+Compute and add constraints to JuMP model `m` best fitting the given input points `d` and `fd`.
+Variable `x` is used for first axis in constraints, variable `y` will be added to `m` if not given as
+input. `K` is the number of segments to use. Optimize using optimizer `opt`.
+
+# Example
+
 ```
-convexlinearization(m, x, d, fd; K, opt, y)
-````
-Compute and add constraints best fitting the given input points.
-
-## Input
-
-* m: JuMP Model
-* x: JuMP variable, first axis of function to be approximated
-* d: array of points to be approximated
-* fd: function values of points d
-* K: number of constraints to be calculated - higher improves accuracy and computation time
-* opt: optimizer (e.g. Xpress.Optimizer or Cbc.Optimizer)
-* y: JuMP variable, second axis, if not given, a variable y will be added to model m
-
-## Output
-
-* y: reference to y-variable in model m
-
+convexlinearization(m,x,first.(points),last.(points),opt=Cbc.Optimizer,K=5)
+```
 """
 function convexlinearization(m, x, d, fd; K=3, opt=Cbc.Optimizer,y=nothing)
     @assert length(d) == length(fd)
@@ -35,19 +27,10 @@ function convexlinearization(m, x, d, fd; K=3, opt=Cbc.Optimizer,y=nothing)
 end
 
 """
-```
-bestlinearization(points, K)
-```
-Construct model to be used to compute best piecewise fit, using K segments
+    bestlinearization(points, K)
 
-## input
-
-* points: array of points to be approximated
-* K: number of segments to use (higher gives better accuracy and longer computation)
-
-## output
-
-* m: JuMP model
+Construct JuMP model to be used to compute best piecewise fit for `points`, using `K` segments.
+Higher number of segments gives better accuracy at higher computational cost.
 """
 function bestlinearization(points,K=3)
     
