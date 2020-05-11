@@ -1,6 +1,5 @@
 module PiecewiseLinearApprox
 
-using Cbc
 using JuMP
 using Memoize
 

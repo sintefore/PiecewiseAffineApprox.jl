@@ -11,7 +11,7 @@ input. `K` is the number of segments to use. Optimize using optimizer `opt`.
 convexlinearization(m,x,first.(points),last.(points),opt=Cbc.Optimizer,K=5)
 ```
 """
-function convexlinearization(m, x, d, fd; K=3, opt=Cbc.Optimizer,y=nothing)
+function convexlinearization(m, x, d, fd; K=3, opt,y=nothing)
     @assert length(d) == length(fd)
     pts = [d[i] => fd[i] for i = 1:length(d)]
 
@@ -63,7 +63,7 @@ function bestlinearization(points,K=3)
     return m
 end
 
-@memoize Dict function optimize_points(points,optimizer=Cbc.Optimizer;numpoints=3)
+@memoize Dict function optimize_points(points,optimizer;numpoints=3)
     
     m = bestlinearization(points,numpoints)
     set_optimizer(m,optimizer)
