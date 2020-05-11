@@ -63,7 +63,7 @@ function bestlinearization(points,K=3)
     return m
 end
 
-@memoize function optimize_points(points,optimizer=Cbc.Optimizer;numpoints=3)
+@memoize Dict function optimize_points(points,optimizer=Cbc.Optimizer;numpoints=3)
     
     m = bestlinearization(points,numpoints)
     set_optimizer(m,optimizer)
@@ -118,7 +118,7 @@ input:
 output: 
     * array of interpolating points
 """
-function interpolatepw(points, optimizer; nseg=5, penalty="l1")
+@memoize Dict function interpolatepw(points, optimizer; nseg=5, penalty="l1")
     
     N = length(points)
     𝒩 = 1:N 
