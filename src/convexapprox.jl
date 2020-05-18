@@ -28,6 +28,8 @@ function convex_linearization(x::Vector, z::Vector, optimizer; kwargs...)
     end
 end
 
+convex_linearization(x, z, optimizer; kwargs...)  = 
+    convex_linearization([xx for xx in x], [zz for zz in z], optimizer; kwargs...)
 
 function convex_linearization_fit(x::Vector, z::Vector, optimizer; kwargs...)
     
