@@ -3,6 +3,7 @@ module PiecewiseLinearApprox
 using JuMP
 using Memoize
 using Plots
+using Printf
 
 include("computelinearapprox.jl")
 

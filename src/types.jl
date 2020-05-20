@@ -37,6 +37,13 @@ function ConvexPWLFunction(c::Vector, d::Vector, xmin, xmax)
     return with_inner_rep(ConvexPWLFunction(Vector{Float64}(), Vector{Float64}(), convert(Vector{Float64}, c), convert(Vector{Float64}, d)), xmin, xmax)
 end
 
+function Base.print(io::IO, pwl::ConvexPWLFunction)
+    Printf.@printf("    x        z\n")
+    for i in 1:length(pwl.x)
+        Printf.@printf("%8.2f %8.2f\n", pwl.x[i], pwl.z[i])
+    end
+end
+
 function with_outer_rep(pwl::ConvexPWLFunction)
     
     𝑁  = length(pwl.x)

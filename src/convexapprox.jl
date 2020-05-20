@@ -32,10 +32,10 @@ convex_linearization(x, z, optimizer; kwargs...)  =
     convex_linearization([xx for xx in x], [zz for zz in z], optimizer; kwargs...)
 
 function convex_linearization_fit(x::Vector, z::Vector, optimizer; kwargs...)
-    
-    defaults = (nseg=defaultseg(), pen=defaultpenalty(), strict=false)
+  
+    defaults = (nseg=defaultseg(), pen=defaultpenalty(), strict=false, start_origin=false, show_res=false)
     options = merge(defaults, kwargs)
-
+  
     N = length(x)
     𝒩 = 1:N 
     𝒦 = 1:options.nseg
@@ -51,15 +51,22 @@ function convex_linearization_fit(x::Vector, z::Vector, optimizer; kwargs...)
 
     if options.pen == :l2 
         JuMP.@objective(m, Min, sum((z[i] - 𝑧̂[i])^2 for i ∈ 𝒩))
-    elseif options.pen == :l1
+    elseif options.pen == :max
         𝑡 = JuMP.@variable(m)
         JuMP.@objective(m, Min, 𝑡)
         for i ∈ 𝒩
             JuMP.@constraint(m,  𝑡 ≥ (z[i] - 𝑧̂[i]) )
             JuMP.@constraint(m,  𝑡 ≥ (𝑧̂[i] - z[i]) )
         end
+    elseif options.pen == :l1
+        𝑡 = JuMP.@variable(m, [𝒩])
+        JuMP.@objective(m, Min, sum(𝑡))
+        for i ∈ 𝒩
+            JuMP.@constraint(m,  𝑡[i] ≥ (z[i] - 𝑧̂[i]) )
+            JuMP.@constraint(m,  𝑡[i] ≥ (𝑧̂[i] - z[i]) )
+        end
     else
-        error("Unrecognized penalty type")
+        error("Unrecognized/unsupported penalty type $(options.pen)")
     end
 
     for i ∈ 𝒩, k ∈ 𝒦 
@@ -71,6 +78,10 @@ function convex_linearization_fit(x::Vector, z::Vector, optimizer; kwargs...)
         for i ∈ 𝒩, k ∈ 𝒦 
             JuMP.@constraint(m, z[i] ≥ 𝑐[k] * x[i] + 𝑑[k])   
         end
+    end
+
+    if options.start_origin
+        JuMP.@constraint(m,𝑑[1] == 0.0)
     end
 
     for i ∈ 𝒩
@@ -89,6 +100,12 @@ function convex_linearization_fit(x::Vector, z::Vector, optimizer; kwargs...)
 
     if JuMP.termination_status(m) != MOI.OPTIMAL
         error("Optimization failed")
+    end
+
+    if options.show_res
+        println("Optimize succeed for $(options.pen)")
+        val = JuMP.objective_value(m)
+        println("Objective value = $val")
     end
     
     𝑐ᴼᵖᵗ = JuMP.value.(𝑐)
@@ -157,7 +174,7 @@ function interpolatepw(x, z, optimizer; kwargs...)
 
     defaults = (nseg=defaultseg(), pen=defaultpenalty())
     options = merge(defaults, kwargs)
-
+   
     N = length(x)
     𝒩 = 1:N 
 
@@ -169,8 +186,10 @@ function interpolatepw(x, z, optimizer; kwargs...)
         p = [(i < j ? sum(abs(c[i,j] * (x[k] - x[i]) + z[i] - z[k]) for k ∈ i:j) : 0) for i ∈ 𝒩, j ∈ 𝒩]
     elseif options.pen == :l2
         p = [(i < j ? sum((c[i,j] * (x[k] - x[i]) + z[i] - z[k])^2 for k ∈ i:j) : 0) for i ∈ 𝒩, j ∈ 𝒩]
+    elseif options.pen == :max
+        p = [(i < j ? maximum(abs(c[i,j] * (x[k] - x[i]) + z[i] - z[k]) for k ∈ i:j) : 0) for i ∈ 𝒩, j ∈ 𝒩]
     else
-        error("Unrecognized penalty $(options.pen)")
+        error("Unrecognized/unsupported penalty $(options.pen)")
     end
     
     m = Model()
@@ -210,4 +229,4 @@ function interpolatepw(x, z, optimizer; kwargs...)
 end
 
 convex_linearization_ipol(x, z, optimizer; kwargs...) = 
-    convexify(interpolatepw(x, z, optimizer, kwargs=kwargs),optimizer)
+    convexify(interpolatepw(x, z, optimizer; kwargs...),optimizer)
