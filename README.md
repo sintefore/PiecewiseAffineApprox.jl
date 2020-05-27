@@ -1,48 +1,43 @@
 # PiecewiseLinearApprox
 
-Helper functions to add approximations of convex functions to optimization models modelled in [JuMP](https://jump.dev/). Currently supporting univariate monotonically increasing functions. This package creates and solves a MILP to fit a set of points, and adds the resulting linear constraints to the optimization model. This method is based on [Toriello & Vielma, 2012](https://doi.org/10.1016/j.ejor.2011.12.030), following the formulation/notation used in [Kazda & Li, 2018](https://doi.org/10.3390/pr6100198)
+Helper functions to add convex (and concave) piecewise linear approximations of functions or a set of points, to optimization models modelled in [JuMP](https://jump.dev/). Currently supporting univariate functions. This package creates and solves a MILP to fit a set of points, and adds the resulting linear constraints to the optimization model. This work is partially based on [Toriello & Vielma, 2012](https://doi.org/10.1016/j.ejor.2011.12.030).
 
 For non-convex functions, consider using [PiecewiseLinearOpt.jl](https://github.com/joehuchette/PiecewiseLinearOpt.jl).
 
 ## Usage
 
 ```julia
-using JuMP, PiecewiseLinearApprox, Xpress
-d = range(0,1,step=0.1)
-fd = [i^2 for i in d]
+using JuMP, PiecewiseLinearApprox, Cbc
 
 m = Model()
 @variable(m, x)
-@variable(m, test_y)
-# Compute and add constraints approximating f(d)
-y = convexlinearization(m, x, d, fd; opt=Xpress.Optimizer ,K=5, y=test_y)
+@variable(m, test_z)
+# Compute and add constraints approximating x^2 on the interval [0,1]
+z = convex_pwlinear(m, x, x -> x^2, 0, 1, opt=Cbc.Optimizer; nseg=5, z=test_z)
 # Minimize
-@objective(m, Min, y)
-set_optimizer(m, Xpress.Optimizer)
+@objective(m, Min, z)
+set_optimizer(m, Cbc.Optimizer)
 # Check approximation/solution at x = 0.5
 @constraint(m, x >= 0.5)
 optimize!(m)
-value(m[:test_y]) # 0.25153374233128833
+value(m[:test_z]) # 0.2533
 ```
 
-To keep dependencies light, PiecewiseLinearApprox does not include plotting of the resulting approximation. Plotting can be useful, however, the following demonstrates how this can be achieved:
+To keep dependencies light, PiecewiseLinearApprox does not include plotting by default. If the Plots package is loaded
+before using the module, some simple plotting routines will be available
+
+The following demonstrates how this can be achieved:
 
 ```julia
-using PiecewiseLinearApprox,Xpress,Plots
+using Plots, PiecewiseLinearApprox, Cbc
 
-function plotquademo(N=3,opt=Xpress.Optimizer)
-    points = [i=>i^2 for i in 0:0.1:1]
-    m = bestlinearization(points,N)
-    set_optimizer(m, opt)
-    optimize!(m)
-    c = JuMP.value.(m[:c])
-    d = JuMP.value.(m[:d])
-    x = [p.first for p in points]
-    y = [p.second for p in points]
-    p = plot(x,y,markershape=:x,label="Measurements",legend=:topleft,ylims=(-0.5,1))
-    for i = 1:length(c)
-        plot!(p,[0,1],[d[i],d[i]+c[i]],label="Constraint $i")
-    end
+function plotquademo(N=3,opt=Cbc.Optimizer)
+    x = [i for i in 0:0.1:1]
+    z = x.^2
+    pwl = convex_linearization(x,z,opt; nseg=N)
+    p = plot(x,z,seriestype=:scatter,markershape=:x,ylims=(-0.5,1))
+    PiecewiseLinearApprox.plot!(p, pwl)
+    
     return p
 end
 
