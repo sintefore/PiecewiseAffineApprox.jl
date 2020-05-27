@@ -1,19 +1,18 @@
 module PiecewiseLinearApprox
 
 using JuMP
-using Memoize
-using Plots
 using Printf
 
-include("computelinearapprox.jl")
+using Requires
 
-export bestlinearization
-export convexlinearization
 
 include("types.jl")
 include("convexapprox.jl")
 include("linopt.jl")
 
+function __init__()
+    @require Plots="91a5bcdd-55d7-5caf-9e0b-520d859cae80" include("plotting.jl")
+end
 
 export ConvexPWLFunction
 export ConcavePWLFunction
