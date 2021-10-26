@@ -20,6 +20,7 @@ export convex_linearization
 export concave_linearization
 export convex_pwlinear
 export concave_pwlinear
+export plot
 
 
 end # module
