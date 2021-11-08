@@ -106,4 +106,47 @@ function evaluate(concave::ConcavePWLFunction, x)
     return -evaluate(concave.pwl, x)
 end
 
+struct Convex2dPWLFunction
+   
+    x::Vector{Float64}
+    y::Vector{Float64}
+    z::Vector{Float64}
+
+    c::Vector{Float64}
+    d::Vector{Float64}
+    e::Vector{Float64}
+
+    function Convex2dPWLFunction(x::Vector{Float64}, y::Vector{Float64}, z::Vector{Float64},c::Vector{Float64}, d::Vector{Float64}, e::Vector{Float64})
+        new(x, y, z, c, d, e)
+    end
+end
+
+function Convex2dPWLFunction(x, y, fz::Function)
+    @assert issorted(x)
+    @assert issorted(y)
+
+    ##TODO: create function to calculate coefficients for given points and function values
+    return Convex2dPWLFunction(convert(Vector{Float64}, x), convert(Vector{Float64}, y), map(t->convert(Float64,fz(t)), x), Vector{Float64}(), Vector{Float64}(), Vector{Float64}())
+end
+
+function Convex2dPWLFunction(c::Vector, d::Vector, e::Vector) 
+    @assert length(c) == length(d) == length(e)
+    return Convex2dPWLFunction(Vector{Float64}(), Vector{Float64}(), Vector{Float64}(), convert(Vector{Float64}, c), convert(Vector{Float64}, d), convert(Vector{Float64}, e))
+end
+
+
+function Base.print(io::IO, pwl::Convex2dPWLFunction)
+    Printf.@printf("    x        y        z\n")
+    for i ∈ 1:length(pwl.x), j ∈ 1:length(pwl.y)
+        Printf.@printf("%8.2f %8.2f %8.2f\n", pwl.x[i,j], pwl.y[i,j], pwl.z[i,j])
+    end
+end
+
+function evaluate(pwl::Convex2dPWLFunction, x,y)
+    
+    return maximum(pwl.c[i]*x + pwl.d[i]*y + pwl.e[i] for i=1:length(pwl.c))
+end
+
+
+
 
