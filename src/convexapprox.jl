@@ -1,4 +1,5 @@
 defaultpenalty() = :l1
+defaultpenalty2D() = :l2
 defaultseg() = 5
 defaultplanes() = 4
 
@@ -247,7 +248,7 @@ convex_linearization_ipol(x, z, optimizer; kwargs...) =
 
 function convex_2D_linearization_fit(x, z, optimizer; kwargs...)
 
-    defaults = (nsegs=defaultseg(), nplanes=defaultplanes(), pen=defaultpenalty(), strict=false, start_origin=false, show_res=false)
+    defaults = (nsegs=defaultseg(), nplanes=defaultplanes(), pen=defaultpenalty2D(), strict=false, start_origin=false, show_res=false)
     options = merge(defaults, kwargs)
     
     x = x[1]
@@ -259,7 +260,7 @@ function convex_2D_linearization_fit(x, z, optimizer; kwargs...)
     ℳ = 1:M
     𝒦 = 1:options.nplanes       
 
-    Mᵇⁱᵍ = maximum(z) 
+    Mᵇⁱᵍ = maximum(z) ## TODO: calculate a tighter value for the big-M
     
     m = JuMP.Model()
     𝑧̂ = JuMP.@variable(m, [𝒩, ℳ]) 
@@ -289,11 +290,10 @@ function convex_2D_linearization_fit(x, z, optimizer; kwargs...)
     else
         error("Unrecognized/unsupported penalty type $(options.pen)")
     end
-
      
     for i ∈ 𝒩, j ∈ ℳ, k ∈ 𝒦         
         JuMP.@constraint(m, 𝑧̂[i,j] ≥ 𝑐[k] * x[i] + 𝑑[k] * y[j] + e[k])
-        JuMP.@constraint(m, 𝑧̂[i,j] ≤ 𝑐[k] * x[i] + 𝑑[k] * y[j] + e[k] + Mᵇⁱᵍ * (1-𝑢[i,j,k]))        
+        JuMP.@constraint(m, 𝑧̂[i,j] ≤ 𝑐[k] * x[i] + 𝑑[k] * y[j] + e[k] + Mᵇⁱᵍ * (1-𝑢[i,j,k]))
     end
 
     if options.strict
@@ -301,7 +301,7 @@ function convex_2D_linearization_fit(x, z, optimizer; kwargs...)
             JuMP.@constraint(m, z[i,j] ≥ 𝑐[k] * x[i] + 𝑑[k] * y[j] + e[k])   
         end
     end
-
+    
     for i ∈ 𝒩, j ∈ ℳ
         JuMP.@constraint(m, sum(𝑢[i,j,k] for k ∈ 𝒦) ≥ 1)
     end    
@@ -322,7 +322,9 @@ function convex_2D_linearization_fit(x, z, optimizer; kwargs...)
     𝑐ᴼᵖᵗ = JuMP.value.(𝑐)
     𝑑ᴼᵖᵗ = JuMP.value.(𝑑)     
     eᴼᵖᵗ = JuMP.value.(e)   
-    uᴼᵖᵗ = JuMP.value.(𝑢)    
+    uᴼᵖᵗ = JuMP.value.(𝑢)   
+    
+    
     
     return Convex2dPWLFunction([𝑐ᴼᵖᵗ[k] for k ∈ 𝒦], [𝑑ᴼᵖᵗ[k] for k ∈ 𝒦], [eᴼᵖᵗ[k] for k ∈ 𝒦])
     ##TODO: how to recover the data points from the coefficients?  Check package Polyhedra.    
