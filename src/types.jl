@@ -21,20 +21,22 @@ struct ConvexPWLFunction
     c::Vector{Float64}
     d::Vector{Float64}
 
-    function ConvexPWLFunction(x::Vector{Float64}, z::Vector{Float64},c::Vector{Float64}, d::Vector{Float64})
-        new(x, z, c, d)
+    Mᵇⁱᵍ::Float64
+
+    function ConvexPWLFunction(x::Vector{Float64}, z::Vector{Float64},c::Vector{Float64}, d::Vector{Float64}; Mᵇⁱᵍ::Float64=nothing)        
+        new(x, z, c, d,Mᵇⁱᵍ )        
     end
 end
 
 
-function ConvexPWLFunction(x::Vector, z::Vector) 
+function ConvexPWLFunction(x::Vector, z::Vector, Mᵇⁱᵍ::Float64 = nothing) 
     @assert length(x) == length(z)
-    return with_outer_rep(ConvexPWLFunction(convert(Vector{Float64}, x),convert(Vector{Float64}, z),Vector{Float64}(), Vector{Float64}()))
+    return with_outer_rep(ConvexPWLFunction(convert(Vector{Float64}, x),convert(Vector{Float64}, z),Vector{Float64}(), Vector{Float64}(), Mᵇⁱᵍ))
 end
 
-function ConvexPWLFunction(c::Vector, d::Vector, xmin, xmax) 
+function ConvexPWLFunction(c::Vector, d::Vector, xmin, xmax, Mᵇⁱᵍ::Float64 = nothing) 
     @assert length(c) == length(d)
-    return with_inner_rep(ConvexPWLFunction(Vector{Float64}(), Vector{Float64}(), convert(Vector{Float64}, c), convert(Vector{Float64}, d)), xmin, xmax)
+    return with_inner_rep(ConvexPWLFunction(Vector{Float64}(), Vector{Float64}(), convert(Vector{Float64}, c), convert(Vector{Float64}, d), Mᵇⁱᵍ), xmin, xmax)
 end
 
 function Base.print(io::IO, pwl::ConvexPWLFunction)
@@ -116,8 +118,10 @@ struct Convex2dPWLFunction
     d::Vector{Float64}
     e::Vector{Float64}
 
-    function Convex2dPWLFunction(x::Vector{Float64}, y::Vector{Float64}, z::Vector{Float64},c::Vector{Float64}, d::Vector{Float64}, e::Vector{Float64})
-        new(x, y, z, c, d, e)
+    Mᵇⁱᵍ::Float64
+
+    function Convex2dPWLFunction(x::Vector{Float64}, y::Vector{Float64}, z::Vector{Float64},c::Vector{Float64}, d::Vector{Float64}, e::Vector{Float64}, Mᵇⁱᵍ::Float64=nothing)
+        new(x, y, z, c, d, e, Mᵇⁱᵍ)
     end
 end
 
@@ -129,9 +133,9 @@ function Convex2dPWLFunction(x, y, fz::Function)
     return Convex2dPWLFunction(convert(Vector{Float64}, x), convert(Vector{Float64}, y), map(t->convert(Float64,fz(t)), x), Vector{Float64}(), Vector{Float64}(), Vector{Float64}())
 end
 
-function Convex2dPWLFunction(c::Vector, d::Vector, e::Vector) 
+function Convex2dPWLFunction(c::Vector, d::Vector, e::Vector, Mᵇⁱᵍ::Float64=nothing) 
     @assert length(c) == length(d) == length(e)
-    return Convex2dPWLFunction(Vector{Float64}(), Vector{Float64}(), Vector{Float64}(), convert(Vector{Float64}, c), convert(Vector{Float64}, d), convert(Vector{Float64}, e))
+    return Convex2dPWLFunction(Vector{Float64}(), Vector{Float64}(), Vector{Float64}(), convert(Vector{Float64}, c), convert(Vector{Float64}, d), convert(Vector{Float64}, e), Mᵇⁱᵍ)
 end
 
 

@@ -124,7 +124,7 @@ function convex_linearization_fit(x::Vector, z::Vector, optimizer; kwargs...)
     𝑐ᴼᵖᵗ = JuMP.value.(𝑐)
     𝑑ᴼᵖᵗ = JuMP.value.(𝑑) 
 
-    return ConvexPWLFunction([𝑐ᴼᵖᵗ[k] for k ∈ 𝒦], [𝑑ᴼᵖᵗ[k] for k ∈ 𝒦], minimum(x), maximum(x))
+    return ConvexPWLFunction([𝑐ᴼᵖᵗ[k] for k ∈ 𝒦], [𝑑ᴼᵖᵗ[k] for k ∈ 𝒦], minimum(x), maximum(x), Mᵇⁱᵍ)
 end
 
 function convex_linearization(f::Function, xmin, xmax, optimizer; kwargs...)
@@ -194,7 +194,7 @@ function interpolatepw(x, z, optimizer; kwargs...)
     # Find slopes
     c = [(z[j] -z[i]) / (x[j]-x[i])  for i ∈ 𝒩, j ∈ 𝒩]
 
-    # Calculate penalties 
+    # Calculate penalties
     if options.pen == :l1
         p = [(i < j ? sum(abs(c[i,j] * (x[k] - x[i]) + z[i] - z[k]) for k ∈ i:j) : 0) for i ∈ 𝒩, j ∈ 𝒩]
     elseif options.pen == :l2
@@ -260,10 +260,10 @@ function convex_2D_linearization_fit(x, z, optimizer; kwargs...)
     ℳ = 1:M
     𝒦 = 1:options.nplanes       
 
-    Mᵇⁱᵍ = maximum(z) ## TODO: calculate a tighter value for the big-M
+    Mᵇⁱᵍ = 3*maximum(z) ## TODO: calculate a tighter value for the big-M
     
     m = JuMP.Model()
-    𝑧̂ = JuMP.@variable(m, [𝒩, ℳ]) 
+    𝑧̂ = JuMP.@variable(m, [𝒩, ℳ])
     𝑐 = JuMP.@variable(m, [𝒦])
     𝑑 = JuMP.@variable(m, [𝒦]) 
     e = JuMP.@variable(m, [𝒦])
@@ -324,8 +324,6 @@ function convex_2D_linearization_fit(x, z, optimizer; kwargs...)
     eᴼᵖᵗ = JuMP.value.(e)   
     uᴼᵖᵗ = JuMP.value.(𝑢)   
     
-    
-    
-    return Convex2dPWLFunction([𝑐ᴼᵖᵗ[k] for k ∈ 𝒦], [𝑑ᴼᵖᵗ[k] for k ∈ 𝒦], [eᴼᵖᵗ[k] for k ∈ 𝒦])
+    return Convex2dPWLFunction([𝑐ᴼᵖᵗ[k] for k ∈ 𝒦], [𝑑ᴼᵖᵗ[k] for k ∈ 𝒦], [eᴼᵖᵗ[k] for k ∈ 𝒦], Mᵇⁱᵍ)
     ##TODO: how to recover the data points from the coefficients?  Check package Polyhedra.    
 end    
