@@ -13,30 +13,27 @@ function PWLFunction(x::Vector, z::Vector)
     return PWLFunction(convert(Vector{Float64}, x),convert(Vector{Float64}, z))
 end
 
-struct ConvexPWLFunction
-   
+struct ConvexPWLFunction   
     x::Vector{Float64}
     z::Vector{Float64}
 
     c::Vector{Float64}
     d::Vector{Float64}
 
-    Mᵇⁱᵍ::Float64
-
-    function ConvexPWLFunction(x::Vector{Float64}, z::Vector{Float64},c::Vector{Float64}, d::Vector{Float64}; Mᵇⁱᵍ::Float64=nothing)        
-        new(x, z, c, d,Mᵇⁱᵍ )        
+    function ConvexPWLFunction(x::Vector{Float64}, z::Vector{Float64},c::Vector{Float64}, d::Vector{Float64})
+        new(x, z, c, d)
     end
 end
 
 
-function ConvexPWLFunction(x::Vector, z::Vector, Mᵇⁱᵍ::Float64 = nothing) 
+function ConvexPWLFunction(x::Vector, z::Vector) 
     @assert length(x) == length(z)
-    return with_outer_rep(ConvexPWLFunction(convert(Vector{Float64}, x),convert(Vector{Float64}, z),Vector{Float64}(), Vector{Float64}(), Mᵇⁱᵍ))
+    return with_outer_rep(ConvexPWLFunction(convert(Vector{Float64}, x),convert(Vector{Float64}, z),Vector{Float64}(), Vector{Float64}()))
 end
 
-function ConvexPWLFunction(c::Vector, d::Vector, xmin, xmax, Mᵇⁱᵍ::Float64 = nothing) 
+function ConvexPWLFunction(c::Vector, d::Vector, xmin, xmax) 
     @assert length(c) == length(d)
-    return with_inner_rep(ConvexPWLFunction(Vector{Float64}(), Vector{Float64}(), convert(Vector{Float64}, c), convert(Vector{Float64}, d), Mᵇⁱᵍ), xmin, xmax)
+    return with_inner_rep(ConvexPWLFunction(Vector{Float64}(), Vector{Float64}(), convert(Vector{Float64}, c), convert(Vector{Float64}, d)), xmin, xmax)
 end
 
 function Base.print(io::IO, pwl::ConvexPWLFunction)
@@ -113,23 +110,21 @@ struct ConvexPWLFunctionND
     z::Vector{Float64}
 
     a::Vector{Tuple}
-    b::Vector{Float64}
+    b::Vector{Float64} 
 
-    Mᵇⁱᵍ::Float64
-
-    function ConvexPWLFunctionND(x, z::Vector{Float64}, a, b::Vector{Float64}, Mᵇⁱᵍ::Float64=nothing)
-        new(x, z, a, b, Mᵇⁱᵍ)
+    function ConvexPWLFunctionND(x, z::Vector{Float64}, a, b::Vector{Float64})
+        new(x, z, a, b)
     end
 end
 
 function ConvexPWLFunctionND(x, fz::Function)
     ##TODO: create function to calculate coefficients for given points and function values
-    return ConvexPWLFunctionND(x, map(t->convert(Float64, fz(t)), x), (), (), nothing)
+    return ConvexPWLFunctionND(x, map(t->convert(Float64, fz(t)), x), (), ())
 end
 
-function ConvexPWLFunctionND(a, b::Vector{Float64}, Mᵇⁱᵍ::Float64=nothing)
+function ConvexPWLFunctionND(a::Vector{Tuple{Float64, Float64}}, b::Vector{Float64})
     @assert length(a) == length(b)
-    return ConvexPWLFunctionND(Vector{Tuple}(), Vector{Float64}(), a, b, Mᵇⁱᵍ)
+    return ConvexPWLFunctionND(Vector{Tuple}(), Vector{Float64}(), a, b)
 end
 
 function Base.print(io::IO, pwl::ConvexPWLFunctionND)

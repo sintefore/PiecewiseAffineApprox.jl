@@ -32,13 +32,18 @@ function convex_linearization(x, z, optimizer; kwargs...)
             error("Unrecognized method $method")
         end
     elseif dimensions >= 2
-        if method == :fit           
-            
+        if method == :fit
             return convex_ND_linearization_fit(x, z, optimizer; kwargs...)
         end    
     else
         error("Unrecognized number of dimensions $dimensions")
     end    
+end
+
+function conv_linear_big_M(x, z)
+    N = length(x)
+    cᵉˢᵗ = (z[N] -z[N-1])/(x[N]-x[N-1])
+    return  2 * cᵉˢᵗ * (last(x) - first(x)) - maximum(z)
 end
 
 #convex_linearization(x, z, optimizer; kwargs...)  = 
@@ -53,8 +58,7 @@ function convex_linearization_fit(x::Vector, z::Vector, optimizer; kwargs...)
     𝒩 = 1:N 
     𝒦 = 1:options.nseg
     
-    cᵉˢᵗ = (z[N] -z[N-1])/(x[N]-x[N-1])
-    Mᵇⁱᵍ =  2 * cᵉˢᵗ * (last(x) - first(x)) - maximum(z)
+    Mᵇⁱᵍ =  conv_linear_big_M(x,z)
     
     m = JuMP.Model()
     𝑧̂ = JuMP.@variable(m, [𝒩]) 
@@ -124,7 +128,7 @@ function convex_linearization_fit(x::Vector, z::Vector, optimizer; kwargs...)
     𝑐ᴼᵖᵗ = JuMP.value.(𝑐)
     𝑑ᴼᵖᵗ = JuMP.value.(𝑑) 
 
-    return ConvexPWLFunction([𝑐ᴼᵖᵗ[k] for k ∈ 𝒦], [𝑑ᴼᵖᵗ[k] for k ∈ 𝒦], minimum(x), maximum(x), Mᵇⁱᵍ)
+    return ConvexPWLFunction([𝑐ᴼᵖᵗ[k] for k ∈ 𝒦], [𝑑ᴼᵖᵗ[k] for k ∈ 𝒦], minimum(x), maximum(x))
 end
 
 function convex_linearization(f::Function, xmin, xmax, optimizer; kwargs...)
@@ -249,22 +253,34 @@ function mat2tuples(x::Matrix{Float64})
     return collect(Tuple(x'[:,i]) for i in 1:size(x',2))
 end
 
+function tuples2mat(𝒫::Vector{Tuple{Float64, Float64}})
+   return reduce(hcat, getindex.(𝒫,i) for i in eachindex(𝒫[1]))
+end
+
 function convex_ND_linearization_fit(x::Matrix{Float64}, z, optimizer; kwargs...)
     return convex_ND_linearization_fit(mat2tuples(x), z, optimizer; kwargs...)
 end
 
+function convND_linear_big_M(𝒫::Vector{Tuple{Float64, Float64}}, z)
+    return convND_linear_big_M(tuples2mat(𝒫),z)
+end
+
+function convND_linear_big_M(x::Matrix{Float64}, z)
+    ## TODO: calculate a tighter value for the big-M    
+    return 2*maximum(z)
+end
 
 function convex_ND_linearization_fit(𝒫, z, optimizer; kwargs...)
 
-    defaults = (nsegs=defaultseg(), nplanes=defaultplanes(), pen=defaultpenalty2D(), strict=false, start_origin=false, show_res=false)
+    defaults = (nsegs=defaultseg(), nplanes=defaultplanes(), pen=defaultpenalty2D(), strict=:none, show_res=false)
     options = merge(defaults, kwargs)
 
     zᵖ = Dict(zip(𝒫, z))
     𝒦 = 1:options.nplanes
     𝒟 = 1:length(𝒫[1])
 
-    Mᵇⁱᵍ = 2*maximum(z) ## TODO: calculate a tighter value for the big-M
-    
+    Mᵇⁱᵍ = convND_linear_big_M(𝒫, z) 
+
     m = JuMP.Model()
     𝑧̂ = JuMP.@variable(m, [𝒫])
     a = JuMP.@variable(m, [𝒟, 𝒦])
@@ -298,9 +314,13 @@ function convex_ND_linearization_fit(𝒫, z, optimizer; kwargs...)
         JuMP.@constraint(m, 𝑧̂[d] ≤ sum(a[j,k] * d[j] for j in 𝒟) + b[k] + Mᵇⁱᵍ * (1-𝑢[d,k]))                
     end
 
-    if options.strict
+    if options.strict == :above
         for d ∈ 𝒫, k ∈ 𝒦 
             JuMP.@constraint(m, zᵖ[d] ≥ sum(a[j,k] * d[j] for j in 𝒟) + b[k]) 
+        end
+    elseif options.strict == :below
+        for d ∈ 𝒫, k ∈ 𝒦 
+            JuMP.@constraint(m, zᵖ[d] ≤ sum(a[j,k] * d[j] for j in 𝒟) + b[k]) 
         end
     end
     
@@ -324,6 +344,6 @@ function convex_ND_linearization_fit(𝒫, z, optimizer; kwargs...)
     aᴼᵖᵗ = JuMP.value.(a)
     bᴼᵖᵗ = JuMP.value.(b)    
     
-    return ConvexPWLFunctionND(collect([Tuple(aᴼᵖᵗ.data[:,k]) for k ∈ 𝒦]),  [bᴼᵖᵗ[k] for k ∈ 𝒦], Mᵇⁱᵍ)    
+    return ConvexPWLFunctionND(collect([Tuple(aᴼᵖᵗ.data[:,k]) for k ∈ 𝒦]),  [bᴼᵖᵗ[k] for k ∈ 𝒦])
     ##TODO: how to recover the data points from the coefficients?  Check package Polyhedra.    
 end    

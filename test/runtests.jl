@@ -3,7 +3,6 @@ using Xpress
 using JuMP
 using PiecewiseLinearApprox
 using Test
-using LazyGrids
 
 @testset "Test piece-wise linear approximation" begin
     include("testquadapprox.jl")
@@ -11,4 +10,3 @@ using LazyGrids
     include("testconvexapprox.jl")
     include("test_2D_convexapprox.jl")
 end
-
