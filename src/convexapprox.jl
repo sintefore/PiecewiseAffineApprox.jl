@@ -149,11 +149,19 @@ function convex_linearization(f::Function, xmin, xmax, optimizer; kwargs...)
 end
 
 function concave_linearization(x, z, optimizer; kwargs...)
-    return ConcavePWLFunction(convex_linearization(x, -z, optimizer; kwargs...))
+    if (size(x,2) < 2) && (length(first(x)) < 2)
+        return ConcavePWLFunction(convex_linearization(x, -z, optimizer; kwargs...))
+    else
+        return ConcavePWLFunctionND(convex_linearization(x, -z, optimizer; kwargs...))
+    end
 end
 
 function concave_linearization(f::Function, xmin, xmax, optimizer; kwargs...)
-    return ConcavePWLFunction(convex_linearization(x -> -f(x), xmin, xmax, optimizer; kwargs...))
+    if (size(x,2) < 2) && (length(first(X)) < 2)
+        return ConcavePWLFunction(convex_linearization(x -> -f(x), xmin, xmax, optimizer; kwargs...))
+    else
+        return ConcavePWLFunctionND(convex_linearization(x -> -f(x), xmin, xmax, optimizer; kwargs...))
+    end
 end
 
 
@@ -350,3 +358,4 @@ function convex_ND_linearization_fit(𝒫, z, optimizer; kwargs...)
     return ConvexPWLFunctionND(collect([Tuple(aᴼᵖᵗ.data[:,k]) for k ∈ 𝒦]),  [bᴼᵖᵗ[k] for k ∈ 𝒦])
     ##TODO: how to recover the data points from the coefficients?  Check package Polyhedra.    
 end    
+

@@ -97,11 +97,13 @@ struct ConcavePWLFunction
     end
 end
 
-function ConcavePWLFunction(x::Vector, z::Vector) 
+
+
+function ConcavePWLFunction(x::Vector, z::Vector)             
     return ConcavePWLFunction(ConvexPWLFunction(x,-z))
 end
 
-function evaluate(concave::ConcavePWLFunction, x)
+function evaluate(pwl::ConcavePWLFunction, x)
     return -evaluate(concave.pwl, x)
 end
 
@@ -125,6 +127,23 @@ end
 function ConvexPWLFunctionND(a::Vector{Tuple{Float64, Float64}}, b::Vector{Float64})
     @assert length(a) == length(b)
     return ConvexPWLFunctionND(Vector{Tuple}(), Vector{Float64}(), a, b)
+end
+
+struct ConcavePWLFunctionND
+   
+    pwl::ConvexPWLFunctionND
+   
+    function ConcavePWLFunctionND(pwl::ConvexPWLFunctionND)
+        new(pwl)
+    end
+end
+
+function ConcavePWLFunctionND(x::Vector, z::Vector)             
+    return ConcavePWLFunctionNd(ConvexPWLFunctionNd(x,-z))
+end
+
+function evaluate(pwl::ConcavePWLFunctionND, x)        
+    return -evaluate(pwl.pwl, x)
 end
 
 function Base.print(io::IO, pwl::ConvexPWLFunctionND)
