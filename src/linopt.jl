@@ -54,6 +54,10 @@ concave_pwlinear(m::JuMP.Model, x::VarOrAff, xd::Vector, zd::Vector, optimizer; 
 concave_pwlinear(m::JuMP.Model, x::VarOrAff, f::Function, xmin, xmax, optimizer; z=nothing, kwargs...) =
     concave_pwlinear(m, x, convex_linearization(f,xmin,xmax, optimizer,kwargs...), z=z)
 
+    
+convex_pwlinear(m::JuMP.Model, x::Tuple, xd::Vector, zd::Vector, optimizer; z=nothing, kwargs...) =
+    convex_pwlinear(m, x, convex_linearization(xd, zd, optimizer; kwargs...), z=z)
+
 convex_pwlinear(m::JuMP.Model, x::Tuple, xd::Matrix, zd::Vector, optimizer; z=nothing, kwargs...) =
     convex_pwlinear(m, x, convex_linearization(xd, zd, optimizer; kwargs...), z=z)
 
@@ -99,3 +103,6 @@ concave_pwlinear(m::JuMP.Model, x::Tuple, f::Function, xmin, xmax, optimizer; z=
 
 concave_pwlinear(m::JuMP.Model, x::Tuple, xd::Matrix, zd::Vector, optimizer; z=nothing, kwargs...) =
     concave_pwlinear(m, x, concave_linearization(xd, zd, optimizer; kwargs...), z=z)
+
+concave_pwlinear(m::JuMP.Model, x::Tuple, xd::Vector, zd::Vector, optimizer; z=nothing, kwargs...) =
+    concave_pwlinear(m, x, concave_linearization(xd, zd, optimizer; kwargs...), z=z)    
