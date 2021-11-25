@@ -13,7 +13,10 @@ Computes a piecewise linear function that approximates the measurements given by
 - `dimensions::Integer:=2`: the number of dimensions of the function domain
 - `nseg::Integer=5`: the number of segments to use 
 - `nplanes::Integer=4`: the number of planes to use in 2D PWL functions
+- `strict::Symbol=:none`: defines it is a general approximation, or an overestimation or underestimation
 - `pen::Symbol=:l1`: the metric used to measure deviation
+
+
 """
 function convex_linearization(x, z, optimizer; kwargs...)
     defaults = (;method=:fit, dimensions=1)
