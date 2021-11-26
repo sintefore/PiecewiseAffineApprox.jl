@@ -13,9 +13,6 @@ z_concave = z.*-1
 
 f(u1, u2) = u1^2 + u2^2
 
-# Use Xpress without output as the solver
-Opt = optimizer_with_attributes(Xpress.Optimizer)
-
 np = 4
 
 pwl1 = convex_linearization(𝒫, z, Opt; nplanes=np, dimensions=2, strict=:none, pen=:l2)

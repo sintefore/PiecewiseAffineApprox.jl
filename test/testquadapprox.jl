@@ -1,10 +1,6 @@
 # Points to approximate
 points = [i=>i^2 for i in 0:0.1:1]
 
-# Use Cbc without output as the solver
-Opt = optimizer_with_attributes(Cbc.Optimizer, "logLevel" => 0)
-
-
 # Test with constraints added to existing model
 m = Model()
 @variable(m, x)
