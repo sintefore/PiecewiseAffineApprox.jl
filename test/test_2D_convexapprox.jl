@@ -10,8 +10,8 @@ z_concave = z.*-1
 
 np = 4
 
-pwl1 = convex_linearization(X, z, QuadOpt; nplanes=np, dimensions=2, strict=:above, pen=:l2)
-pwl2 = concave_linearization(PWL.mat2tuples(X), z_concave, QuadOpt; nplanes=np, dimensions=2, strict=:above, pen=:l2)
+pwl1 = convex_linearization(X, z, quadopt(1.7); nplanes=np, dimensions=2, strict=:above, pen=:l2)
+pwl2 = concave_linearization(PWL.mat2tuples(X), z_concave, quadopt(1.7); nplanes=np, dimensions=2, strict=:above, pen=:l2)
 
 @test length(pwl1.a) == np
 @test isapprox(PWL.evaluate(pwl1, (0.5, 0.5)), 0.5, atol=0.1)
@@ -26,10 +26,10 @@ m = Model()
 
 tuple_var = (xvar, yvar)
 
-y = PiecewiseLinearApprox.convex_pwlinear(m,tuple_var,X,z,QuadOpt;nplanes=np, dimensions=2, strict=:above, pen=:l2, z=test_f)
+y = PiecewiseLinearApprox.convex_pwlinear(m,tuple_var,X,z,quadopt(1.7);nplanes=np, dimensions=2, strict=:above, pen=:l2, z=test_f)
 
 @objective(m, Min, y)
-set_optimizer(m,QuadOpt)
+set_optimizer(m,quadopt(1.7))
 @constraint(m, xvar >= 0.3)
 optimize!(m)
 
@@ -46,10 +46,10 @@ m = Model()
 
 tuple_var_conc = (xvar_conc, yvar_conc)
 
-y_concave = PiecewiseLinearApprox.concave_pwlinear(m,tuple_var_conc,X,z_concave,QuadOpt;nplanes=np, dimensions=2, strict=:above, pen=:l2, z=f_conc)
+y_concave = PiecewiseLinearApprox.concave_pwlinear(m,tuple_var_conc,X,z_concave,quadopt(1.7);nplanes=np, dimensions=2, strict=:above, pen=:l2, z=f_conc)
 
 @objective(m, Max, y_concave)
-set_optimizer(m,QuadOpt)
+set_optimizer(m,quadopt(1.7))
 @constraint(m, xvar_conc >= 0.3)
 optimize!(m)
 
