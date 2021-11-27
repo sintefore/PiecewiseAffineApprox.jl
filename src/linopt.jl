@@ -104,5 +104,5 @@ concave_pwlinear(m::JuMP.Model, x::Tuple, f::Function, xmin, xmax, optimizer; z=
 concave_pwlinear(m::JuMP.Model, x::Tuple, xd::Matrix, zd::Vector, optimizer; z=nothing, kwargs...) =
     concave_pwlinear(m, x, concave_linearization(xd, zd, optimizer; kwargs...), z=z)
 
-concave_pwlinear(m::JuMP.Model, x::Tuple, xd::Vector, zd::Vector, optimizer; z=nothing, kwargs...) =
-    concave_pwlinear(m, x, concave_linearization(xd, zd, optimizer; kwargs...), z=z)    
+#concave_pwlinear(m::JuMP.Model, x::Tuple, xd::Vector, zd::Vector, optimizer; z=nothing, kwargs...) =
+#    concave_pwlinear(m, x, concave_linearization(xd, zd, optimizer; kwargs...), z=z)    
