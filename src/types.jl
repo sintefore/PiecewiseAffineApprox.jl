@@ -104,7 +104,7 @@ function ConcavePWLFunction(x::Vector, z::Vector)
 end
 
 function evaluate(pwl::ConcavePWLFunction, x)
-    return -evaluate(concave.pwl, x)
+    return -evaluate(pwl.pwl, x)
 end
 
 struct ConvexPWLFunctionND

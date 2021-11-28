@@ -63,73 +63,73 @@ function convex_linearization_fit(x::Vector, z::Vector, optimizer; kwargs...)
     
     Mᵇⁱᵍ =  conv_linear_big_M(x,z)
     
-    m = JuMP.Model()
-    𝑧̂ = JuMP.@variable(m, [𝒩]) 
-    𝑐 = JuMP.@variable(m, [𝒦])
-    𝑑 = JuMP.@variable(m, [𝒦]) 
-    𝑢 = JuMP.@variable(m, [𝒩,𝒦], Bin)
+    m = Model()
+    @variable(m, 𝑧̂[𝒩]) 
+    @variable(m, 𝑐[𝒦])
+    @variable(m, 𝑑[𝒦]) 
+    @variable(m, 𝑢[𝒩,𝒦], Bin)
 
     if options.pen == :l2 
-        JuMP.@objective(m, Min, sum((z[i] - 𝑧̂[i])^2 for i ∈ 𝒩))
+        @objective(m, Min, sum((z[i] - 𝑧̂[i])^2 for i ∈ 𝒩))
     elseif options.pen == :max
-        𝑡 = JuMP.@variable(m)
-        JuMP.@objective(m, Min, 𝑡)
+        𝑡 = @variable(m)
+        @objective(m, Min, 𝑡)
         for i ∈ 𝒩
-            JuMP.@constraint(m,  𝑡 ≥ (z[i] - 𝑧̂[i]) )
-            JuMP.@constraint(m,  𝑡 ≥ (𝑧̂[i] - z[i]) )
+            @constraint(m,  𝑡 ≥ (z[i] - 𝑧̂[i]) )
+            @constraint(m,  𝑡 ≥ (𝑧̂[i] - z[i]) )
         end
     elseif options.pen == :l1
-        𝑡 = JuMP.@variable(m, [𝒩])
-        JuMP.@objective(m, Min, sum(𝑡))
+        𝑡 = @variable(m, [𝒩])
+        @objective(m, Min, sum(𝑡))
         for i ∈ 𝒩
-            JuMP.@constraint(m,  𝑡[i] ≥ (z[i] - 𝑧̂[i]) )
-            JuMP.@constraint(m,  𝑡[i] ≥ (𝑧̂[i] - z[i]) )
+            @constraint(m,  𝑡[i] ≥ (z[i] - 𝑧̂[i]) )
+            @constraint(m,  𝑡[i] ≥ (𝑧̂[i] - z[i]) )
         end
     else
         error("Unrecognized/unsupported penalty type $(options.pen)")
     end
 
     for i ∈ 𝒩, k ∈ 𝒦 
-        JuMP.@constraint(m, 𝑧̂[i] ≥ 𝑐[k] * x[i] + 𝑑[k])
-        JuMP.@constraint(m, 𝑧̂[i] ≤ 𝑐[k] * x[i] + 𝑑[k] + Mᵇⁱᵍ * (1-𝑢[i,k]))
+        @constraint(m, 𝑧̂[i] ≥ 𝑐[k] * x[i] + 𝑑[k])
+        @constraint(m, 𝑧̂[i] ≤ 𝑐[k] * x[i] + 𝑑[k] + Mᵇⁱᵍ * (1-𝑢[i,k]))
     end
 
     if options.strict
         for i ∈ 𝒩, k ∈ 𝒦 
-            JuMP.@constraint(m, z[i] ≥ 𝑐[k] * x[i] + 𝑑[k])   
+            @constraint(m, z[i] ≥ 𝑐[k] * x[i] + 𝑑[k])   
         end
     end
 
     if options.start_origin
-        JuMP.@constraint(m,𝑑[1] == 0.0)
+        @constraint(m,𝑑[1] == 0.0)
     end
 
     for i ∈ 𝒩
-        JuMP.@constraint(m, sum(𝑢[i,k] for k ∈ 𝒦) ≥ 1)
+        @constraint(m, sum(𝑢[i,k] for k ∈ 𝒦) ≥ 1)
     end
 
     for k ∈ 𝒦 
         if k > 1
-            JuMP.@constraint(m, 𝑐[k-1] ≤ 𝑐[k])
+            @constraint(m, 𝑐[k-1] ≤ 𝑐[k])
         end
     end
 
 
-    JuMP.set_optimizer(m,optimizer)
-    JuMP.optimize!(m)
+    set_optimizer(m,optimizer)
+    optimize!(m)
 
-    if JuMP.termination_status(m) != MOI.OPTIMAL
+    if termination_status(m) != MOI.OPTIMAL
         error("Optimization failed")
     end
 
     if options.show_res
         println("Optimize succeed for $(options.pen)")
-        val = JuMP.objective_value(m)
+        val = objective_value(m)
         println("Objective value = $val")
     end
     
-    𝑐ᴼᵖᵗ = JuMP.value.(𝑐)
-    𝑑ᴼᵖᵗ = JuMP.value.(𝑑) 
+    𝑐ᴼᵖᵗ = value.(𝑐)
+    𝑑ᴼᵖᵗ = value.(𝑑) 
 
     return ConvexPWLFunction([𝑐ᴼᵖᵗ[k] for k ∈ 𝒦], [𝑑ᴼᵖᵗ[k] for k ∈ 𝒦], minimum(x), maximum(x))
 end
@@ -259,10 +259,10 @@ end
 convex_linearization_ipol(x, z, optimizer; kwargs...) = 
     convexify(interpolatepw(x, z, optimizer; kwargs...),optimizer)
 
-
-function mat2tuples(x::Matrix{Float64})
+function mat2tuples(x::Matrix)
     return collect(Tuple(x'[:,i]) for i in 1:size(x',2))
 end
+# mat2tuples2(x::Matrix) = ((Tuple(x[i,:]) for i in 1:size(x,1)))
 
 function tuples2mat(𝒫::Vector{Tuple{Float64, Float64}})
    return reduce(hcat, getindex.(𝒫,i) for i in eachindex(𝒫[1]))
@@ -292,68 +292,67 @@ function convex_ND_linearization_fit(𝒫, z, optimizer; kwargs...)
 
     Mᵇⁱᵍ = convND_linear_big_M(𝒫, z) 
 
-    m = JuMP.Model()
-    𝑧̂ = JuMP.@variable(m, [𝒫])
-    a = JuMP.@variable(m, [𝒟, 𝒦])
-    b =  JuMP.@variable(m, [𝒦])
+    m = Model()
+    @variable(m, 𝑧̂[𝒫])
+    @variable(m, a[𝒟, 𝒦])
+    @variable(m, b[𝒦])
 
-    𝑢 = JuMP.@variable(m, [𝒫, 𝒦], Bin)
+    @variable(m, 𝑢[𝒫, 𝒦], Bin)
 
     if options.pen == :l2 
-        JuMP.@objective(m, Min, sum((zᵖ[d] - 𝑧̂[d])^2 for d ∈ 𝒫))
+        @objective(m, Min, sum((zᵖ[d] - 𝑧̂[d])^2 for d ∈ 𝒫))
     elseif options.pen == :max
-        𝑡 = JuMP.@variable(m)
-        JuMP.@objective(m, Min, 𝑡)
+        𝑡 = @variable(m)
+        @objective(m, Min, 𝑡)
         for d ∈ 𝒫
-            JuMP.@constraint(m,  𝑡 ≥ (zᵖ[d] - 𝑧̂[d]) )
-            JuMP.@constraint(m,  𝑡 ≥ (𝑧̂[d] - zᵖ[d]) )
+            @constraint(m,  𝑡 ≥ (zᵖ[d] - 𝑧̂[d]) )
+            @constraint(m,  𝑡 ≥ (𝑧̂[d] - zᵖ[d]) )
         end
     elseif options.pen == :l1
-        𝑡 = JuMP.@variable(m, [𝒯])
-        JuMP.@objective(m, Min, sum(𝑡))
+        𝑡 = @variable(m, [𝒯])
+        @objective(m, Min, sum(𝑡))
         for d ∈ 𝒫
-            JuMP.@constraint(m,  𝑡[d] ≥ (zᵖ[d] - 𝑧̂[d]) )
-            JuMP.@constraint(m,  𝑡[d] ≥ (𝑧̂[d] - zᵖ[d]) )
-            
+            @constraint(m,  𝑡[d] ≥ (zᵖ[d] - 𝑧̂[d]) )
+            @constraint(m,  𝑡[d] ≥ (𝑧̂[d] - zᵖ[d]) )
         end
     else
         error("Unrecognized/unsupported penalty type $(options.pen)")
     end
      
     for d ∈ 𝒫, k ∈ 𝒦         
-        JuMP.@constraint(m, 𝑧̂[d] ≥ sum(a[j,k] * d[j] for j in 𝒟) + b[k])
-        JuMP.@constraint(m, 𝑧̂[d] ≤ sum(a[j,k] * d[j] for j in 𝒟) + b[k] + Mᵇⁱᵍ * (1-𝑢[d,k]))                
+        @constraint(m, 𝑧̂[d] ≥ sum(a[j,k] * d[j] for j in 𝒟) + b[k])
+        @constraint(m, 𝑧̂[d] ≤ sum(a[j,k] * d[j] for j in 𝒟) + b[k] + Mᵇⁱᵍ * (1-𝑢[d,k]))                
     end
 
     if options.strict == :above
         for d ∈ 𝒫, k ∈ 𝒦 
-            JuMP.@constraint(m, zᵖ[d] ≥ sum(a[j,k] * d[j] for j in 𝒟) + b[k]) 
+            @constraint(m, zᵖ[d] ≥ sum(a[j,k] * d[j] for j in 𝒟) + b[k]) 
         end
     elseif options.strict == :below
         for d ∈ 𝒫, k ∈ 𝒦 
-            JuMP.@constraint(m, zᵖ[d] ≤ sum(a[j,k] * d[j] for j in 𝒟) + b[k]) 
+            @constraint(m, zᵖ[d] ≤ sum(a[j,k] * d[j] for j in 𝒟) + b[k]) 
         end
     end
     
     for d ∈ 𝒫
-        JuMP.@constraint(m, sum(𝑢[d,k] for k ∈ 𝒦) ≥ 1)
+        @constraint(m, sum(𝑢[d,k] for k ∈ 𝒦) ≥ 1)
     end    
+    
+    set_optimizer(m,optimizer)
+    optimize!(m)
 
-    JuMP.set_optimizer(m,optimizer)
-    JuMP.optimize!(m)
-
-    if JuMP.termination_status(m) != MOI.OPTIMAL
+    if termination_status(m) != MOI.OPTIMAL
         error("Optimization failed")
     end
 
     if options.show_res
         println("Optimize succeed for $(options.pen)")
-        val = JuMP.objective_value(m)
+        val = objective_value(m)
         println("Objective value = $val")
     end   
     
-    aᴼᵖᵗ = JuMP.value.(a)
-    bᴼᵖᵗ = JuMP.value.(b)    
+    aᴼᵖᵗ = value.(a)
+    bᴼᵖᵗ = value.(b)    
     
     return ConvexPWLFunctionND(collect([Tuple(aᴼᵖᵗ.data[:,k]) for k ∈ 𝒦]),  [bᴼᵖᵗ[k] for k ∈ 𝒦])
     ##TODO: how to recover the data points from the coefficients?  Check package Polyhedra.    
