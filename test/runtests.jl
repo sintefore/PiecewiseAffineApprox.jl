@@ -1,13 +1,10 @@
-using Cbc
 using JuMP
 using PiecewiseLinearApprox
+using SCIP
 using Test
-using Xpress
 
-const Opt = optimizer_with_attributes(Cbc.Optimizer, MOI.Silent() => true)
-# Speed up tests where we know the solution and don't need to prove optimality
-# by setting sufficiently loose "MIPABSSTOP"
-quadopt(absgap=nothing) = isnothing(absgap) ? Xpress.Optimizer : optimizer_with_attributes(Xpress.Optimizer, MOI.RawOptimizerAttribute("MIPABSSTOP")=>absgap)
+const optimizer = optimizer_with_attributes(SCIP.Optimizer, MOI.Silent()=>true)
+quadopt(absgap=nothing) = isnothing(absgap) ? optimizer : optimizer_with_attributes(SCIP.Optimizer, MOI.Silent()=>true, MOI.RawOptimizerAttribute("limits/absgap") => absgap)
 
 @testset "Test piece-wise linear approximation" begin
     @testset "Quad Approx" begin
