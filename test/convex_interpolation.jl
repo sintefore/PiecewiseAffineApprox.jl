@@ -2,9 +2,6 @@
 x = [i  for i in -2:0.1:2]
 z = x.^2
 
-# Use Cbc without output as the solver
-Opt = optimizer_with_attributes(Cbc.Optimizer, "logLevel" => 0)
-
 # Test interpolation routine
 pwl =  PiecewiseLinearApprox.interpolatepw(x, z, Opt; nseg=5);
 
