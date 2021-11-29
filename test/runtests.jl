@@ -1,10 +1,10 @@
 using JuMP
 using PiecewiseLinearApprox
-using SCIP
 using Test
+using Xpress
 
-const optimizer = optimizer_with_attributes(SCIP.Optimizer, MOI.Silent()=>true)
-quadopt(absgap=nothing) = isnothing(absgap) ? optimizer : optimizer_with_attributes(SCIP.Optimizer, MOI.Silent()=>true, MOI.RawOptimizerAttribute("limits/absgap") => absgap)
+const optimizer = optimizer_with_attributes(Xpress.Optimizer, MOI.Silent()=>true)
+quadopt(absgap=nothing) = isnothing(absgap) ? optimizer : optimizer_with_attributes(Xpress.Optimizer, MOI.Silent()=>true, MOI.RawOptimizerAttribute("MIPABSSTOP") => absgap)
 
 @testset "Test piece-wise linear approximation" begin
     @testset "Quad Approx" begin
