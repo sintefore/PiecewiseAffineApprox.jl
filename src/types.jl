@@ -1,4 +1,52 @@
+# Input types
+abstract type Curvature end
+struct Concave <: Curvature end
+struct Convex <: Curvature end
 
+abstract type Algorithm end
+struct Heuristic <: Algorithm end
+struct Optimized <: Algorithm end
+
+struct FunctionEvaluations{D}
+	points::Vector{NTuple{D}}
+	values
+end
+
+# Skeleton of key methods (to be moved and renamed)
+compute_approximation(input, c::Concave, a) = "flip curvature and call for convex"
+compute_approximation(input, c::Convex, a::Optimized) = "optimize here"
+# If we want to use dispatch for specializing on dimensions (maybe just do branching and call specialized function)
+compute_approximation(input::FunctionEvaluations{D}, c::Convex, a::Heuristic) where D = compute_approximation(input, c, a, Val(D))
+compute_approximation(input::FunctionEvaluations{D}, c::Convex, a::Heuristic, ::Val{1}) where D = "specialized on 1D"
+compute_approximation(input::FunctionEvaluations{D}, c::Convex, a::Heuristic, dims) where D = "other Ds"
+
+# Alternative:
+# struct FunctionEvaluations{K,M,D}
+# 	points::Vector{NTuple}
+# 	values
+# end
+# compute_approximation(input::FunctionEvaluations{K,M,D}) where {K<:Concave,M,D} = "Concave - flip everything here and call for convex"
+# compute_approximation(input::FunctionEvaluations{K,M,D}) where {K<:Convex,M,D} = "Convex"
+# compute_approximation(input::FunctionEvaluations{K,M,D}) where {K<:Convex, M<:Optimized,D} = compute_approximation(input, D)
+# compute_approximation(input::FunctionEvaluations{K,M,D},dim) where {K<:Convex,M<:Optimized,D} = "$dim"
+# test = FunctionEvaluations{Convex,Optimized,3}([(1,2,3),(3,4,5)],[1,1])
+
+# Result types
+struct Plane{D,T<:Number}
+    α::NTuple{D,T}
+    β::T
+end
+Plane(a::NTuple{N,T}, b::T) where {N,T} = Plane{N,T}(a,b)
+Plane(a::Vector{T}, b::T) where T = Plane(Tuple(a),b)
+
+struct ConvexPWLFunc{D,T<:Number}
+    planes::Vector{Plane{D,T}}
+    M::T
+end
+ConvexPWLFunc(planes::Vector, M::T) where T = ConvexPWLFunc{length(planes), T}(planes, M)
+
+
+# Old types
 struct PWLFunction
     x::Vector{Float64}
     z::Vector{Float64}
