@@ -3,7 +3,7 @@ x = [i  for i in -2:0.1:2]
 z = x.^2
 
 # Test interpolation routine
-pwl =  PiecewiseLinearApprox.interpolatepw(x, z, Opt; nseg=5);
+pwl =  PiecewiseLinearApprox.interpolatepw(x, z, optimizer; nseg=5);
 
 @test length(pwl.x) == 6
 @test length(pwl.z) == 6
@@ -13,7 +13,7 @@ pwl =  PiecewiseLinearApprox.interpolatepw(x, z, Opt; nseg=5);
 
 
 # Test convexification
-cpwl = PiecewiseLinearApprox.convexify(pwl, Opt)
+cpwl = PiecewiseLinearApprox.convexify(pwl, optimizer)
 
 @test cpwl.c[2] ≈ -1.6
 @test cpwl.c[3] ≈ 0.0
