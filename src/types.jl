@@ -22,6 +22,7 @@ approx(input, c::Concave, a ; kwargs...) = "flip curvature and call for convex"
 approx(input, c::Convex, a::Optimized ; kwargs...) = "optimize here"
 # If we want to use dispatch for specializing on dimensions (maybe just do branching and call specialized function)
 approx(input::FunctionEvaluations{D}, c::Convex, a::Heuristic ; kwargs...) where D = compute(input, c, a, Val(D))
+approx(input::FunctionEvaluations{D}, c::Convex, a::Heuristic, ::Val{1} ; kwargs...) where D = "specialized on 1D"
 approx(input::FunctionEvaluations{D}, c::Convex, a::Heuristic, dims ; kwargs...) where D = "other Ds"
 
 # Alternative:
