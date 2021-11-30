@@ -37,19 +37,18 @@ approx(input::FunctionEvaluations{D}, c::Convex, a::Heuristic, dims ; kwargs...)
 # test = FunctionEvaluations{Convex,Optimized,3}([(1,2,3),(3,4,5)],[1,1])
 
 # Result types
-struct Plane{D,T<:Number}
-    α::NTuple{D,T}
-    β::T
+struct Plane{D}
+    α::NTuple{D,Number}
+    β::Number
 end
-Plane(a::NTuple{N,T}, b::T) where {N,T} = Plane{N,T}(a,b)
-Plane(a::Vector{T}, b::T) where T = Plane(Tuple(a),b)
+Plane(a::NTuple{N}, b) where {N} = Plane{N}(a,b)
+Plane(a::Vector, b) = Plane(Tuple(a),b)
 
-struct ConvexPWLFunc{D,T<:Number}
-    planes::Vector{Plane{D,T}}
-    M::T
+struct ConvexPWLFunc{D}
+    planes::Vector{Plane{D}}
+    M::Number
 end
-ConvexPWLFunc(planes::Vector, M::T) where T = ConvexPWLFunc{length(planes), T}(planes, M)
-
+ConvexPWLFunc(planes::Vector{Plane{D}}, M) where D = ConvexPWLFunc{D}(planes, M)
 
 # Old types
 struct PWLFunction
