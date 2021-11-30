@@ -7,7 +7,7 @@ pwl1 = convex_linearization(x, z, optimizer; nseg=5)
 @test length(pwl1.c) == 5
 @test length(pwl1.x) == 6
 @test issorted(pwl1.c)
-@test isapprox(PWL.evaluate(pwl1, 0.4), 0.16, atol=0.015)
+@test isapprox(PWL.evaluate(pwl1, 0.4), 0.16, atol=0.03)
 
 
 pwl2 = convex_linearization(x -> x^2, -1, 1, optimizer; nseg=5)

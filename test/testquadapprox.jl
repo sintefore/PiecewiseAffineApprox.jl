@@ -12,7 +12,7 @@ optimize!(m)
 @test isapprox(value(y), 0.09, atol=0.015)
 @constraint(m, x>= 0.9)
 optimize!(m)
-@test isapprox(value(y), 0.81, atol=0.01)
+@test isapprox(value(y), 0.81, atol=0.1)
 
 # Test with constraints added using already existing y-variable
 m = Model()

@@ -25,4 +25,7 @@ export concave_pwlinear
 export plot
 export plotconvND
 
+export ConcavePWLFunctionND
+export ConvexPWLFunctionND
+
 end # module

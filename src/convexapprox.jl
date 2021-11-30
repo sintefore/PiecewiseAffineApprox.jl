@@ -288,54 +288,54 @@ function convex_ND_linearization_fit(𝒫, z, optimizer; kwargs...)
 
     zᵖ = Dict(zip(𝒫, z))
     𝒦 = 1:options.nplanes
-    𝒟 = 1:length(𝒫[1])
+    ℐₚ = 1:length(𝒫[1])    
 
     Mᵇⁱᵍ = convND_linear_big_M(𝒫, z) 
 
     m = Model()
     @variable(m, 𝑧̂[𝒫])
-    @variable(m, a[𝒟, 𝒦])
+    @variable(m, a[ℐₚ, 𝒦])
     @variable(m, b[𝒦])
 
     @variable(m, 𝑢[𝒫, 𝒦], Bin)
 
     if options.pen == :l2 
-        @objective(m, Min, sum((zᵖ[d] - 𝑧̂[d])^2 for d ∈ 𝒫))
+        @objective(m, Min, sum((zᵖ[p] - 𝑧̂[p])^2 for p ∈ 𝒫))
     elseif options.pen == :max
         𝑡 = @variable(m)
         @objective(m, Min, 𝑡)
-        for d ∈ 𝒫
-            @constraint(m,  𝑡 ≥ (zᵖ[d] - 𝑧̂[d]) )
-            @constraint(m,  𝑡 ≥ (𝑧̂[d] - zᵖ[d]) )
+        for p ∈ 𝒫
+            @constraint(m,  𝑡 ≥ (zᵖ[p] - 𝑧̂[p]) )
+            @constraint(m,  𝑡 ≥ (𝑧̂[p] - zᵖ[p]) )
         end
     elseif options.pen == :l1
-        𝑡 = @variable(m, [𝒯])
+        𝑡 = @variable(m, [𝒫])
         @objective(m, Min, sum(𝑡))
-        for d ∈ 𝒫
-            @constraint(m,  𝑡[d] ≥ (zᵖ[d] - 𝑧̂[d]) )
-            @constraint(m,  𝑡[d] ≥ (𝑧̂[d] - zᵖ[d]) )
+        for p ∈ 𝒫
+            @constraint(m,  𝑡[p] ≥ (zᵖ[p] - 𝑧̂[p]) )
+            @constraint(m,  𝑡[p] ≥ (𝑧̂[p] - zᵖ[p]) )
         end
     else
         error("Unrecognized/unsupported penalty type $(options.pen)")
     end
      
-    for d ∈ 𝒫, k ∈ 𝒦         
-        @constraint(m, 𝑧̂[d] ≥ sum(a[j,k] * d[j] for j in 𝒟) + b[k])
-        @constraint(m, 𝑧̂[d] ≤ sum(a[j,k] * d[j] for j in 𝒟) + b[k] + Mᵇⁱᵍ * (1-𝑢[d,k]))                
+    for p ∈ 𝒫, k ∈ 𝒦         
+        @constraint(m, 𝑧̂[p] ≥ sum(a[j,k] * p[j] for j in ℐₚ) + b[k])
+        @constraint(m, 𝑧̂[p] ≤ sum(a[j,k] * p[j] for j in ℐₚ) + b[k] + Mᵇⁱᵍ * (1-𝑢[p,k]))                
     end
 
     if options.strict == :above
-        for d ∈ 𝒫, k ∈ 𝒦 
-            @constraint(m, zᵖ[d] ≥ sum(a[j,k] * d[j] for j in 𝒟) + b[k]) 
+        for p ∈ 𝒫, k ∈ 𝒦 
+            @constraint(m, zᵖ[p] ≥ sum(a[j,k] * p[j] for j in ℐₚ) + b[k]) 
         end
     elseif options.strict == :below
-        for d ∈ 𝒫, k ∈ 𝒦 
-            @constraint(m, zᵖ[d] ≤ sum(a[j,k] * d[j] for j in 𝒟) + b[k]) 
+        for p ∈ 𝒫, k ∈ 𝒦 
+            @constraint(m, zᵖ[p] ≤ sum(a[j,k] * p[j] for j in ℐₚ) + b[k]) 
         end
     end
     
-    for d ∈ 𝒫
-        @constraint(m, sum(𝑢[d,k] for k ∈ 𝒦) ≥ 1)
+    for p ∈ 𝒫
+        @constraint(m, sum(𝑢[p,k] for k ∈ 𝒦) ≥ 1)
     end    
     
     set_optimizer(m,optimizer)
