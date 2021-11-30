@@ -26,7 +26,7 @@ m = Model()
 
 tuple_var = (xvar, yvar)
 
-y = PiecewiseLinearApprox.convex_pwlinear(m,tuple_var,X,z,quadopt(1.7);nplanes=np, dimensions=2, strict=:above, pen=:l2, z=test_f)
+y = PiecewiseLinearApprox.convex_pwlinear(m,tuple_var,X,z,quadopt(2.2);nplanes=np, dimensions=2, strict=:above, pen=:l2, z=test_f)
 
 @objective(m, Min, y)
 set_optimizer(m,quadopt())
@@ -46,10 +46,10 @@ m = Model()
 
 tuple_var_conc = (xvar_conc, yvar_conc)
 
-y_concave = PiecewiseLinearApprox.concave_pwlinear(m,tuple_var_conc,X,z_concave,quadopt(1.7);nplanes=np, dimensions=2, strict=:above, pen=:l2, z=f_conc)
+y_concave = PiecewiseLinearApprox.concave_pwlinear(m,tuple_var_conc,X,z_concave,quadopt(2.2);nplanes=np, dimensions=2, strict=:above, pen=:l2, z=f_conc)
 
 @objective(m, Max, y_concave)
-set_optimizer(m,quadopt(1.7))
+set_optimizer(m,quadopt(2.2))
 @constraint(m, xvar_conc >= 0.3)
 optimize!(m)
 
