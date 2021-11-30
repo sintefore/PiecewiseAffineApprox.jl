@@ -1,12 +1,15 @@
 name = "PiecewiseLinearApprox"
 uuid = "bc5b63fc-d94a-42ea-9f3c-2beb293a2178"
-authors = ["Truls Flatberg <Truls.Flatberg@sintef.no>, Lars Hellemo <Lars.Hellemo@sintef.no>"]
-version = "0.2.0"
+authors = ["Truls Flatberg <Truls.Flatberg@sintef.no>, Lars Hellemo <Lars.Hellemo@sintef.no>, Thiago Silva <Thiago.Silva.sintef.no>"]
+version = "0.3.0"
 
 [deps]
 JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Requires = "ae029012-a4dd-5104-9daa-d747884805df"
 
 [compat]
-JuMP = "0.21"
+julia = "^1.6"
+JuMP = "^0.22"
+Requires = "^1.1"

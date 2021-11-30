@@ -13,8 +13,7 @@ function PWLFunction(x::Vector, z::Vector)
     return PWLFunction(convert(Vector{Float64}, x),convert(Vector{Float64}, z))
 end
 
-struct ConvexPWLFunction
-   
+struct ConvexPWLFunction   
     x::Vector{Float64}
     z::Vector{Float64}
 
@@ -98,12 +97,74 @@ struct ConcavePWLFunction
     end
 end
 
-function ConcavePWLFunction(x::Vector, z::Vector) 
+
+
+function ConcavePWLFunction(x::Vector, z::Vector)             
     return ConcavePWLFunction(ConvexPWLFunction(x,-z))
 end
 
-function evaluate(concave::ConcavePWLFunction, x)
-    return -evaluate(concave.pwl, x)
+function evaluate(pwl::ConcavePWLFunction, x)
+    return -evaluate(pwl.pwl, x)
 end
+
+struct ConvexPWLFunctionND
+    x::Vector{Tuple}    
+    z::Vector{Float64}
+
+    a::Vector{Tuple}
+    b::Vector{Float64} 
+
+    function ConvexPWLFunctionND(x, z::Vector{Float64}, a, b::Vector{Float64})
+        new(x, z, a, b)
+    end
+end
+
+function ConvexPWLFunctionND(x, fz::Function)
+    ##TODO: create function to calculate coefficients for given points and function values
+    return ConvexPWLFunctionND(x, map(t->convert(Float64, fz(t)), x), (), ())
+end
+
+function ConvexPWLFunctionND(a::Vector{Tuple{Float64, Float64}}, b::Vector{Float64})
+    @assert length(a) == length(b)
+    return ConvexPWLFunctionND(Vector{Tuple}(), Vector{Float64}(), a, b)
+end
+
+struct ConcavePWLFunctionND
+   
+    pwl::ConvexPWLFunctionND
+   
+    function ConcavePWLFunctionND(pwl::ConvexPWLFunctionND)
+        new(pwl)
+    end
+end
+
+function ConcavePWLFunctionND(x::Vector, z::Vector)             
+    return ConcavePWLFunctionNd(ConvexPWLFunctionNd(x,-z))
+end
+
+function evaluate(pwl::ConcavePWLFunctionND, x)        
+    return -evaluate(pwl.pwl, x)
+end
+
+function Base.print(io::IO, pwl::ConvexPWLFunctionND)
+    dim = length(pwl.a[1])
+    for i ∈ 1:dim
+        Printf.@printf("    c%d",i)
+    end 
+    Printf.@printf("    c%d\n",dim+1)
+
+    for i ∈ 1:length(pwl.a)        
+        for j ∈ 1:dim
+            Printf.@printf("%8.2f", pwl.a[i][j])        
+        end        
+        
+        Printf.@printf("%8.2f\n", pwl.b[i])
+    end        
+end
+
+function evaluate(pwl::ConvexPWLFunctionND, x)
+    return maximum(dot(pwl.a[i], x) + pwl.b[i] for i=1:length(pwl.a))
+end
+
 
 
