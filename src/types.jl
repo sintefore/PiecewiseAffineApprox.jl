@@ -8,16 +8,21 @@ struct Heuristic <: Algorithm end
 struct Optimized <: Algorithm end
 
 struct FunctionEvaluations{D}
-	points::Vector{NTuple{D}}
-	values
+	points::Vector{<:NTuple{D,Number}}
+	values::Vector{<:Number}
 end
 
-# kwargs:
-# * overestimation
-# * solver
-# * nplanes = 4
+"""
+    approx(input::FunctionEvaluations{D}, c::Curvature, a::Algorithm; kwargs...)
 
-# Skeleton of key methods (to be moved and renamed)
+Return ConvexPWLFunc{D} or ConcavePWLFunc{D} depending on `c`, approximating the `input` points in `D` dimensions
+
+Accepted keyword arguments currently include:
+- `solver`: JuMP Optimizer
+- `nplanes`: number of (hyper)planes to use for approximation
+- `strict`: (TODO: Better name?) `strict ∈ (:none, :over, :under)`
+- `pen:l1`:  the metric used to measure deviation `pen ∈ (:l1,:l2)`
+"""
 approx(input, c::Concave, a ; kwargs...) = "flip curvature and call for convex"
 approx(input, c::Convex, a::Optimized ; kwargs...) = "optimize here"
 # If we want to use dispatch for specializing on dimensions (maybe just do branching and call specialized function)
@@ -46,9 +51,15 @@ Plane(a::Vector, b) = Plane(Tuple(a),b)
 
 struct ConvexPWLFunc{D}
     planes::Vector{Plane{D}}
-    M::Number
 end
-ConvexPWLFunc(planes::Vector{Plane{D}}, M) where D = ConvexPWLFunc{D}(planes, M)
+ConvexPWLFunc(planes::Vector{Plane{D}}) where D = ConvexPWLFunc{D}(planes)
+
+struct ConcavePWLFunc{D}
+    planes::Vector{Plane{D}}
+end
+ConcavePWLFunc(planes::Vector{Plane{D}}) where D = ConvexPWLFunc{D}(planes)
+
+
 
 # Old types
 struct PWLFunction
