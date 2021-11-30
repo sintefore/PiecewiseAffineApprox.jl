@@ -12,13 +12,17 @@ struct FunctionEvaluations{D}
 	values
 end
 
+# kwargs:
+# * overestimation
+# * solver
+# * nplanes = 4
+
 # Skeleton of key methods (to be moved and renamed)
-compute_approximation(input, c::Concave, a) = "flip curvature and call for convex"
-compute_approximation(input, c::Convex, a::Optimized) = "optimize here"
+approx(input, c::Concave, a ; kwargs...) = "flip curvature and call for convex"
+approx(input, c::Convex, a::Optimized ; kwargs...) = "optimize here"
 # If we want to use dispatch for specializing on dimensions (maybe just do branching and call specialized function)
-compute_approximation(input::FunctionEvaluations{D}, c::Convex, a::Heuristic) where D = compute_approximation(input, c, a, Val(D))
-compute_approximation(input::FunctionEvaluations{D}, c::Convex, a::Heuristic, ::Val{1}) where D = "specialized on 1D"
-compute_approximation(input::FunctionEvaluations{D}, c::Convex, a::Heuristic, dims) where D = "other Ds"
+approx(input::FunctionEvaluations{D}, c::Convex, a::Heuristic ; kwargs...) where D = compute(input, c, a, Val(D))
+approx(input::FunctionEvaluations{D}, c::Convex, a::Heuristic, dims ; kwargs...) where D = "other Ds"
 
 # Alternative:
 # struct FunctionEvaluations{K,M,D}
