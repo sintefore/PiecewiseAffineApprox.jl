@@ -19,8 +19,7 @@ Accepted keyword arguments currently include:
 """
 function approx(input, c::Concave, a ; kwargs...)
     cv = approx(FunctionEvaluations(input.points,-input.values),Convex(),a; kwargs...)
-    # TODO: convert to new result types
-    @info cv
+    # TODO: Generalize on D (hard coded to 2 for now)
     return PWLFunc{Concave,2}(cv.planes)
 end
 concave(pwl::PWLFunc{C,D}) where {C<:Convex,D} = PWLFunc(pwl.planes,Concave())
@@ -31,7 +30,6 @@ approx(input::FunctionEvaluations{D}, c::Convex, a ; kwargs...) where D = approx
 function approx(input::FunctionEvaluations{D}, c::Convex, a::Interpol, ::Val{1} ; kwargs...) where D
     # Wrap for now, TODO: move here
     convex_linearization_ipol(input.points, input.values, kwargs.optimizer; kwargs...)
-    # TODO: Convert to new result type
 end
 
 # General D
@@ -406,6 +404,7 @@ function convex_ND_linearization_fit(𝒫, z, optimizer; kwargs...)
     aᴼᵖᵗ = value.(a)
     bᴼᵖᵗ = value.(b)    
     
+    # TODO: generalize for D (hard coded to 2 for now)
     return PWLFunc{Convex,2}([Plane(Tuple(aᴼᵖᵗ.data[:,k]), bᴼᵖᵗ[k]) for k ∈ 𝒦])
 
     ##TODO: how to recover the data points from the coefficients?  Check package Polyhedra.    
