@@ -3,6 +3,57 @@ defaultpenalty2D() = :l2
 defaultseg() = 5
 defaultplanes() = 4
 
+#= 
+    Start new typed interface here
+=#
+"""
+    approx(input::FunctionEvaluations{D}, c::Curvature, a::Algorithm; kwargs...)
+
+Return ConvexPWLFunc{D} or ConcavePWLFunc{D} depending on `c`, approximating the `input` points in `D` dimensions
+
+Accepted keyword arguments currently include:
+- `optimizer`: JuMP Optimizer
+- `nplanes`: number of (hyper)planes to use for approximation
+- `strict`: (TODO: Better name?) `strict ∈ (:none, :over, :under)`
+- `pen:l1`:  the metric used to measure deviation `pen ∈ (:l1,:l2)`
+"""
+function approx(input, c::Concave, a ; kwargs...)
+    cv = approx(FunctionEvaluations(input.points,-input.values),Convex(),a; kwargs...)
+    # TODO: convert to new result types
+    return ConcavePWLFunctionND(cv)
+end
+
+# Using dispatch for specializing on dimensions. If performance were a concern,
+# maybe just do branching and call specialized function directly
+approx(input::FunctionEvaluations{D}, c::Convex, a ; kwargs...) where D = approx(input, c, a, Val(D); kwargs...)
+# Specialized for 1D
+function approx(input::FunctionEvaluations{D}, c::Convex, a::Interpol, ::Val{1} ; kwargs...) where D
+    # Wrap for now, TODO: move here
+    convex_linearization_ipol(input.points, input.values, kwargs.optimizer; kwargs...)
+    # TODO: Convert to new result type
+end
+
+# General D
+function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, dims ; kwargs...) where D
+    # Wrap for now, TODO: move here
+    defaults = (;method=:fit, dimensions=1)
+    options = merge(defaults, kwargs)
+
+    convex_ND_linearization_fit(input.points, input.values, options.optimizer; kwargs...)
+end
+
+# General D
+function approx(input::FunctionEvaluations{D}, c::Convex, a::Heuristic, dims ; kwargs...) where D
+    # 
+
+end
+
+
+
+#=
+    Original interface starts here
+=#
+
 """
     convex_linearization(x, z, optimizer; kwargs...)
 

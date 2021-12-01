@@ -5,41 +5,13 @@ struct Convex <: Curvature end
 
 abstract type Algorithm end
 struct Heuristic <: Algorithm end
+struct Interpol <: Algorithm end
 struct Optimized <: Algorithm end
 
 struct FunctionEvaluations{D}
 	points::Vector{<:NTuple{D,Number}}
 	values::Vector{<:Number}
 end
-
-"""
-    approx(input::FunctionEvaluations{D}, c::Curvature, a::Algorithm; kwargs...)
-
-Return ConvexPWLFunc{D} or ConcavePWLFunc{D} depending on `c`, approximating the `input` points in `D` dimensions
-
-Accepted keyword arguments currently include:
-- `solver`: JuMP Optimizer
-- `nplanes`: number of (hyper)planes to use for approximation
-- `strict`: (TODO: Better name?) `strict ∈ (:none, :over, :under)`
-- `pen:l1`:  the metric used to measure deviation `pen ∈ (:l1,:l2)`
-"""
-approx(input, c::Concave, a ; kwargs...) = "flip curvature and call for convex"
-approx(input, c::Convex, a::Optimized ; kwargs...) = "optimize here"
-# If we want to use dispatch for specializing on dimensions (maybe just do branching and call specialized function)
-approx(input::FunctionEvaluations{D}, c::Convex, a::Heuristic ; kwargs...) where D = compute(input, c, a, Val(D))
-approx(input::FunctionEvaluations{D}, c::Convex, a::Heuristic, ::Val{1} ; kwargs...) where D = "specialized on 1D"
-approx(input::FunctionEvaluations{D}, c::Convex, a::Heuristic, dims ; kwargs...) where D = "other Ds"
-
-# Alternative:
-# struct FunctionEvaluations{K,M,D}
-# 	points::Vector{NTuple}
-# 	values
-# end
-# compute_approximation(input::FunctionEvaluations{K,M,D}) where {K<:Concave,M,D} = "Concave - flip everything here and call for convex"
-# compute_approximation(input::FunctionEvaluations{K,M,D}) where {K<:Convex,M,D} = "Convex"
-# compute_approximation(input::FunctionEvaluations{K,M,D}) where {K<:Convex, M<:Optimized,D} = compute_approximation(input, D)
-# compute_approximation(input::FunctionEvaluations{K,M,D},dim) where {K<:Convex,M<:Optimized,D} = "$dim"
-# test = FunctionEvaluations{Convex,Optimized,3}([(1,2,3),(3,4,5)],[1,1])
 
 # Result types
 struct Plane{D}
@@ -49,16 +21,17 @@ end
 Plane(a::NTuple{N}, b) where {N} = Plane{N}(a,b)
 Plane(a::Vector, b) = Plane(Tuple(a),b)
 
-struct ConvexPWLFunc{D}
+struct PWLFunc{C<:Curvature,D}
     planes::Vector{Plane{D}}
 end
-ConvexPWLFunc(planes::Vector{Plane{D}}) where D = ConvexPWLFunc{D}(planes)
+PWLFunc(planes::Vector{Plane{D}}, C::Curvature) where D = PWLFunc{typeof(C),D}
 
-struct ConcavePWLFunc{D}
-    planes::Vector{Plane{D}}
+
+
+evaluate(pwl::PWLFunc{C,D}, x) where {C>:Concave, D} = -evaluate(PWLFunc{Convex,D}(pwl.planes,x))
+function evaluate(pwl::PWLFunc{C,D}, x) where {C<:Convex, D}
+    return maximum(dot(p.α, x) + p.β for p ∈ pwl.planes)
 end
-ConcavePWLFunc(planes::Vector{Plane{D}}) where D = ConvexPWLFunc{D}(planes)
-
 
 
 # Old types

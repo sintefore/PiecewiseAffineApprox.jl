@@ -15,6 +15,18 @@ function __init__()
     @require GLMakie="e9467ef8-e4e7-5192-8a1a-b1aee30e663a" include("plotting_makie.jl")
 end
 
+# New exports
+# Types:
+export Convex, Concave
+export Optimized, Heuristic
+export Plane
+export FunctionEvaluations
+export PWLFunc
+
+# Methods:
+export approx
+
+# Old exports (to be revised)
 export ConvexPWLFunction
 export ConcavePWLFunction
 export convex_linearization
