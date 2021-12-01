@@ -61,16 +61,23 @@ convex_pwlinear(m::JuMP.Model, x::Tuple, xd::Vector, zd::Vector, optimizer; z=no
 convex_pwlinear(m::JuMP.Model, x::Tuple, xd::Matrix, zd::Vector, optimizer; z=nothing, kwargs...) =
     convex_pwlinear(m, x, convex_linearization(xd, zd, optimizer; kwargs...), z=z)
 
-function convex_pwlinear(m::JuMP.Model, x::Tuple, pwl::ConvexPWLFunctionND; z=nothing)
+function convex_pwlinear(m::JuMP.Model, x::Tuple, pwl::PWLFunc{C,D}; z=nothing) where {C<:Convex,D}
     initPWL!(m)
     counter = m.ext[:PWL].counter + 1
     m.ext[:PWL].counter = counter
     
-    if isnothing(z)
-         z = JuMP.@variable(m, lower_bound=minimum(pwl.z), upper_bound=maximum(pwl.z), base_name="z_$(counter)") 
+    function minz(pwl)
+        minimum(p.β for p ∈ pwl.planes)
     end
-    for k=1:length(pwl.a)
-        con = JuMP.@constraint(m, z ≥ dot(pwl.a[k], x) + pwl.b[k])
+    function maxz(pwl)
+        maximum(p.β for p ∈ pwl.planes)
+    end
+
+    if isnothing(z)
+         z = JuMP.@variable(m, lower_bound=minz(pwl), upper_bound=maxz(pwl), base_name="z_$(counter)") 
+    end
+    for (k,p) in enumerate(pwl.planes)
+        con = JuMP.@constraint(m, z ≥ dot(p.α, x) + p.β)
         JuMP.set_name(con, "pwl_$(counter)_$(k)")
     end
     return z

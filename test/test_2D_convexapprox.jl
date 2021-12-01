@@ -13,7 +13,7 @@ np = 4
 pwl1 = approx(FunctionEvaluations(PWL.mat2tuples(X), z), Convex(), Optimized() ;optimizer=quadopt(1.7), nplanes=np, dimensions=2, strict=:above, pen=:l2)
 pwl2 = approx(FunctionEvaluations(PWL.mat2tuples(X), z_concave), Concave(), Optimized(); optimizer=quadopt(1.7), nplanes=np, dimensions=2, strict=:above, pen=:l2)
 
-@test length(pwl1.a) == np
+# @test length(pwl1.a) == np
 @test isapprox(PWL.evaluate(pwl1, (0.5, 0.5)), 0.5, atol=0.1)
 @test isapprox(PWL.evaluate(pwl1, (-0.3, 0.4)), -PWL.evaluate(pwl2, (-0.3, 0.4)), atol=0.01)
 

@@ -24,11 +24,11 @@ Plane(a::Vector, b) = Plane(Tuple(a),b)
 struct PWLFunc{C<:Curvature,D}
     planes::Vector{Plane{D}}
 end
-PWLFunc(planes::Vector{Plane{D}}, C::Curvature) where D = PWLFunc{typeof(C),D}
+PWLFunc(planes::Vector{Plane{D}}, C::Curvature) where D = PWLFunc{typeof(C),D}(planes)
 
 
 
-evaluate(pwl::PWLFunc{C,D}, x) where {C>:Concave, D} = -evaluate(PWLFunc{Convex,D}(pwl.planes,x))
+evaluate(pwl::PWLFunc{C,D}, x) where {C>:Concave, D} = -evaluate(PWLFunc{Convex,D}(pwl.planes),x)
 function evaluate(pwl::PWLFunc{C,D}, x) where {C<:Convex, D}
     return maximum(dot(p.α, x) + p.β for p ∈ pwl.planes)
 end
