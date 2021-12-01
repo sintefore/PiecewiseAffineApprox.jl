@@ -18,7 +18,7 @@ end
 # New exports
 # Types:
 export Convex, Concave
-export Optimized, Heuristic
+export Optimized, Heuristic, Interpol
 export Plane
 export FunctionEvaluations
 export PWLFunc

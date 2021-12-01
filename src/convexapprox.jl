@@ -29,9 +29,20 @@ concave(pwl::PWLFunc{C,D}) where {C<:Convex,D} = PWLFunc(pwl.planes,Concave())
 approx(input::FunctionEvaluations{D}, c::Convex, a ; kwargs...) where D = approx(input, c, a, Val(D); kwargs...)
 # Specialized for 1D
 function approx(input::FunctionEvaluations{D}, c::Convex, a::Interpol, ::Val{1} ; kwargs...) where D
+    defaults = (nsegs=defaultseg(), nplanes=defaultplanes(), pen=defaultpenalty2D(), strict=:none, show_res=false)
+    options = merge(defaults, kwargs)
     # Wrap for now, TODO: move here
-    convex_linearization_ipol(input.points, input.values, kwargs.optimizer; kwargs...)
+    convex_linearization_ipol([i[1] for i in input.points], input.values, options.optimizer; kwargs...)
 end
+
+function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, ::Val{1} ; kwargs...) where D
+    defaults = (nsegs=defaultseg(), nplanes=defaultplanes(), pen=defaultpenalty2D(), strict=:none, show_res=false)
+    options = merge(defaults, kwargs)
+    # Wrap until big M issue is solved generally
+    # TODO: move here
+    convex_linearization_fit([i[1] for i in input.points], input.values, options.optimizer; kwargs...)
+end
+
 
 # General D
 function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, dims ; kwargs...) where D
@@ -44,7 +55,7 @@ function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, dims ; k
     𝒦 = 1:options.nplanes
     ℐₚ = 1:length(𝒫[1])    
 
-    Mᵇⁱᵍ = convND_linear_big_M(𝒫, z) 
+    Mᵇⁱᵍ = linear_big_M(𝒫, z) 
 
     m = Model()
     @variable(m, 𝑧̂[𝒫])
@@ -117,6 +128,22 @@ function approx(input::FunctionEvaluations{D}, c::Convex, a::Heuristic, dims ; k
 
 end
 
+# TODO: Generalize for ND
+function approx(f::Function, xmin, xmax, c::Curvature, a::Algorithm;  kwargs...)
+    @assert(xmin < xmax)
+
+    defaults = (nsample=10, nseg=defaultseg()) 
+    options = merge(defaults, kwargs)
+
+    samples = max(options.nsample, 3*options.nseg)
+
+    step = (xmax - xmin) / samples
+    x = [i for i in xmin:step:xmax]
+    y = [f(xx) for xx in x]
+    return approx(FunctionEvaluations(Tuple.(x), y), c, a; kwargs...)
+end
+
+
 
 
 #=
@@ -168,6 +195,13 @@ function conv_linear_big_M(x, z)
     cᵉˢᵗ = (z[N] -z[N-1])/(x[N]-x[N-1])
     return  2 * cᵉˢᵗ * (last(x) - first(x)) - maximum(z)
 end
+
+function conv_linear_big_M(x, z)
+    N = length(x)
+    cᵉˢᵗ = (z[N] .- z[N-1]) ./ (x[N] .- x[N-1])
+    return  2 .* cᵉˢᵗ .* (last(x) .- first(x)) .- maximum(z)
+end
+
 
 #convex_linearization(x, z, optimizer; kwargs...)  = 
 #    convex_linearization([xx for xx in x], [zz for zz in z], optimizer; kwargs...)
@@ -251,7 +285,8 @@ function convex_linearization_fit(x::Vector, z::Vector, optimizer; kwargs...)
     𝑐ᴼᵖᵗ = value.(𝑐)
     𝑑ᴼᵖᵗ = value.(𝑑) 
 
-    return ConvexPWLFunction([𝑐ᴼᵖᵗ[k] for k ∈ 𝒦], [𝑑ᴼᵖᵗ[k] for k ∈ 𝒦], minimum(x), maximum(x))
+    return PWLFunc{Convex,1}([Plane(Tuple(𝑐ᴼᵖᵗ[k]), 𝑑ᴼᵖᵗ[k]) for k ∈ 𝒦])
+    # return ConvexPWLFunction([𝑐ᴼᵖᵗ[k] for k ∈ 𝒦], [𝑑ᴼᵖᵗ[k] for k ∈ 𝒦], minimum(x), maximum(x))
 end
 
 function convex_linearization(f::Function, xmin, xmax, optimizer; kwargs...)
@@ -392,6 +427,9 @@ function convex_ND_linearization_fit(x::Matrix{Float64}, z, optimizer; kwargs...
     return convex_ND_linearization_fit(mat2tuples(x), z, optimizer; kwargs...)
 end
 
+linear_big_M(x, z) = 2 * maximum(z)
+
+@deprecate convND_linear_big_M linear_big_M
 function convND_linear_big_M(𝒫::Vector{Tuple{Float64, Float64}}, z)
     return convND_linear_big_M(tuples2mat(𝒫),z)
 end
@@ -411,7 +449,7 @@ function convex_ND_linearization_fit(𝒫, z, optimizer; kwargs...)
     𝒦 = 1:options.nplanes
     ℐₚ = 1:length(𝒫[1])    
 
-    Mᵇⁱᵍ = convND_linear_big_M(𝒫, z) 
+    Mᵇⁱᵍ = linear_big_M(𝒫, z) 
 
     m = Model()
     @variable(m, 𝑧̂[𝒫])
