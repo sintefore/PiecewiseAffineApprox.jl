@@ -62,7 +62,26 @@ convex_pwlinear(m::JuMP.Model, x::Tuple, xd::Matrix, zd::Vector, optimizer; z=no
     convex_pwlinear(m, x, convex_linearization(xd, zd, optimizer; kwargs...), z=z)
 
 
+constr(::Type{Convex},m,z,p,x) = JuMP.@constraint(m, z ≥ dot(p.α, x) + p.β)
+constr(::Type{Concave},m,z,p,x) = JuMP.@constraint(m, z ≤ dot(-1 .* p.α, x) - p.β)
+function pwlinear(m::JuMP.Model, x::Tuple, pwl::PWLFunc{C,D}; z=nothing, kwargs...) where {C,D}
+    initPWL!(m)
+    counter = m.ext[:PWL].counter + 1
+    m.ext[:PWL].counter = counter
 
+    if isnothing(z)
+        @warn "NB: Skipping bounds for now"
+        z = JuMP.@variable(m, base_name="z_$(counter)") 
+    end
+    for (k,p) in enumerate(pwl.planes)
+        con = constr(C,m,z,p,x)
+        JuMP.set_name(con, "pwl_$(counter)_$(k)")
+    end
+    return z
+end
+pwlinear(m::JuMP.Model, x::Tuple, fevals::FunctionEvaluations,curvature::Curvature,a::Algorithm;kwargs...) = pwlinear(m,x,approx(fevals,curvature,a;kwargs...);kwargs...)
+
+@deprecate convex_pwlinear pwlinear
 function convex_pwlinear(m::JuMP.Model, x::Tuple, pwl::PWLFunc{C,D}; z=nothing) where {C<:Convex,D}
     initPWL!(m)
     counter = m.ext[:PWL].counter + 1

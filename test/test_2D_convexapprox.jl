@@ -46,17 +46,17 @@ m = Model()
 
 tuple_var_conc = (xvar_conc, yvar_conc)
 
-# y_concave = PiecewiseLinearApprox.concave_pwlinear(m,tuple_var_conc,X,z_concave;optimizer=quadopt(1.7),nplanes=np, dimensions=2, strict=:above, pen=:l2, z=f_conc)
+y_concave = PWL.pwlinear(m,tuple_var_conc,FunctionEvaluations(PWL.mat2tuples(X),z_concave),Concave(),Optimized();optimizer=quadopt(1.7),nplanes=np, dimensions=2, strict=:above, pen=:l2, z=f_conc)
 
-# @objective(m, Max, y_concave)
-# set_optimizer(m,quadopt(2.2))
-# @constraint(m, xvar_conc >= 0.3)
-# optimize!(m)
+@objective(m, Max, y_concave)
+set_optimizer(m,quadopt(2.2))
+@constraint(m, xvar_conc >= 0.3)
+optimize!(m)
 
-# xval_conc = JuMP.value(m[:xvar_conc])
-# yval_conc = JuMP.value(m[:yvar_conc])
-# fval_conc = JuMP.value(m[:f_conc])
+xval_conc = JuMP.value(m[:xvar_conc])
+yval_conc = JuMP.value(m[:yvar_conc])
+fval_conc = JuMP.value(m[:f_conc])
 
-# @test isapprox(fval, -fval_conc, atol=0.01)
-# @test isapprox(xval, xval_conc, atol=0.01)
-# @test isapprox(yval, yval_conc, atol=0.01)
+@test isapprox(fval, -fval_conc, atol=0.01)
+@test isapprox(xval, xval_conc, atol=0.01)
+@test isapprox(yval, yval_conc, atol=0.01)
