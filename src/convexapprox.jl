@@ -20,8 +20,9 @@ Accepted keyword arguments currently include:
 function approx(input, c::Concave, a ; kwargs...)
     cv = approx(FunctionEvaluations(input.points,-input.values),Convex(),a; kwargs...)
     # TODO: Generalize on D (hard coded to 2 for now)
-    return PWLFunc{Concave,2}(cv.planes)
+    return PWLFunc{Concave,dims(cv)}(cv.planes)
 end
+dims(pwl::PWLFunc{C,D}) where {C,D} = D
 concave(pwl::PWLFunc{C,D}) where {C<:Convex,D} = PWLFunc(pwl.planes,Concave())
 # Using dispatch for specializing on dimensions. If performance were a concern,
 # maybe just do branching and call specialized function directly
@@ -34,11 +35,80 @@ end
 
 # General D
 function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, dims ; kwargs...) where D
-    # Wrap for now, TODO: move here
-    defaults = (;method=:fit, dimensions=1)
+    defaults = (nsegs=defaultseg(), nplanes=defaultplanes(), pen=defaultpenalty2D(), strict=:none, show_res=false)
     options = merge(defaults, kwargs)
 
-    convex_ND_linearization_fit(input.points, input.values, options.optimizer; kwargs...)
+    𝒫 = input.points
+    z = input.values
+    zᵖ = Dict(zip(𝒫, z))
+    𝒦 = 1:options.nplanes
+    ℐₚ = 1:length(𝒫[1])    
+
+    Mᵇⁱᵍ = convND_linear_big_M(𝒫, z) 
+
+    m = Model()
+    @variable(m, 𝑧̂[𝒫])
+    @variable(m, a[ℐₚ, 𝒦])
+    @variable(m, b[𝒦])
+
+    @variable(m, 𝑢[𝒫, 𝒦], Bin)
+
+    if options.pen == :l2 
+        @objective(m, Min, sum((zᵖ[p] - 𝑧̂[p])^2 for p ∈ 𝒫))
+    elseif options.pen == :max
+        𝑡 = @variable(m)
+        @objective(m, Min, 𝑡)
+        for p ∈ 𝒫
+            @constraint(m,  𝑡 ≥ (zᵖ[p] - 𝑧̂[p]) )
+            @constraint(m,  𝑡 ≥ (𝑧̂[p] - zᵖ[p]) )
+        end
+    elseif options.pen == :l1
+        𝑡 = @variable(m, [𝒫])
+        @objective(m, Min, sum(𝑡))
+        for p ∈ 𝒫
+            @constraint(m,  𝑡[p] ≥ (zᵖ[p] - 𝑧̂[p]) )
+            @constraint(m,  𝑡[p] ≥ (𝑧̂[p] - zᵖ[p]) )
+        end
+    else
+        error("Unrecognized/unsupported penalty type $(options.pen)")
+    end
+     
+    for p ∈ 𝒫, k ∈ 𝒦         
+        @constraint(m, 𝑧̂[p] ≥ sum(a[j,k] * p[j] for j in ℐₚ) + b[k])
+        @constraint(m, 𝑧̂[p] ≤ sum(a[j,k] * p[j] for j in ℐₚ) + b[k] + Mᵇⁱᵍ * (1-𝑢[p,k]))                
+    end
+
+    if options.strict == :above
+        for p ∈ 𝒫, k ∈ 𝒦 
+            @constraint(m, zᵖ[p] ≥ sum(a[j,k] * p[j] for j in ℐₚ) + b[k]) 
+        end
+    elseif options.strict == :below
+        for p ∈ 𝒫, k ∈ 𝒦 
+            @constraint(m, zᵖ[p] ≤ sum(a[j,k] * p[j] for j in ℐₚ) + b[k]) 
+        end
+    end
+    
+    for p ∈ 𝒫
+        @constraint(m, sum(𝑢[p,k] for k ∈ 𝒦) ≥ 1)
+    end    
+    
+    set_optimizer(m,options.optimizer)
+    optimize!(m)
+
+    if termination_status(m) != MOI.OPTIMAL
+        error("Optimization failed")
+    end
+
+    if options.show_res
+        println("Optimize succeed for $(options.pen)")
+        val = objective_value(m)
+        println("Objective value = $val")
+    end   
+    
+    aᴼᵖᵗ = value.(a)
+    bᴼᵖᵗ = value.(b)    
+    
+    return PWLFunc{Convex,D}([Plane(Tuple(aᴼᵖᵗ.data[:,k]), bᴼᵖᵗ[k]) for k ∈ 𝒦])
 end
 
 # General D
@@ -331,6 +401,7 @@ function convND_linear_big_M(x::Matrix{Float64}, z)
     return 2*maximum(z)
 end
 
+@deprecate convex_ND_linearization_fit approx
 function convex_ND_linearization_fit(𝒫, z, optimizer; kwargs...)
 
     defaults = (nsegs=defaultseg(), nplanes=defaultplanes(), pen=defaultpenalty2D(), strict=:none, show_res=false)
