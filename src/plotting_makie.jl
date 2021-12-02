@@ -41,7 +41,7 @@ function plotconv2D(x, z, pwl::PWLFunc{Convex,2})
     
     scatter!(ax1, x[1,:], x[2,:], z, color=:red, markersize = 2000)
     for p in pwl.planes
-        f = [value(p,[x̄[i],ȳ[j]]) for i in 1:length(x̄), j in 1:length(ȳ)] 
+        f = [evaluate(p,[x̄[i],ȳ[j]]) for i in 1:length(x̄), j in 1:length(ȳ)] 
         surface!(ax1, x̄, ȳ, f)
     end
     l1 = approx_error(x, z, pwl, :l1)

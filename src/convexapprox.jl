@@ -230,14 +230,14 @@ function convex_linearization_fit(x::Vector, z::Vector, optimizer; kwargs...)
     if options.pen == :l2 
         @objective(m, Min, sum((z[i] - 𝑧̂[i])^2 for i ∈ 𝒩))
     elseif options.pen == :max
-        @variable(𝑡, m)
+        @variable(m, 𝑡)
         @objective(m, Min, 𝑡)
         for i ∈ 𝒩
             @constraint(m,  𝑡 ≥ (z[i] - 𝑧̂[i]) )
             @constraint(m,  𝑡 ≥ (𝑧̂[i] - z[i]) )
         end
     elseif options.pen == :l1
-        @variable(𝑡, m, [𝒩])
+        @variable(m, 𝑡[𝒩])
         @objective(m, Min, sum(𝑡))
         for i ∈ 𝒩
             @constraint(m,  𝑡[i] ≥ (z[i] - 𝑧̂[i]) )
