@@ -206,13 +206,6 @@ function conv_linear_big_M(x, z)
     return  2 * cᵉˢᵗ * (last(x) - first(x)) - maximum(z)
 end
 
-function conv_linear_big_M(x, z)
-    N = length(x)
-    cᵉˢᵗ = (z[N] .- z[N-1]) ./ (x[N] .- x[N-1])
-    return  2 .* cᵉˢᵗ .* (last(x) .- first(x)) .- maximum(z)
-end
-
-
 #convex_linearization(x, z, optimizer; kwargs...)  = 
 #    convex_linearization([xx for xx in x], [zz for zz in z], optimizer; kwargs...)
 
