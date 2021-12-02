@@ -1,4 +1,3 @@
-PWL = PiecewiseLinearApprox
 
 x = [i for i in -1:0.1:1]
 z = x.^2

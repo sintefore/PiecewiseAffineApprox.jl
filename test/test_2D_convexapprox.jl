@@ -1,5 +1,3 @@
-PWL = PiecewiseLinearApprox
-
 xg = [i for i in -1:0.5:1]
 yg = [j for j in -1:0.5:1]
 

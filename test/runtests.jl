@@ -3,6 +3,7 @@ using PiecewiseLinearApprox
 using Test
 using Xpress
 
+const PWL = PiecewiseLinearApprox
 const optimizer = optimizer_with_attributes(Xpress.Optimizer, MOI.Silent()=>true)
 quadopt(absgap=nothing) = isnothing(absgap) ? optimizer : optimizer_with_attributes(Xpress.Optimizer, MOI.Silent()=>true, MOI.RawOptimizerAttribute("MIPABSSTOP") => absgap)
 
