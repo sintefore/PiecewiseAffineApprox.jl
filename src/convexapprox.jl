@@ -130,8 +130,14 @@ end
 
 # Sample the function on a uniform grid within the given bounding box using nsamples in each dimension
 function sample_uniform(f::Function, bbox::Vector{<:Tuple}, nsamples)
-    it = Iterators.product((LinRange(bbox[d][1], bbox[d][2], nsamples) for d in 1:length(bbox))...)
-    x = vec(collect(it))
+    dims = length(bbox)
+    if dims == 1
+        it = LinRange(bbox[dims][1], bbox[dims][2], nsamples)
+        x = Tuple.(collect(it))
+    else
+        it = Iterators.product((LinRange(bbox[d][1], bbox[d][2], nsamples) for d in 1:dims)...)
+        x = vec(collect(it)) 
+    end
     y = [f(xx) for xx in x]
     return FunctionEvaluations(x, y)
 end
