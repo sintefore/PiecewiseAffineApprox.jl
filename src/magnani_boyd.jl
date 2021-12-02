@@ -36,7 +36,7 @@ function convex_linearization_mb(x::Matrix, z::Vector; kwargs...)
     K = options.nseg
     penalty = options.pen
     strict = options.strict
-    optimizer = options.solver
+    optimizer = options.optimizer
 
     pwl_best = nothing
     min_error = Inf
