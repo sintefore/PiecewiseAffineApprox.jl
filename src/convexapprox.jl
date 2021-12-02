@@ -43,6 +43,12 @@ function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, ::Val{1}
     convex_linearization_fit([i[1] for i in input.points], input.values, options.optimizer; kwargs...)
 end
 
+# Heuristic for general dimension
+function approx(input::FunctionEvaluations{D}, c::Convex, a::Heuristic; kwargs...) where D
+    x = [p[i] for i in 1:D, p in input.points] 
+    z = input.values
+    return convex_linearization_mb(x, z; kwargs...) 
+end
 
 # General D
 function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, dims ; kwargs...) where D
@@ -122,25 +128,23 @@ function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, dims ; k
     return PWLFunc{Convex,D}([Plane(Tuple(aᴼᵖᵗ.data[:,k]), bᴼᵖᵗ[k]) for k ∈ 𝒦])
 end
 
-# General D
-function approx(input::FunctionEvaluations{D}, c::Convex, a::Heuristic, dims ; kwargs...) where D
-    # 
-
+# Sample the function on a uniform grid within the given bounding box using nsamples in each dimension
+function sample_uniform(f::Function, bbox::Vector{<:Tuple}, nsamples)
+    it = Iterators.product((LinRange(bbox[d][1], bbox[d][2], nsamples) for d in 1:length(bbox))...)
+    x = vec(collect(it))
+    y = [f(xx) for xx in x]
+    return FunctionEvaluations(x, y)
 end
 
-# TODO: Generalize for ND
-function approx(f::Function, xmin, xmax, c::Curvature, a::Algorithm;  kwargs...)
-    @assert(xmin < xmax)
-
+# Approximate the function using a uniform sampling over the bounding box
+function approx(f::Function, bbox::Vector{<:Tuple}, c::Curvature, a::Algorithm;  kwargs...)
+    
     defaults = (nsample=10, nseg=defaultseg()) 
     options = merge(defaults, kwargs)
 
     samples = max(options.nsample, 3*options.nseg)
 
-    step = (xmax - xmin) / samples
-    x = [i for i in xmin:step:xmax]
-    y = [f(xx) for xx in x]
-    return approx(FunctionEvaluations(Tuple.(x), y), c, a; kwargs...)
+    return approx(sample_uniform(f, bbox, samples), c, a; kwargs...)
 end
 
 
@@ -226,14 +230,14 @@ function convex_linearization_fit(x::Vector, z::Vector, optimizer; kwargs...)
     if options.pen == :l2 
         @objective(m, Min, sum((z[i] - 𝑧̂[i])^2 for i ∈ 𝒩))
     elseif options.pen == :max
-        𝑡 = @variable(m)
+        @variable(𝑡, m)
         @objective(m, Min, 𝑡)
         for i ∈ 𝒩
             @constraint(m,  𝑡 ≥ (z[i] - 𝑧̂[i]) )
             @constraint(m,  𝑡 ≥ (𝑧̂[i] - z[i]) )
         end
     elseif options.pen == :l1
-        𝑡 = @variable(m, [𝒩])
+        @variable(𝑡, m, [𝒩])
         @objective(m, Min, sum(𝑡))
         for i ∈ 𝒩
             @constraint(m,  𝑡[i] ≥ (z[i] - 𝑧̂[i]) )
