@@ -28,12 +28,12 @@ end
 
 function convex_linearization_mb(x::Matrix, z::Vector; kwargs...)
 
-    defaults = (nseg=defaultseg(), pen=defaultpenalty(), trials=20, itlim=50, strict=:none)
+    defaults = (planes=defaultplanes(), pen=defaultpenalty(), trials=20, itlim=50, strict=:none)
     options = merge(defaults, kwargs)
 
     Nᵗʳ = options.trials     # Number of trials
     lᵐᵃˣ = options.itlim    # Iteration limit
-    K = options.nseg
+    K = options.planes
     penalty = options.pen
     strict = options.strict
     optimizer = options.optimizer

@@ -3,7 +3,7 @@ x = [i  for i in -2:0.1:2]
 z = x.^2
 
 # Test interpolation routine
-pwl =  PWL.interpolatepw(x, z, optimizer; nseg=5);
+pwl =  PWL.interpolatepw(x, z, optimizer; planes=5);
 
 @test length(pwl.x) == 6
 @test length(pwl.z) == 6

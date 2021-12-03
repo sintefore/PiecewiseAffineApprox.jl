@@ -1,6 +1,5 @@
 defaultpenalty() = :l1
 defaultpenalty2D() = :l2
-defaultseg() = 5
 defaultplanes() = 4
 
 #= 
@@ -29,14 +28,14 @@ concave(pwl::PWLFunc{C,D}) where {C<:Convex,D} = PWLFunc(pwl.planes,Concave())
 approx(input::FunctionEvaluations{D}, c::Convex, a ; kwargs...) where D = approx(input, c, a, Val(D); kwargs...)
 # Specialized for 1D
 function approx(input::FunctionEvaluations{D}, c::Convex, a::Interpol, ::Val{1} ; kwargs...) where D
-    defaults = (nsegs=defaultseg(), nplanes=defaultplanes(), pen=defaultpenalty2D(), strict=:none, show_res=false)
+    defaults = (planes=defaultplanes(), pen=defaultpenalty2D(), strict=:none, show_res=false)
     options = merge(defaults, kwargs)
     # Wrap for now, TODO: move here
     convex_linearization_ipol([i[1] for i in input.points], input.values, options.optimizer; kwargs...)
 end
 
 function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, ::Val{1} ; kwargs...) where D
-    defaults = (nsegs=defaultseg(), nplanes=defaultplanes(), pen=defaultpenalty2D(), strict=:none, show_res=false)
+    defaults = (planes=defaultplanes(), pen=defaultpenalty2D(), strict=:none, show_res=false)
     options = merge(defaults, kwargs)
     # Wrap until big M issue is solved generally
     # TODO: move here
@@ -52,13 +51,13 @@ end
 
 # General D
 function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, dims ; kwargs...) where D
-    defaults = (nsegs=defaultseg(), nplanes=defaultplanes(), pen=defaultpenalty2D(), strict=:none, show_res=false)
+    defaults = (planes=defaultplanes(), pen=defaultpenalty2D(), strict=:none, show_res=false)
     options = merge(defaults, kwargs)
 
     𝒫 = input.points
     z = input.values
     zᵖ = Dict(zip(𝒫, z))
-    𝒦 = 1:options.nplanes
+    𝒦 = 1:options.planes
     ℐₚ = 1:length(𝒫[1])    
 
     Mᵇⁱᵍ = linear_big_M(𝒫, z) 
@@ -145,10 +144,10 @@ end
 # Approximate the function using a uniform sampling over the bounding box
 function approx(f::Function, bbox::Vector{<:Tuple}, c::Curvature, a::Algorithm;  kwargs...)
     
-    defaults = (nsample=10, nseg=defaultseg()) 
+    defaults = (nsample=10, planes=defaultplanes()) 
     options = merge(defaults, kwargs)
 
-    samples = max(options.nsample, 3*options.nseg)
+    samples = max(options.nsample, 3*options.planes)
 
     return approx(sample_uniform(f, bbox, samples), c, a; kwargs...)
 end
@@ -168,7 +167,7 @@ Computes a piecewise linear function that approximates the measurements given by
 # Arguments
 - `method::Symbol:=fit`: the method used for approximation
 - `dimensions::Integer:=2`: the number of dimensions of the function domain
-- `nseg::Integer=5`: the number of segments to use 
+- `planes::Integer=5`: the number of segments to use 
 - `nplanes::Integer=4`: the number of planes to use in 2D PWL functions
 - `strict::Symbol=:none`: defines it is a general approximation, or an overestimation or underestimation
 - `pen::Symbol=:l1`: the metric used to measure deviation
@@ -211,12 +210,12 @@ end
 
 function convex_linearization_fit(x::Vector, z::Vector, optimizer; kwargs...)
   
-    defaults = (nseg=defaultseg(), pen=defaultpenalty(), strict=false, start_origin=false, show_res=false)
+    defaults = (planes=defaultplanes(), pen=defaultpenalty(), strict=false, start_origin=false, show_res=false)
     options = merge(defaults, kwargs)
   
     N = length(x)
     𝒩 = 1:N 
-    𝒦 = 1:options.nseg
+    𝒦 = 1:options.planes
     
     Mᵇⁱᵍ =  conv_linear_big_M(x,z)
     
@@ -295,10 +294,10 @@ end
 function convex_linearization(f::Function, xmin, xmax, optimizer; kwargs...)
     @assert(xmin < xmax)
 
-    defaults = (nsample=10, nseg=defaultseg()) 
+    defaults = (nsample=10, planes=defaultplanes()) 
     options = merge(defaults, kwargs)
 
-    samples = max(options.nsample, 3*options.nseg)
+    samples = max(options.nsample, 3*options.planes)
 
     step = (xmax - xmin) / samples
     x = [i for i in xmin:step:xmax]
@@ -358,7 +357,7 @@ convexify(x, z, optimizer) =
 function interpolatepw(x, z, optimizer; kwargs...)
     @assert(length(x) == length(z))
 
-    defaults = (nseg=defaultseg(), pen=defaultpenalty())
+    defaults = (planes=defaultplanes(), pen=defaultpenalty())
     options = merge(defaults, kwargs)
    
     N = length(x)
@@ -385,7 +384,7 @@ function interpolatepw(x, z, optimizer; kwargs...)
     @objective(m, Min, sum(p[i,j] * 𝑢[i,j] for i ∈ 𝒩, j ∈ 𝒩))
 
     # Number of line segments in interpolant
-    @constraint(m, sum(𝑢[i,j] for i ∈ 𝒩, j ∈ 𝒩) == options.nseg )
+    @constraint(m, sum(𝑢[i,j] for i ∈ 𝒩, j ∈ 𝒩) == options.planes )
 
     # Only forward segments allowed
     for i ∈ 𝒩, j ∈ 𝒩 
@@ -445,11 +444,11 @@ end
 @deprecate convex_ND_linearization_fit approx
 function convex_ND_linearization_fit(𝒫, z, optimizer; kwargs...)
 
-    defaults = (nsegs=defaultseg(), nplanes=defaultplanes(), pen=defaultpenalty2D(), strict=:none, show_res=false)
+    defaults = (planes=defaultplanes(), pen=defaultpenalty2D(), strict=:none, show_res=false)
     options = merge(defaults, kwargs)
 
     zᵖ = Dict(zip(𝒫, z))
-    𝒦 = 1:options.nplanes
+    𝒦 = 1:options.planes
     ℐₚ = 1:length(𝒫[1])    
 
     Mᵇⁱᵍ = linear_big_M(𝒫, z) 

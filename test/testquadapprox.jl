@@ -6,7 +6,7 @@ m = Model()
 @variable(m, x)
 y = PiecewiseLinearApprox.pwlinear(m, tuple(x),
     FunctionEvaluations([tuple(i.first) for i ∈ points], [i.second for i ∈ points]),
-     Convex(), Optimized(); optimizer, nseg=5)
+     Convex(), Optimized(); optimizer, planes=5)
 @objective(m, Min, y)
 set_optimizer(m, optimizer)
 @constraint(m, x >= 0.3)
@@ -22,7 +22,7 @@ m = Model()
 @variable(m, test_y)
 y = PiecewiseLinearApprox.pwlinear(m, tuple(x),
     FunctionEvaluations([tuple(i.first) for i ∈ points],[i.second for i ∈ points]),
-    Convex(), Optimized(); optimizer, nseg=5, z=test_y)
+    Convex(), Optimized(); optimizer, planes=5, z=test_y)
 @objective(m, Min, y)
 set_optimizer(m, optimizer)
 @constraint(m, x >= 0.3)
