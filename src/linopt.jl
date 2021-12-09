@@ -64,6 +64,12 @@ convex_pwlinear(m::JuMP.Model, x::Tuple, xd::Matrix, zd::Vector, optimizer; z=no
 
 constr(::Type{Convex},m,z,p,x) = JuMP.@constraint(m, z ≥ dot(p.α, x) + p.β)
 constr(::Type{Concave},m,z,p,x) = JuMP.@constraint(m, z ≤ dot(-1 .* p.α, x) - p.β)
+"""
+    pwlinear(m::JuMP.Model, x::Tuple, pwl::PWLFunc{C,D}; z=nothing, kwargs...) where {C,D}
+
+Add constraints to JuMP-model `m` for JuMP-variable `z` as a  
+piecewise linear function/approximation `pwl` of JuMP-variables `x`    
+"""
 function pwlinear(m::JuMP.Model, x::Tuple, pwl::PWLFunc{C,D}; z=nothing, kwargs...) where {C,D}
     initPWL!(m)
     counter = m.ext[:PWL].counter + 1

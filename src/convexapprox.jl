@@ -12,9 +12,10 @@ Return ConvexPWLFunc{D} or ConcavePWLFunc{D} depending on `c`, approximating the
 
 Accepted keyword arguments currently include:
 - `optimizer`: JuMP Optimizer
-- `nplanes`: number of (hyper)planes to use for approximation
+- `planes`: number of (hyper)planes to use for approximation
 - `strict`: (TODO: Better name?) `strict ∈ (:none, :over, :under)`
-- `pen:l1`:  the metric used to measure deviation `pen ∈ (:l1,:l2)`
+- `pen`:  the metric used to measure deviation `pen ∈ (:l1,:l2)`
+- `show_res`: TODO:Remove this 
 """
 function approx(input, c::Concave, a ; kwargs...)
     cv = approx(FunctionEvaluations(input.points,-input.values),Convex(),a; kwargs...)
@@ -42,7 +43,14 @@ function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, ::Val{1}
     convex_linearization_fit([i[1] for i in input.points], input.values, options.optimizer; kwargs...)
 end
 
-# Heuristic for general dimension
+"""
+    approx(input::FunctionEvaluations{D}, c::Convex, a::Heuristic; kwargs...) where D
+
+Approximate using heuristic for general dimension
+Additional keyword arguments:
+- `trials`=20
+- `itlim`=50,
+"""
 function approx(input::FunctionEvaluations{D}, c::Convex, a::Heuristic; kwargs...) where D
     x = [p[i] for i in 1:D, p in input.points] 
     z = input.values
@@ -141,7 +149,14 @@ function sample_uniform(f::Function, bbox::Vector{<:Tuple}, nsamples)
     return FunctionEvaluations(x, y)
 end
 
-# Approximate the function using a uniform sampling over the bounding box
+"""
+    approx(f::Function, bbox::Vector{<:Tuple}, c::Curvature, a::Algorithm;  kwargs...)
+
+Approximate the function using a uniform sampling over the bounding box `bbox`
+
+Additional keyword arguments:
+- `nsample`=10
+"""
 function approx(f::Function, bbox::Vector{<:Tuple}, c::Curvature, a::Algorithm;  kwargs...)
     
     defaults = (nsample=10, planes=defaultplanes()) 
