@@ -19,11 +19,11 @@ dimensions = 2
 pen = :l2
 
 pwl1 = convex_linearization(𝒫, z, Opt; 
-    nplanes, dimensions, strict=:none, pen)
+    planes, dimensions, strict=:none, pen)
 pwl2 = convex_linearization(X, z, Opt; 
-    nplanes, dimensions, strict=:above, pen)
+    planes, dimensions, strict=:above, pen)
 pwl3 = concave_linearization(X, z_concave, Opt; 
-    nplanes, dimensions, strict=:above, pen)
+    planes, dimensions, strict=:above, pen)
 
 ϵ = 1e-06
 diff_1 = abs(PWL.evaluate(pwl1, (0.5, 0.5)) - f(0.5, 0.5)) / (f(0.5, 0.5) + ϵ)

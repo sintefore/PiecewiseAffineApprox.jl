@@ -1,7 +1,178 @@
 defaultpenalty() = :l1
 defaultpenalty2D() = :l2
-defaultseg() = 5
 defaultplanes() = 4
+
+#= 
+    Start new typed interface here
+=#
+"""
+    approx(input::FunctionEvaluations{D}, c::Curvature, a::Algorithm; kwargs...)
+
+Return ConvexPWLFunc{D} or ConcavePWLFunc{D} depending on `c`, approximating the `input` points in `D` dimensions
+
+Accepted keyword arguments currently include:
+- `optimizer`: JuMP Optimizer
+- `planes`: number of (hyper)planes to use for approximation
+- `strict`: (TODO: Better name?) `strict ∈ (:none, :over, :under)`
+- `pen`:  the metric used to measure deviation `pen ∈ (:l1,:l2)`
+- `show_res`: TODO:Remove this 
+"""
+function approx(input, c::Concave, a ; kwargs...)
+    cv = approx(FunctionEvaluations(input.points,-input.values),Convex(),a; kwargs...)
+    # TODO: Generalize on D (hard coded to 2 for now)
+    return PWLFunc{Concave,dims(cv)}(cv.planes)
+end
+dims(pwl::PWLFunc{C,D}) where {C,D} = D
+concave(pwl::PWLFunc{C,D}) where {C<:Convex,D} = PWLFunc(pwl.planes,Concave())
+# Using dispatch for specializing on dimensions. If performance were a concern,
+# maybe just do branching and call specialized function directly
+approx(input::FunctionEvaluations{D}, c::Convex, a ; kwargs...) where D = approx(input, c, a, Val(D); kwargs...)
+# Specialized for 1D
+function approx(input::FunctionEvaluations{D}, c::Convex, a::Interpol, ::Val{1} ; kwargs...) where D
+    defaults = (planes=defaultplanes(), pen=defaultpenalty2D(), strict=:none, show_res=false)
+    options = merge(defaults, kwargs)
+    # Wrap for now, TODO: move here
+    convex_linearization_ipol([i[1] for i in input.points], input.values, options.optimizer; kwargs...)
+end
+
+function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, ::Val{1} ; kwargs...) where D
+    defaults = (planes=defaultplanes(), pen=defaultpenalty2D(), strict=:none, show_res=false)
+    options = merge(defaults, kwargs)
+    # Wrap until big M issue is solved generally
+    # TODO: move here
+    convex_linearization_fit([i[1] for i in input.points], input.values, options.optimizer; kwargs...)
+end
+
+"""
+    approx(input::FunctionEvaluations{D}, c::Convex, a::Heuristic; kwargs...) where D
+
+Approximate using heuristic for general dimension
+Additional keyword arguments:
+- `trials`=20
+- `itlim`=50,
+"""
+function approx(input::FunctionEvaluations{D}, c::Convex, a::Heuristic; kwargs...) where D
+    x = [p[i] for i in 1:D, p in input.points] 
+    z = input.values
+    return convex_linearization_mb(x, z; kwargs...) 
+end
+
+# General D
+function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, dims ; kwargs...) where D
+    defaults = (planes=defaultplanes(), pen=defaultpenalty2D(), strict=:none, show_res=false)
+    options = merge(defaults, kwargs)
+
+    𝒫 = input.points
+    z = input.values
+    zᵖ = Dict(zip(𝒫, z))
+    𝒦 = 1:options.planes
+    ℐₚ = 1:length(𝒫[1])    
+
+    Mᵇⁱᵍ = linear_big_M(𝒫, z) 
+
+    m = Model()
+    @variable(m, 𝑧̂[𝒫])
+    @variable(m, a[ℐₚ, 𝒦])
+    @variable(m, b[𝒦])
+
+    @variable(m, 𝑢[𝒫, 𝒦], Bin)
+
+    if options.pen == :l2 
+        @objective(m, Min, sum((zᵖ[p] - 𝑧̂[p])^2 for p ∈ 𝒫))
+    elseif options.pen == :max
+        𝑡 = @variable(m)
+        @objective(m, Min, 𝑡)
+        for p ∈ 𝒫
+            @constraint(m,  𝑡 ≥ (zᵖ[p] - 𝑧̂[p]) )
+            @constraint(m,  𝑡 ≥ (𝑧̂[p] - zᵖ[p]) )
+        end
+    elseif options.pen == :l1
+        𝑡 = @variable(m, [𝒫])
+        @objective(m, Min, sum(𝑡))
+        for p ∈ 𝒫
+            @constraint(m,  𝑡[p] ≥ (zᵖ[p] - 𝑧̂[p]) )
+            @constraint(m,  𝑡[p] ≥ (𝑧̂[p] - zᵖ[p]) )
+        end
+    else
+        error("Unrecognized/unsupported penalty type $(options.pen)")
+    end
+     
+    for p ∈ 𝒫, k ∈ 𝒦         
+        @constraint(m, 𝑧̂[p] ≥ sum(a[j,k] * p[j] for j in ℐₚ) + b[k])
+        @constraint(m, 𝑧̂[p] ≤ sum(a[j,k] * p[j] for j in ℐₚ) + b[k] + Mᵇⁱᵍ * (1-𝑢[p,k]))                
+    end
+
+    if options.strict == :above
+        for p ∈ 𝒫, k ∈ 𝒦 
+            @constraint(m, zᵖ[p] ≥ sum(a[j,k] * p[j] for j in ℐₚ) + b[k]) 
+        end
+    elseif options.strict == :below
+        for p ∈ 𝒫, k ∈ 𝒦 
+            @constraint(m, zᵖ[p] ≤ sum(a[j,k] * p[j] for j in ℐₚ) + b[k]) 
+        end
+    end
+    
+    for p ∈ 𝒫
+        @constraint(m, sum(𝑢[p,k] for k ∈ 𝒦) ≥ 1)
+    end    
+    
+    set_optimizer(m,options.optimizer)
+    optimize!(m)
+
+    if termination_status(m) != MOI.OPTIMAL
+        error("Optimization failed")
+    end
+
+    if options.show_res
+        println("Optimize succeed for $(options.pen)")
+        val = objective_value(m)
+        println("Objective value = $val")
+    end   
+    
+    aᴼᵖᵗ = value.(a)
+    bᴼᵖᵗ = value.(b)    
+    
+    return PWLFunc{Convex,D}([Plane(Tuple(aᴼᵖᵗ.data[:,k]), bᴼᵖᵗ[k]) for k ∈ 𝒦])
+end
+
+# Sample the function on a uniform grid within the given bounding box using nsamples in each dimension
+function sample_uniform(f::Function, bbox::Vector{<:Tuple}, nsamples)
+    dims = length(bbox)
+    if dims == 1
+        it = LinRange(bbox[dims][1], bbox[dims][2], nsamples)
+        x = Tuple.(collect(it))
+    else
+        it = Iterators.product((LinRange(bbox[d][1], bbox[d][2], nsamples) for d in 1:dims)...)
+        x = vec(collect(it)) 
+    end
+    y = [f(xx) for xx in x]
+    return FunctionEvaluations(x, y)
+end
+
+"""
+    approx(f::Function, bbox::Vector{<:Tuple}, c::Curvature, a::Algorithm;  kwargs...)
+
+Approximate the function using a uniform sampling over the bounding box `bbox`
+
+Additional keyword arguments:
+- `nsample`=10
+"""
+function approx(f::Function, bbox::Vector{<:Tuple}, c::Curvature, a::Algorithm;  kwargs...)
+    
+    defaults = (nsample=10, planes=defaultplanes()) 
+    options = merge(defaults, kwargs)
+
+    samples = max(options.nsample, 3*options.planes)
+
+    return approx(sample_uniform(f, bbox, samples), c, a; kwargs...)
+end
+
+
+
+
+#=
+    Original interface starts here
+=#
 
 """
     convex_linearization(x, z, optimizer; kwargs...)
@@ -11,7 +182,7 @@ Computes a piecewise linear function that approximates the measurements given by
 # Arguments
 - `method::Symbol:=fit`: the method used for approximation
 - `dimensions::Integer:=2`: the number of dimensions of the function domain
-- `nseg::Integer=5`: the number of segments to use 
+- `planes::Integer=5`: the number of segments to use 
 - `nplanes::Integer=4`: the number of planes to use in 2D PWL functions
 - `strict::Symbol=:none`: defines it is a general approximation, or an overestimation or underestimation
 - `pen::Symbol=:l1`: the metric used to measure deviation
@@ -54,12 +225,12 @@ end
 
 function convex_linearization_fit(x::Vector, z::Vector, optimizer; kwargs...)
   
-    defaults = (nseg=defaultseg(), pen=defaultpenalty(), strict=false, start_origin=false, show_res=false)
+    defaults = (planes=defaultplanes(), pen=defaultpenalty(), strict=false, start_origin=false, show_res=false)
     options = merge(defaults, kwargs)
   
     N = length(x)
     𝒩 = 1:N 
-    𝒦 = 1:options.nseg
+    𝒦 = 1:options.planes
     
     Mᵇⁱᵍ =  conv_linear_big_M(x,z)
     
@@ -72,14 +243,14 @@ function convex_linearization_fit(x::Vector, z::Vector, optimizer; kwargs...)
     if options.pen == :l2 
         @objective(m, Min, sum((z[i] - 𝑧̂[i])^2 for i ∈ 𝒩))
     elseif options.pen == :max
-        𝑡 = @variable(m)
+        @variable(m, 𝑡)
         @objective(m, Min, 𝑡)
         for i ∈ 𝒩
             @constraint(m,  𝑡 ≥ (z[i] - 𝑧̂[i]) )
             @constraint(m,  𝑡 ≥ (𝑧̂[i] - z[i]) )
         end
     elseif options.pen == :l1
-        𝑡 = @variable(m, [𝒩])
+        @variable(m, 𝑡[𝒩])
         @objective(m, Min, sum(𝑡))
         for i ∈ 𝒩
             @constraint(m,  𝑡[i] ≥ (z[i] - 𝑧̂[i]) )
@@ -131,16 +302,17 @@ function convex_linearization_fit(x::Vector, z::Vector, optimizer; kwargs...)
     𝑐ᴼᵖᵗ = value.(𝑐)
     𝑑ᴼᵖᵗ = value.(𝑑) 
 
-    return ConvexPWLFunction([𝑐ᴼᵖᵗ[k] for k ∈ 𝒦], [𝑑ᴼᵖᵗ[k] for k ∈ 𝒦], minimum(x), maximum(x))
+    return PWLFunc{Convex,1}([Plane(Tuple(𝑐ᴼᵖᵗ[k]), 𝑑ᴼᵖᵗ[k]) for k ∈ 𝒦])
+    # return ConvexPWLFunction([𝑐ᴼᵖᵗ[k] for k ∈ 𝒦], [𝑑ᴼᵖᵗ[k] for k ∈ 𝒦], minimum(x), maximum(x))
 end
 
 function convex_linearization(f::Function, xmin, xmax, optimizer; kwargs...)
     @assert(xmin < xmax)
 
-    defaults = (nsample=10, nseg=defaultseg()) 
+    defaults = (nsample=10, planes=defaultplanes()) 
     options = merge(defaults, kwargs)
 
-    samples = max(options.nsample, 3*options.nseg)
+    samples = max(options.nsample, 3*options.planes)
 
     step = (xmax - xmin) / samples
     x = [i for i in xmin:step:xmax]
@@ -200,7 +372,7 @@ convexify(x, z, optimizer) =
 function interpolatepw(x, z, optimizer; kwargs...)
     @assert(length(x) == length(z))
 
-    defaults = (nseg=defaultseg(), pen=defaultpenalty())
+    defaults = (planes=defaultplanes(), pen=defaultpenalty())
     options = merge(defaults, kwargs)
    
     N = length(x)
@@ -227,7 +399,7 @@ function interpolatepw(x, z, optimizer; kwargs...)
     @objective(m, Min, sum(p[i,j] * 𝑢[i,j] for i ∈ 𝒩, j ∈ 𝒩))
 
     # Number of line segments in interpolant
-    @constraint(m, sum(𝑢[i,j] for i ∈ 𝒩, j ∈ 𝒩) == options.nseg )
+    @constraint(m, sum(𝑢[i,j] for i ∈ 𝒩, j ∈ 𝒩) == options.planes )
 
     # Only forward segments allowed
     for i ∈ 𝒩, j ∈ 𝒩 
@@ -272,6 +444,9 @@ function convex_ND_linearization_fit(x::Matrix{Float64}, z, optimizer; kwargs...
     return convex_ND_linearization_fit(mat2tuples(x), z, optimizer; kwargs...)
 end
 
+linear_big_M(x, z) = 2 * maximum(z)
+
+@deprecate convND_linear_big_M linear_big_M
 function convND_linear_big_M(𝒫::Vector{Tuple{Float64, Float64}}, z)
     return convND_linear_big_M(tuples2mat(𝒫),z)
 end
@@ -281,16 +456,17 @@ function convND_linear_big_M(x::Matrix{Float64}, z)
     return 2*maximum(z)
 end
 
+@deprecate convex_ND_linearization_fit approx
 function convex_ND_linearization_fit(𝒫, z, optimizer; kwargs...)
 
-    defaults = (nsegs=defaultseg(), nplanes=defaultplanes(), pen=defaultpenalty2D(), strict=:none, show_res=false)
+    defaults = (planes=defaultplanes(), pen=defaultpenalty2D(), strict=:none, show_res=false)
     options = merge(defaults, kwargs)
 
     zᵖ = Dict(zip(𝒫, z))
-    𝒦 = 1:options.nplanes
+    𝒦 = 1:options.planes
     ℐₚ = 1:length(𝒫[1])    
 
-    Mᵇⁱᵍ = convND_linear_big_M(𝒫, z) 
+    Mᵇⁱᵍ = linear_big_M(𝒫, z) 
 
     m = Model()
     @variable(m, 𝑧̂[𝒫])
@@ -354,7 +530,9 @@ function convex_ND_linearization_fit(𝒫, z, optimizer; kwargs...)
     aᴼᵖᵗ = value.(a)
     bᴼᵖᵗ = value.(b)    
     
-    return ConvexPWLFunctionND(collect([Tuple(aᴼᵖᵗ.data[:,k]) for k ∈ 𝒦]),  [bᴼᵖᵗ[k] for k ∈ 𝒦])
+    # TODO: generalize for D (hard coded to 2 for now)
+    return PWLFunc{Convex,2}([Plane(Tuple(aᴼᵖᵗ.data[:,k]), bᴼᵖᵗ[k]) for k ∈ 𝒦])
+
     ##TODO: how to recover the data points from the coefficients?  Check package Polyhedra.    
 end    
 

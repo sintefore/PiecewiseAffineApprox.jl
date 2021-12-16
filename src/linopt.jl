@@ -61,34 +61,72 @@ convex_pwlinear(m::JuMP.Model, x::Tuple, xd::Vector, zd::Vector, optimizer; z=no
 convex_pwlinear(m::JuMP.Model, x::Tuple, xd::Matrix, zd::Vector, optimizer; z=nothing, kwargs...) =
     convex_pwlinear(m, x, convex_linearization(xd, zd, optimizer; kwargs...), z=z)
 
-function convex_pwlinear(m::JuMP.Model, x::Tuple, pwl::ConvexPWLFunctionND; z=nothing)
+
+constr(::Type{Convex},m,z,p,x) = JuMP.@constraint(m, z ≥ dot(p.α, x) + p.β)
+constr(::Type{Concave},m,z,p,x) = JuMP.@constraint(m, z ≤ dot(-1 .* p.α, x) - p.β)
+"""
+    pwlinear(m::JuMP.Model, x::Tuple, pwl::PWLFunc{C,D}; z=nothing, kwargs...) where {C,D}
+
+Add constraints to JuMP-model `m` for JuMP-variable `z` as a  
+piecewise linear function/approximation `pwl` of JuMP-variables `x`    
+"""
+function pwlinear(m::JuMP.Model, x::Tuple, pwl::PWLFunc{C,D}; z=nothing, kwargs...) where {C,D}
+    initPWL!(m)
+    counter = m.ext[:PWL].counter + 1
+    m.ext[:PWL].counter = counter
+
+    if isnothing(z)
+        @warn "NB: Skipping bounds for now"
+        z = JuMP.@variable(m, base_name="z_$(counter)") 
+    end
+    for (k,p) in enumerate(pwl.planes)
+        con = constr(C,m,z,p,x)
+        JuMP.set_name(con, "pwl_$(counter)_$(k)")
+    end
+    return z
+end
+pwlinear(m::JuMP.Model, x::Tuple, fevals::FunctionEvaluations,curvature::Curvature,a::Algorithm;kwargs...) = pwlinear(m,x,approx(fevals,curvature,a;kwargs...);kwargs...)
+
+@deprecate convex_pwlinear pwlinear
+function convex_pwlinear(m::JuMP.Model, x::Tuple, pwl::PWLFunc{C,D}; z=nothing) where {C<:Convex,D}
     initPWL!(m)
     counter = m.ext[:PWL].counter + 1
     m.ext[:PWL].counter = counter
     
-    if isnothing(z)
-         z = JuMP.@variable(m, lower_bound=minimum(pwl.z), upper_bound=maximum(pwl.z), base_name="z_$(counter)") 
+    function minz(pwl)
+        minimum(p.β for p ∈ pwl.planes)
     end
-    for k=1:length(pwl.a)
-        con = JuMP.@constraint(m, z ≥ dot(pwl.a[k], x) + pwl.b[k])
+    function maxz(pwl)
+        maximum(p.β for p ∈ pwl.planes)
+    end
+
+    if isnothing(z)
+        #  z = JuMP.@variable(m, lower_bound=minz(pwl), upper_bound=maxz(pwl), base_name="z_$(counter)") 
+        # TODO: Fix bounds
+        z = JuMP.@variable(m, base_name="z_$(counter)") 
+    end
+    for (k,p) in enumerate(pwl.planes)
+        con = JuMP.@constraint(m, z ≥ dot(p.α, x) + p.β)
         JuMP.set_name(con, "pwl_$(counter)_$(k)")
     end
     return z
 end
 
-function concave_pwlinear(m::JuMP.Model, x::Tuple, pwl_concave::ConcavePWLFunctionND; z=nothing)
+# TO DO: integrate with convex version
+function concave_pwlinear(m::JuMP.Model, x::Tuple, pwl::PWLFunc{C,D}; z=nothing) where {C<:Concave, D}
     initPWL!(m)
     counter = m.ext[:PWL].counter + 1
     m.ext[:PWL].counter = counter
 
-    pwl = pwl_concave.pwl   
+    # pwl = pwl_concave.pwl   
     sign = -1
     
     if isnothing(z)
-        z = JuMP.@variable(m, lower_bound=minimum(pwl.z), upper_bound=maximum(pwl.z), base_name="z_$counter")  
+        # z = JuMP.@variable(m, lower_bound=minimum(pwl.z), upper_bound=maximum(pwl.z), base_name="z_$counter")  
+        z = JuMP.@variable(m, base_name="z_$counter")  
     end
-    for k=1:length(pwl.a)
-        con = JuMP.@constraint(m, z ≤ dot(pwl.a[k].*sign, x) + pwl.b[k].*sign)
+    for (k,p) ∈ enumerate(pwl.planes)
+        con = JuMP.@constraint(m, z ≤ dot(p.α.*sign, x) + p.β.*sign)
         JuMP.set_name(con, "pwl_$(counter)_$(k)")
     end    
     
@@ -102,7 +140,8 @@ concave_pwlinear(m::JuMP.Model, x::Tuple, f::Function, xmin, xmax, optimizer; z=
     concave_pwlinear(m, x, concave_linearization(f,xmin,xmax, optimizer,kwargs...), z=z)
 
 concave_pwlinear(m::JuMP.Model, x::Tuple, xd::Matrix, zd::Vector, optimizer; z=nothing, kwargs...) =
-    concave_pwlinear(m, x, concave_linearization(xd, zd, optimizer; kwargs...), z=z)
+concave_pwlinear(m, x, concave_linearization(xd, zd, optimizer; kwargs...), z=z)
+    # concave_pwlinear(m, x, approx(FunctionEvaluations(PWL.mat2tuples(xd), zd), Concave(), Optimized(); merge((;optimizer=optimizer), kwargs...), z=z)
 
 #concave_pwlinear(m::JuMP.Model, x::Tuple, xd::Vector, zd::Vector, optimizer; z=nothing, kwargs...) =
 #    concave_pwlinear(m, x, concave_linearization(xd, zd, optimizer; kwargs...), z=z)    

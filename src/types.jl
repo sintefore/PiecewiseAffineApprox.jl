@@ -1,4 +1,43 @@
+# Input types
+abstract type Curvature end
+struct Concave <: Curvature end
+struct Convex <: Curvature end
 
+abstract type Algorithm end
+struct Heuristic <: Algorithm end
+struct Interpol <: Algorithm end
+struct Optimized <: Algorithm end
+
+struct FunctionEvaluations{D}
+	points::Vector{<:NTuple{D,Number}}
+	values::Vector{<:Number}
+end
+
+# Result types
+struct Plane{D}
+    α::NTuple{D,Number}
+    β::Number
+end
+Plane(a::NTuple{N}, b) where {N} = Plane{N}(a,b)
+Plane(a::Vector, b) = Plane(Tuple(a),b)
+evaluate(p::Plane, x) = dot(p.α, x) + p.β
+
+struct PWLFunc{C<:Curvature,D}
+    planes::Vector{Plane{D}}
+end
+PWLFunc(planes::Vector{Plane{D}}, C::Curvature) where D = PWLFunc{typeof(C),D}(planes)
+PWLFunc{C,D}() where {C,D} = PWLFunc{C,D}(Vector{Plane{D}}())
+
+evaluate(pwl::PWLFunc{C,D}, x) where {C>:Concave, D} = -evaluate(PWLFunc{Convex,D}(pwl.planes),x)
+function evaluate(pwl::PWLFunc{C,D}, x) where {C<:Convex, D}
+    return maximum(dot(p.α, x) + p.β for p ∈ pwl.planes)
+end
+active(pwl, x) = argmax(collect(evaluate(p,x) for p in pwl.planes))
+nplanes(pwl) = length(pwl.planes)
+addplane!(pwl::PWLFunc{C,D}, p::Plane{D}) where {C,D} = push!(pwl.planes, p)
+addplane!(pwl::PWLFunc, α, β) = push!(pwl.planes, Plane(α, β))
+
+# Old types
 struct PWLFunction
     x::Vector{Float64}
     z::Vector{Float64}

@@ -1,6 +1,13 @@
 PiecewiseLinearApprox release notes
 ===================================
 
+Version 0.3.0 (2021-12-16)
+--------------------------
+- Add support for 2D functions (#3)
+- New and breaking typed interface (#7)
+- Add support for approximations based on Magnani/Boyd paper (#8)
+
+
 Version 0.2.0 (2020-05-27)
 --------------------------
 - Added interpolation method (#1)
