@@ -214,10 +214,45 @@ function convex_linearization(x, z, optimizer; kwargs...)
     end    
 end
 
+function conv_linear_big_M_per_datapoint(x,z)
+    pwl = consecutive_pwl_values(x,z)
+
+    # formulation can be tighter if one big-M is used for each point
+
+    pwl_min = minimum.(eachcol(pwl))
+    pwl_max = maximum.(eachcol(pwl))    
+
+    return pwl_max - pwl_min
+end
+
+function conv_linear_big_M_worst_case(x,z)
+    pwl = consecutive_pwl_values(x,z)
+    
+    # calculate a single big-M for the worst case scenario
+    pwl_min = minimum(pwl)
+    pwl_max = maximum(pwl)
+
+    return pwl_max - pwl_min
+end
+
+function consecutive_pwl_values(x,z)
+    N = length(x)
+    pwl = zeros(N-1, N)
+    for i ∈ 1:N-1        
+        # find slopes of consecutive points
+        c = (z[i+1] -z[i]) / (x[i+1]-x[i]) 
+        d = z[i] - c*x[i]
+
+        pwl[i, :] = c.*x .+ d
+    end
+    return pwl
+end
+
+
 function conv_linear_big_M(x, z)
     N = length(x)
     cᵉˢᵗ = (z[N] -z[N-1])/(x[N]-x[N-1])
-    return  2 * cᵉˢᵗ * (last(x) - first(x)) - maximum(z)
+    return 2 * cᵉˢᵗ * (last(x) - first(x)) - maximum(z)    
 end
 
 #convex_linearization(x, z, optimizer; kwargs...)  = 
@@ -232,7 +267,9 @@ function convex_linearization_fit(x::Vector, z::Vector, optimizer; kwargs...)
     𝒩 = 1:N 
     𝒦 = 1:options.planes
     
-    Mᵇⁱᵍ =  conv_linear_big_M(x,z)
+    #Mᵇⁱᵍ =  conv_linear_big_M(x,z) # old version
+    #Mᵇⁱᵍ =  conv_linear_big_M_worst_case(x,z) # single big_M for worst case scenario based on consecutive slopes
+    Mᵇⁱᵍ =  conv_linear_big_M_per_datapoint(x,z) # vector with one big_M for each data point based on consecutive slopes
     
     m = Model()
     @variable(m, 𝑧̂[𝒩]) 
@@ -262,7 +299,12 @@ function convex_linearization_fit(x::Vector, z::Vector, optimizer; kwargs...)
 
     for i ∈ 𝒩, k ∈ 𝒦 
         @constraint(m, 𝑧̂[i] ≥ 𝑐[k] * x[i] + 𝑑[k])
-        @constraint(m, 𝑧̂[i] ≤ 𝑐[k] * x[i] + 𝑑[k] + Mᵇⁱᵍ * (1-𝑢[i,k]))
+
+        if length(Mᵇⁱᵍ) > 1
+            @constraint(m, 𝑧̂[i] ≤ 𝑐[k] * x[i] + 𝑑[k] + Mᵇⁱᵍ[i] * (1-𝑢[i,k]))
+        else
+            @constraint(m, 𝑧̂[i] ≤ 𝑐[k] * x[i] + 𝑑[k] + Mᵇⁱᵍ * (1-𝑢[i,k]))
+        end
     end
 
     if options.strict
