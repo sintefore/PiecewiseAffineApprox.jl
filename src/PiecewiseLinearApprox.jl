@@ -7,6 +7,7 @@ using Requires
 using LinearAlgebra
 using Statistics
 using Distributions
+using Combinatorics
 
 include("types.jl")
 include("convexapprox.jl")

@@ -69,6 +69,7 @@ function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, dims ; k
     ℐₚ = 1:length(𝒫[1])    
 
     Mᵇⁱᵍ = linear_big_M(𝒫, z) 
+    
 
     m = Model()
     @variable(m, 𝑧̂[𝒫])
@@ -214,21 +215,20 @@ function convex_linearization(x, z, optimizer; kwargs...)
     end    
 end
 
-function conv_linear_big_M_per_datapoint(x,z)
+function linear_big_Ms_per_constraint_1D(x,z)
+    # formulation can be tighter if a separate big-M is used for each constraint, i.e. per datapont
     pwl = consecutive_pwl_values(x,z)
-
-    # formulation can be tighter if one big-M is used for each point
-
+    
     pwl_min = minimum.(eachcol(pwl))
-    pwl_max = maximum.(eachcol(pwl))    
+    pwl_max = maximum.(eachcol(pwl))
 
     return pwl_max - pwl_min
 end
 
-function conv_linear_big_M_worst_case(x,z)
-    pwl = consecutive_pwl_values(x,z)
-    
+function linear_big_M_1D(x,z)
     # calculate a single big-M for the worst case scenario
+    pwl = consecutive_pwl_values(x,z)    
+    
     pwl_min = minimum(pwl)
     pwl_max = maximum(pwl)
 
@@ -247,7 +247,6 @@ function consecutive_pwl_values(x,z)
     end
     return pwl
 end
-
 
 function conv_linear_big_M(x, z)
     N = length(x)
@@ -268,8 +267,8 @@ function convex_linearization_fit(x::Vector, z::Vector, optimizer; kwargs...)
     𝒦 = 1:options.planes
     
     #Mᵇⁱᵍ =  conv_linear_big_M(x,z) # old version
-    #Mᵇⁱᵍ =  conv_linear_big_M_worst_case(x,z) # single big_M for worst case scenario based on consecutive slopes
-    Mᵇⁱᵍ =  conv_linear_big_M_per_datapoint(x,z) # vector with one big_M for each data point based on consecutive slopes
+    Mᵇⁱᵍ =  linear_big_M_1D(x,z) # single big_M for worst case scenario based on consecutive slopes
+    #Mᵇⁱᵍ =  linear_big_M_1D_per_constraint(x,z) # vector with one big_M for each data point based on consecutive slopes
     
     m = Model()
     @variable(m, 𝑧̂[𝒩]) 
@@ -486,7 +485,34 @@ function convex_ND_linearization_fit(x::Matrix{Float64}, z, optimizer; kwargs...
     return convex_ND_linearization_fit(mat2tuples(x), z, optimizer; kwargs...)
 end
 
-linear_big_M(x, z) = 2 * maximum(z)
+plane_f(x, normal, d) = if normal[3] !=0  (-1/normal[3])*normal[1].*x[1] + normal[2].*x[2] + d else 0 end
+
+function linear_big_M(x,z)      
+    xₗ = minimum(first.(x))
+    xᵤ = maximum(first.(x))
+
+    yₗ = minimum(last.(x))
+    yᵤ = maximum(last.(x)) 
+    
+    x₊ = [Tuple([x[i]...,z[i]])  for i ∈ 1:length(x)]
+
+    plane_points = collect(combinations(x₊, 3)) # works only for 3 dimensions for now
+    Mᵇⁱᵍ = zeros(length(plane_points))
+
+    k = 1
+    for 𝓅 ∈ plane_points                    
+
+        normal = cross(collect(𝓅[1] .- 𝓅[2]), collect(𝓅[1] .- 𝓅[3]))
+        d = dot(normal, 𝓅[1])
+
+        # extrapolation for corner points
+        extremum_values = [plane_f((xₗ,yₗ), normal, d), plane_f((xₗ,yᵤ), normal, d), plane_f((xᵤ,yₗ), normal, d), plane_f((xᵤ,yᵤ), normal, d)]                        
+        Mᵇⁱᵍ[k] = abs(maximum(extremum_values) - minimum(extremum_values))
+        
+        k = k+1      
+    end             
+    return maximum(Mᵇⁱᵍ)    
+end
 
 @deprecate convND_linear_big_M linear_big_M
 function convND_linear_big_M(𝒫::Vector{Tuple{Float64, Float64}}, z)
