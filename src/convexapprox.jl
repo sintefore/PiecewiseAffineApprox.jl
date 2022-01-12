@@ -1,6 +1,7 @@
 defaultpenalty() = :l1
 defaultpenalty2D() = :l2
 defaultplanes() = 4
+defaultbigM() = :linear_big_M
 
 #= 
     Start new typed interface here
@@ -36,10 +37,10 @@ function approx(input::FunctionEvaluations{D}, c::Convex, a::Interpol, ::Val{1} 
 end
 
 function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, ::Val{1} ; kwargs...) where D
-    defaults = (planes=defaultplanes(), pen=defaultpenalty2D(), strict=:none, show_res=false)
+    defaults = (planes=defaultplanes(), pen=defaultpenalty2D(), bigM=defaultbigM(), strict=:none, show_res=false)
     options = merge(defaults, kwargs)
     # Wrap until big M issue is solved generally
-    # TODO: move here
+    # TODO: move here   
     convex_linearization_fit([i[1] for i in input.points], input.values, options.optimizer; kwargs...)
 end
 
@@ -220,8 +221,7 @@ function conv_linear_big_M(x, z)
     return 2 * cᵉˢᵗ * (last(x) - first(x)) - maximum(z)    
 end
 
-function conv_linear_big_M_ND(x, z)
-    
+function conv_linear_big_M_ND(x, z)    
     return 2*maximum(z)
 end
 
@@ -230,14 +230,14 @@ end
 
 function convex_linearization_fit(x::Vector, z::Vector, optimizer; kwargs...)
   
-    defaults = (planes=defaultplanes(), pen=defaultpenalty(), strict=false, start_origin=false, show_res=false)
+    defaults = (planes=defaultplanes(), pen=defaultpenalty(), bigM=defaultbigM(), strict=false, start_origin=false, show_res=false)
     options = merge(defaults, kwargs)
   
     N = length(x)
     𝒩 = 1:N 
-    𝒦 = 1:options.planes
+    𝒦 = 1:options.planes    
 
-    Mᵇⁱᵍ = linear_big_M(x,z)
+    Mᵇⁱᵍ = big_M(x,z, options.bigM)
     
     m = Model()
     @variable(m, 𝑧̂[𝒩]) 
@@ -267,12 +267,8 @@ function convex_linearization_fit(x::Vector, z::Vector, optimizer; kwargs...)
 
     for i ∈ 𝒩, k ∈ 𝒦 
         @constraint(m, 𝑧̂[i] ≥ 𝑐[k] * x[i] + 𝑑[k])
-
-        if length(Mᵇⁱᵍ) > 1
-            @constraint(m, 𝑧̂[i] ≤ 𝑐[k] * x[i] + 𝑑[k] + Mᵇⁱᵍ[i] * (1-𝑢[i,k]))
-        else
-            @constraint(m, 𝑧̂[i] ≤ 𝑐[k] * x[i] + 𝑑[k] + Mᵇⁱᵍ * (1-𝑢[i,k]))
-        end
+       
+        @constraint(m, 𝑧̂[i] ≤ 𝑐[k] * x[i] + 𝑑[k] + Mᵇⁱᵍ * (1-𝑢[i,k]))       
     end
 
     if options.strict
@@ -452,6 +448,18 @@ end
 
 function convex_ND_linearization_fit(x::Matrix{Float64}, z, optimizer; kwargs...)
     return convex_ND_linearization_fit(mat2tuples(x), z, optimizer; kwargs...)
+end
+
+function big_M(x,z, bigM)
+    if bigM == :linear_big_M
+        return linear_big_M(x,z)
+    elseif  bigM == :conv_linear_big_M_ND
+        return conv_linear_big_M_ND(x,z)
+    elseif bigM == :conv_linear_big_M
+        return conv_linear_big_M(x,z)
+    else
+        error("Big-M function not available. Options are :linear_big_M, :conv_linear_big_M_ND, and :conv_linear_big_M")
+    end
 end
 
 function linear_big_M(x,z)

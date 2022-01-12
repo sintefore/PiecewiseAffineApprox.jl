@@ -35,7 +35,7 @@ xval = JuMP.value(m[:xvar])
 yval = JuMP.value(m[:yvar])
 fval = JuMP.value(m[:test_f])
 
-@test isapprox(value(m[:test_f]), -0.15, atol=0.04)
+@test isapprox(value(m[:test_f]), -0.36, atol=0.04)
 
 m = Model()
 @variable(m, xvar_conc)
