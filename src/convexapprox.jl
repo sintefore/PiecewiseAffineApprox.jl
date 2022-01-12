@@ -214,44 +214,15 @@ function convex_linearization(x, z, optimizer; kwargs...)
         error("Unrecognized number of dimensions $dimensions")
     end    
 end
-
-function linear_big_Ms_per_constraint_1D(x,z)
-    # formulation can be tighter if a separate big-M is used for each constraint, i.e. per datapont
-    pwl = consecutive_pwl_values(x,z)
-    
-    pwl_min = minimum.(eachcol(pwl))
-    pwl_max = maximum.(eachcol(pwl))
-
-    return pwl_max - pwl_min
-end
-
-function linear_big_M_1D(x,z)
-    # calculate a single big-M for the worst case scenario
-    pwl = consecutive_pwl_values(x,z)    
-    
-    pwl_min = minimum(pwl)
-    pwl_max = maximum(pwl)
-
-    return pwl_max - pwl_min
-end
-
-function consecutive_pwl_values(x,z)
-    N = length(x)
-    pwl = zeros(N-1, N)
-    for i ∈ 1:N-1        
-        # find slopes of consecutive points
-        c = (z[i+1] -z[i]) / (x[i+1]-x[i]) 
-        d = z[i] - c*x[i]
-
-        pwl[i, :] = c.*x .+ d
-    end
-    return pwl
-end
-
 function conv_linear_big_M(x, z)
     N = length(x)
     cᵉˢᵗ = (z[N] -z[N-1])/(x[N]-x[N-1])
     return 2 * cᵉˢᵗ * (last(x) - first(x)) - maximum(z)    
+end
+
+function conv_linear_big_M_ND(x, z)
+    
+    return 2*maximum(z)
 end
 
 #convex_linearization(x, z, optimizer; kwargs...)  = 
@@ -265,10 +236,8 @@ function convex_linearization_fit(x::Vector, z::Vector, optimizer; kwargs...)
     N = length(x)
     𝒩 = 1:N 
     𝒦 = 1:options.planes
-    
-    #Mᵇⁱᵍ =  conv_linear_big_M(x,z) # old version
-    Mᵇⁱᵍ =  linear_big_M_1D(x,z) # single big_M for worst case scenario based on consecutive slopes
-    #Mᵇⁱᵍ =  linear_big_M_1D_per_constraint(x,z) # vector with one big_M for each data point based on consecutive slopes
+
+    Mᵇⁱᵍ = linear_big_M(x,z)
     
     m = Model()
     @variable(m, 𝑧̂[𝒩]) 
@@ -485,43 +454,49 @@ function convex_ND_linearization_fit(x::Matrix{Float64}, z, optimizer; kwargs...
     return convex_ND_linearization_fit(mat2tuples(x), z, optimizer; kwargs...)
 end
 
-plane_f(x, normal, d) = if normal[3] !=0  (-1/normal[3])*normal[1].*x[1] + normal[2].*x[2] + d else 0 end
+function linear_big_M(x,z)
+    dims = length(x[1])
 
-function linear_big_M(x,z)      
-    xₗ = minimum(first.(x))
-    xᵤ = maximum(first.(x))
-
-    yₗ = minimum(last.(x))
-    yᵤ = maximum(last.(x)) 
+    ## calculate extremum points
+    xₗ  = if dims > 2 minimum.(x) else minimum(x) end
+    xᵤ = if dims > 2 maximum.(x) else maximum(x) end
     
-    x₊ = [Tuple([x[i]...,z[i]])  for i ∈ 1:length(x)]
-
-    plane_points = collect(combinations(x₊, 3)) # works only for 3 dimensions for now
-    Mᵇⁱᵍ = zeros(length(plane_points))
-
-    k = 1
-    for 𝓅 ∈ plane_points                    
-
-        normal = cross(collect(𝓅[1] .- 𝓅[2]), collect(𝓅[1] .- 𝓅[3]))
-        d = dot(normal, 𝓅[1])
-
-        # extrapolation for corner points
-        extremum_values = [plane_f((xₗ,yₗ), normal, d), plane_f((xₗ,yᵤ), normal, d), plane_f((xᵤ,yₗ), normal, d), plane_f((xᵤ,yᵤ), normal, d)]                        
-        Mᵇⁱᵍ[k] = abs(maximum(extremum_values) - minimum(extremum_values))
+    x₊ = [Tuple([x[i]...,z[i]])  for i ∈ 1:length(x)]        
+    
+    if dims <= 2 # works only for up to 3 dimensions for now
+        ℋ = collect(combinations(x₊, dims+1)) 
+        Mᵇⁱᵍ = zeros(length(ℋ))
         
-        k = k+1      
-    end             
-    return maximum(Mᵇⁱᵍ)    
-end
+        k = 1
+        for ℎ ∈ ℋ 
+            if dims == 1
+                a = (ℎ[2][2]-ℎ[1][2])/(ℎ[2][1]-ℎ[1][1])
+                b = ℎ[1][2] - a*ℎ[1][1]
 
-@deprecate convND_linear_big_M linear_big_M
-function convND_linear_big_M(𝒫::Vector{Tuple{Float64, Float64}}, z)
-    return convND_linear_big_M(tuples2mat(𝒫),z)
-end
+                line_f(x,a,b) = a.*x + b
+                
+                # extrapolation for corner points
+                extremum_values = [line_f(xₗ,a,b), line_f(xᵤ, a,b)]                
+            elseif dims == 2                
+                normal = cross(collect(ℎ[1] .- ℎ[2]), collect(ℎ[1] .- ℎ[3]))
+                d = dot(normal, ℎ[1])
 
-function convND_linear_big_M(x::Matrix{Float64}, z)
-    ## TODO: calculate a tighter value for the big-M    
-    return 2*maximum(z)
+                plane_f(x, normal, d) = if normal[3] !=0  (-1/normal[3])*normal[1].*x[1] + normal[2].*x[2] + d else 0 end
+                
+                # extrapolation for corner points
+                extremum_values = [plane_f((xₗ[1],xₗ[2]), normal, d), plane_f((xₗ[1],xᵤ[2]), normal, d), plane_f((xᵤ[1], xₗ[2]), normal, d), plane_f((xᵤ[1], xᵤ[2]), normal, d)]
+            else                
+                error("Big-M not defined for dimensions > 3")
+            end
+            
+            Mᵇⁱᵍ[k] = abs(maximum(extremum_values) - minimum(extremum_values))
+            
+            k = k+1      
+        end             
+        return maximum(Mᵇⁱᵍ)    
+    else            
+        error("Big-M calculation works only for 2 and 3 dimensions.")        
+    end
 end
 
 @deprecate convex_ND_linearization_fit approx
