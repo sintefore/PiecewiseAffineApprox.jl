@@ -32,3 +32,17 @@ M₂⁺ = PWL.linear_big_M(x,z)
 M₂ = PWL.conv_linear_big_M_ND(x,z)  # old estimate for big-M
 
 @test isless(M₂, M₂⁺)
+
+@testset "Duplicate inputs" begin
+    x =  [302.3633312955,
+          300.6680553405,
+          274.281686739,
+          274.281686739,]
+    z =  [-184.9368247,
+          -183.9371662,
+          -167.94263,
+          -167.94263,]
+          
+    @test_broken !isnan(PWL.linear_big_M(x, z))
+    @test PWL.linear_big_M(unique(x), unique(z)) ≈ 17.02 atol=0.01
+end
