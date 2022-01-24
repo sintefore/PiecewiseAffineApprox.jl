@@ -1,7 +1,7 @@
 PiecewiseLinearApprox release notes
 ===================================
 
-Version 0.3.1 (2021-01-20)
+Version 0.3.1 (2021-01-24)
 --------------------------
 - Improved calculation of big-M (#9)
 
