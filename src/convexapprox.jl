@@ -1,6 +1,7 @@
 defaultpenalty() = :l1
 defaultpenalty2D() = :l2
 defaultplanes() = 4
+defaultbigM() = :linear_big_M
 
 #= 
     Start new typed interface here
@@ -36,10 +37,10 @@ function approx(input::FunctionEvaluations{D}, c::Convex, a::Interpol, ::Val{1} 
 end
 
 function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, ::Val{1} ; kwargs...) where D
-    defaults = (planes=defaultplanes(), pen=defaultpenalty2D(), strict=:none, show_res=false)
+    defaults = (planes=defaultplanes(), pen=defaultpenalty2D(), bigM=defaultbigM(), strict=:none, show_res=false)
     options = merge(defaults, kwargs)
     # Wrap until big M issue is solved generally
-    # TODO: move here
+    # TODO: move here   
     convex_linearization_fit([i[1] for i in input.points], input.values, options.optimizer; kwargs...)
 end
 
@@ -69,6 +70,7 @@ function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, dims ; k
     ℐₚ = 1:length(𝒫[1])    
 
     Mᵇⁱᵍ = linear_big_M(𝒫, z) 
+    
 
     m = Model()
     @variable(m, 𝑧̂[𝒫])
@@ -213,11 +215,14 @@ function convex_linearization(x, z, optimizer; kwargs...)
         error("Unrecognized number of dimensions $dimensions")
     end    
 end
-
 function conv_linear_big_M(x, z)
     N = length(x)
     cᵉˢᵗ = (z[N] -z[N-1])/(x[N]-x[N-1])
-    return  2 * cᵉˢᵗ * (last(x) - first(x)) - maximum(z)
+    return 2 * cᵉˢᵗ * (last(x) - first(x)) - maximum(z)    
+end
+
+function conv_linear_big_M_ND(x, z)    
+    return 2*maximum(z)
 end
 
 #convex_linearization(x, z, optimizer; kwargs...)  = 
@@ -225,14 +230,14 @@ end
 
 function convex_linearization_fit(x::Vector, z::Vector, optimizer; kwargs...)
   
-    defaults = (planes=defaultplanes(), pen=defaultpenalty(), strict=false, start_origin=false, show_res=false)
+    defaults = (planes=defaultplanes(), pen=defaultpenalty(), bigM=defaultbigM(), strict=false, start_origin=false, show_res=false)
     options = merge(defaults, kwargs)
   
     N = length(x)
     𝒩 = 1:N 
-    𝒦 = 1:options.planes
-    
-    Mᵇⁱᵍ =  conv_linear_big_M(x,z)
+    𝒦 = 1:options.planes    
+
+    Mᵇⁱᵍ = big_M(x,z, options.bigM)
     
     m = Model()
     @variable(m, 𝑧̂[𝒩]) 
@@ -262,7 +267,8 @@ function convex_linearization_fit(x::Vector, z::Vector, optimizer; kwargs...)
 
     for i ∈ 𝒩, k ∈ 𝒦 
         @constraint(m, 𝑧̂[i] ≥ 𝑐[k] * x[i] + 𝑑[k])
-        @constraint(m, 𝑧̂[i] ≤ 𝑐[k] * x[i] + 𝑑[k] + Mᵇⁱᵍ * (1-𝑢[i,k]))
+       
+        @constraint(m, 𝑧̂[i] ≤ 𝑐[k] * x[i] + 𝑑[k] + Mᵇⁱᵍ * (1-𝑢[i,k]))       
     end
 
     if options.strict
@@ -444,16 +450,61 @@ function convex_ND_linearization_fit(x::Matrix{Float64}, z, optimizer; kwargs...
     return convex_ND_linearization_fit(mat2tuples(x), z, optimizer; kwargs...)
 end
 
-linear_big_M(x, z) = 2 * maximum(z)
-
-@deprecate convND_linear_big_M linear_big_M
-function convND_linear_big_M(𝒫::Vector{Tuple{Float64, Float64}}, z)
-    return convND_linear_big_M(tuples2mat(𝒫),z)
+function big_M(x,z, bigM)
+    if bigM == :linear_big_M
+        return linear_big_M(x,z)
+    elseif  bigM == :conv_linear_big_M_ND
+        return conv_linear_big_M_ND(x,z)
+    elseif bigM == :conv_linear_big_M
+        return conv_linear_big_M(x,z)
+    else
+        error("Big-M function not available. Options are :linear_big_M, :conv_linear_big_M_ND, and :conv_linear_big_M")
+    end
 end
 
-function convND_linear_big_M(x::Matrix{Float64}, z)
-    ## TODO: calculate a tighter value for the big-M    
-    return 2*maximum(z)
+function linear_big_M(x,z)
+    dims = length(x[1])
+
+    ## calculate extremum points
+    xₗ  = if dims > 2 minimum.(x) else minimum(x) end
+    xᵤ = if dims > 2 maximum.(x) else maximum(x) end
+    
+    x₊ = [Tuple([x[i]...,z[i]])  for i ∈ 1:length(x)]        
+    
+    if dims <= 2 # works only for up to 3 dimensions for now
+        ℋ = collect(combinations(x₊, dims+1)) 
+        Mᵇⁱᵍ = zeros(length(ℋ))
+        
+        k = 1
+        for ℎ ∈ ℋ 
+            if dims == 1
+                a = (ℎ[2][2]-ℎ[1][2])/(ℎ[2][1]-ℎ[1][1])
+                b = ℎ[1][2] - a*ℎ[1][1]
+
+                line_f(x,a,b) = a.*x + b
+                
+                # extrapolation for corner points
+                extremum_values = [line_f(xₗ,a,b), line_f(xᵤ, a,b)]                
+            elseif dims == 2                
+                normal = cross(collect(ℎ[1] .- ℎ[2]), collect(ℎ[1] .- ℎ[3]))
+                d = dot(normal, ℎ[1])
+
+                plane_f(x, normal, d) = if normal[3] !=0  (-1/normal[3])*normal[1].*x[1] + normal[2].*x[2] + d else 0 end
+                
+                # extrapolation for corner points
+                extremum_values = [plane_f((xₗ[1],xₗ[2]), normal, d), plane_f((xₗ[1],xᵤ[2]), normal, d), plane_f((xᵤ[1], xₗ[2]), normal, d), plane_f((xᵤ[1], xᵤ[2]), normal, d)]
+            else                
+                error("Big-M not defined for dimensions > 3")
+            end
+            
+            Mᵇⁱᵍ[k] = abs(maximum(extremum_values) - minimum(extremum_values))
+            
+            k = k+1      
+        end             
+        return maximum(Mᵇⁱᵍ)    
+    else            
+        error("Big-M calculation works only for 2 and 3 dimensions.")        
+    end
 end
 
 @deprecate convex_ND_linearization_fit approx

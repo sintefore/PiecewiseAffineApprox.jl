@@ -5,7 +5,7 @@ z = x.^2
 pwl1 = approx(FunctionEvaluations(Tuple.(x), z), Convex(), Optimized(), ;optimizer, planes=5)
 @test length(pwl1.planes) == 5
 @test issorted((p.α for p in pwl1.planes))
-@test isapprox(PWL.evaluate(pwl1, 0.4), 0.16, atol=0.03)
+@test isapprox(PWL.evaluate(pwl1, 0.4), 0.16, atol=0.035)
 
 pwl2 = approx(x -> x[1]^2, [(-1, 1)], Convex(), Optimized(); optimizer, planes=5)
 @test length(pwl2.planes) == 5
