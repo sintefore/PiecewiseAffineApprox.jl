@@ -25,7 +25,7 @@ m = Model()
 tuple_var = (xvar, yvar)
 
 # TODO: FIX/Update (Optimization fails with most recent Xpress release)
-#y = PiecewiseLinearApprox.convex_pwlinear(m,tuple_var,X,z,quadopt(1.7);nplanes=4, dimensions=2, strict=:above, pen=:l2, z=test_f)
+#y = PiecewiseLinearApprox.convex_pwlinear(m,tuple_var,X,z,quadopt(1.7);planes=4, dimensions=2, strict=:above, pen=:l2, z=test_f)
 
 # @objective(m, Min, y)
 # set_optimizer(m,quadopt())
@@ -45,7 +45,7 @@ tuple_var = (xvar, yvar)
 
 # tuple_var_conc = (xvar_conc, yvar_conc)
 
-# y_concave = PWL.pwlinear(m,tuple_var_conc,FunctionEvaluations(PWL.mat2tuples(X),z_concave),Concave(),Optimized();optimizer=quadopt(1.7),nplanes=np, dimensions=2, strict=:above, pen=:l2, z=f_conc)
+# y_concave = PWL.pwlinear(m,tuple_var_conc,FunctionEvaluations(PWL.mat2tuples(X),z_concave),Concave(),Optimized();optimizer=quadopt(1.7),planes=np, dimensions=2, strict=:above, pen=:l2, z=f_conc)
 
 # @objective(m, Max, y_concave)
 # set_optimizer(m,quadopt(2.2))

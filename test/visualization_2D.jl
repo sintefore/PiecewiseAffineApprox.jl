@@ -14,7 +14,7 @@ z_concave = z.*-1
 
 f(u1, u2) = u1^2 + u2^2
 
-nplanes = 4
+planes = 4
 dimensions = 2
 pen = :l2
 

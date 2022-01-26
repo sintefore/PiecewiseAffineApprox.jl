@@ -170,7 +170,7 @@ function local_fit(x̄, z̄, penalty, optimizer, strict)
 end
 
 function update_partition(x, pwl)
-    𝒫 = Dict(j => [] for j in 1:nplanes(pwl))
+    𝒫 = Dict(j => [] for j in 1:planes(pwl))
     for i in 1:size(x,2)
        push!(𝒫[active(pwl, x[:,i])], i) 
     end
