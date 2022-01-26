@@ -60,7 +60,8 @@ end
 
 # General D
 function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, dims ; kwargs...) where D
-    defaults = (planes=defaultplanes(), pen=defaultpenalty2D(), strict=:none, show_res=false)
+    # defaults = (planes=defaultplanes(), pen=defaultpenalty2D(), strict=:above, show_res=false)
+    defaults = (planes=defaultplanes(), pen=:l2, strict=:above, show_res=false)
     options = merge(defaults, kwargs)
 
     𝒫 = input.points
@@ -117,12 +118,12 @@ function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, dims ; k
     for p ∈ 𝒫
         @constraint(m, sum(𝑢[p,k] for k ∈ 𝒦) ≥ 1)
     end    
-    
+    Main.Infiltrator.@exfiltrate()
     set_optimizer(m,options.optimizer)
     optimize!(m)
 
-    if termination_status(m) != MOI.OPTIMAL
-        error("Optimization failed")
+    if termination_status(m) ∉ [MOI.OPTIMAL, MOI.TIME_LIMIT]
+        error("Optimization failed $(termination_status(m))")
     end
 
     if options.show_res
@@ -185,7 +186,7 @@ Computes a piecewise linear function that approximates the measurements given by
 - `method::Symbol:=fit`: the method used for approximation
 - `dimensions::Integer:=2`: the number of dimensions of the function domain
 - `planes::Integer=5`: the number of segments to use 
-- `nplanes::Integer=4`: the number of planes to use in 2D PWL functions
+- `planes::Integer=4`: the number of planes to use in 2D PWL functions
 - `strict::Symbol=:none`: defines it is a general approximation, or an overestimation or underestimation
 - `pen::Symbol=:l1`: the metric used to measure deviation
 
@@ -482,22 +483,23 @@ function linear_big_M(x,z)
                 b = ℎ[1][2] - a*ℎ[1][1]
 
                 line_f(x,a,b) = a.*x + b
-                
                 # extrapolation for corner points
                 extremum_values = [line_f(xₗ,a,b), line_f(xᵤ, a,b)]                
+                Mᵇⁱᵍ[k] = abs(maximum(extremum_values) - minimum(extremum_values))
             elseif dims == 2                
                 normal = cross(collect(ℎ[1] .- ℎ[2]), collect(ℎ[1] .- ℎ[3]))
                 d = dot(normal, ℎ[1])
-
-                plane_f(x, normal, d) = if normal[3] !=0  (-1/normal[3])*normal[1].*x[1] + normal[2].*x[2] + d else 0 end
+                if sum(abs.(normal) .> 1e-4) ==  dims + 1
+                    plane_f(x, normal, d) = abs(normal[3]) > 1e-4 ? (-1/normal[3])*normal[1].*x[1] + normal[2].*x[2] + d : 0.0
                 
-                # extrapolation for corner points
-                extremum_values = [plane_f((xₗ[1],xₗ[2]), normal, d), plane_f((xₗ[1],xᵤ[2]), normal, d), plane_f((xᵤ[1], xₗ[2]), normal, d), plane_f((xᵤ[1], xᵤ[2]), normal, d)]
+                    # extrapolation for corner points
+                    extremum_values = [plane_f((xₗ[1],xₗ[2]), normal, d), plane_f((xₗ[1],xᵤ[2]), normal, d), plane_f((xᵤ[1], xₗ[2]), normal, d), plane_f((xᵤ[1], xᵤ[2]), normal, d)]
+                    Mᵇⁱᵍ[k] = abs(maximum(extremum_values) - minimum(extremum_values))
+                end
             else                
                 error("Big-M not defined for dimensions > 3")
             end
             
-            Mᵇⁱᵍ[k] = abs(maximum(extremum_values) - minimum(extremum_values))
             
             k = k+1      
         end             
