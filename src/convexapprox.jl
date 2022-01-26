@@ -106,8 +106,8 @@ function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, dims ; k
 
     # Workaround for infeasibility (really unbounded?) when options.strict == :none
     for p ∈ 𝒫
-        @constraint(m, 𝑧̂[p] <= Mᵇⁱᵍ)
-    end
+        @constraint(m, 𝑧̂[p] <= maximum(z) * 1.1)
+    end    
 
     if options.strict == :above
         for p ∈ 𝒫, k ∈ 𝒦 
