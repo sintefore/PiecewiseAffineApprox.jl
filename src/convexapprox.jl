@@ -118,7 +118,7 @@ function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, dims ; k
     for p ∈ 𝒫
         @constraint(m, sum(𝑢[p,k] for k ∈ 𝒦) ≥ 1)
     end    
-    Main.Infiltrator.@exfiltrate()
+    
     set_optimizer(m,options.optimizer)
     optimize!(m)
 
