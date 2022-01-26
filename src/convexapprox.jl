@@ -104,6 +104,7 @@ function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, dims ; k
         @constraint(m, 𝑧̂[p] ≤ sum(a[j,k] * p[j] for j in ℐₚ) + b[k] + Mᵇⁱᵍ * (1-𝑢[p,k]))                
     end
 
+    # Workaround for infeasibility (really unbounded?) when options.strict == :none
     for p ∈ 𝒫
         @constraint(m, 𝑧̂[p] <= Mᵇⁱᵍ)
     end
