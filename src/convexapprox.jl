@@ -118,7 +118,7 @@ function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, dims ; k
     for p ∈ 𝒫
         @constraint(m, sum(𝑢[p,k] for k ∈ 𝒦) ≥ 1)
     end    
-    
+    # Main.Infiltrator.@exfiltrate()
     set_optimizer(m,options.optimizer)
     optimize!(m)
 
@@ -296,8 +296,8 @@ function convex_linearization_fit(x::Vector, z::Vector, optimizer; kwargs...)
     set_optimizer(m,optimizer)
     optimize!(m)
 
-    if termination_status(m) != MOI.OPTIMAL
-        error("Optimization failed")
+    if termination_status(m) ∉ [MOI.OPTIMAL, MOI.TIME_LIMIT]
+        error("Optimization failed $(termination_status(m))")
     end
 
     if options.show_res
