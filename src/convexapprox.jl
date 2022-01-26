@@ -60,8 +60,7 @@ end
 
 # General D
 function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, dims ; kwargs...) where D
-    # defaults = (planes=defaultplanes(), pen=defaultpenalty2D(), strict=:above, show_res=false)
-    defaults = (planes=defaultplanes(), pen=:l2, strict=:above, show_res=false)
+    defaults = (planes=defaultplanes(), pen=defaultpenalty2D(), strict=:none, show_res=false)
     options = merge(defaults, kwargs)
 
     𝒫 = input.points
@@ -105,6 +104,10 @@ function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, dims ; k
         @constraint(m, 𝑧̂[p] ≤ sum(a[j,k] * p[j] for j in ℐₚ) + b[k] + Mᵇⁱᵍ * (1-𝑢[p,k]))                
     end
 
+    for p ∈ 𝒫
+        @constraint(m, 𝑧̂[p] <= Mᵇⁱᵍ)
+    end
+
     if options.strict == :above
         for p ∈ 𝒫, k ∈ 𝒦 
             @constraint(m, zᵖ[p] ≥ sum(a[j,k] * p[j] for j in ℐₚ) + b[k]) 
@@ -118,12 +121,12 @@ function approx(input::FunctionEvaluations{D}, c::Convex, a::Optimized, dims ; k
     for p ∈ 𝒫
         @constraint(m, sum(𝑢[p,k] for k ∈ 𝒦) ≥ 1)
     end    
-    # Main.Infiltrator.@exfiltrate()
+    
     set_optimizer(m,options.optimizer)
     optimize!(m)
 
     if termination_status(m) ∉ [MOI.OPTIMAL, MOI.TIME_LIMIT]
-        error("Optimization failed $(termination_status(m))")
+        error("Optimization failed $(termination_status(m))\n$(raw_status(m))")
     end
 
     if options.show_res
