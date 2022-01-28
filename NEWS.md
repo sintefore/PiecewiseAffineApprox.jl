@@ -1,6 +1,11 @@
 PiecewiseLinearApprox release notes
 ===================================
 
+Version 0.3.2 (2021-01-28)
+--------------------------
+- Workaround for bigM with normals containing near-zeros (#10)
+- Workaround for solver issue with strict=:none for compressor duty (#10)
+
 Version 0.3.1 (2021-01-24)
 --------------------------
 - Improved calculation of big-M (#9)

@@ -33,7 +33,7 @@ function evaluate(pwl::PWLFunc{C,D}, x) where {C<:Convex, D}
     return maximum(dot(p.α, x) + p.β for p ∈ pwl.planes)
 end
 active(pwl, x) = argmax(collect(evaluate(p,x) for p in pwl.planes))
-nplanes(pwl) = length(pwl.planes)
+planes(pwl) = length(pwl.planes)
 addplane!(pwl::PWLFunc{C,D}, p::Plane{D}) where {C,D} = push!(pwl.planes, p)
 addplane!(pwl::PWLFunc, α, β) = push!(pwl.planes, Plane(α, β))
 
