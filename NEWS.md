@@ -4,6 +4,7 @@ PiecewiseLinearApprox release notes
 Version 0.3.3 (2022-03-10)
 --------------------------
 - Update dependencies to JuMP 0.23/1.0 (#13)
+- Fix most broken tests
 
 Version 0.3.2 (2022-01-28)
 --------------------------
