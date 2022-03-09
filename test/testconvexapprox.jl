@@ -20,9 +20,9 @@ pwl4 = approx(x -> x[1]^2, [(-1, 1)], Convex(), Interpol(); optimizer, planes=5)
 @test isapprox(PWL.evaluate(pwl4, 0.4), 0.2, atol=0.015)
 
 
-# Check approximation for flat function with releatively high values:
+#Check approximation for flat function with releatively high values:
 I = 100
-xmat = 2 * rand(2,I) .- 1
+xmat = 2 * rand(rng, 2, I) .- 1
 x = [Tuple(xmat[:,i]) for i in 1:size(xmat,2)]
 z = [10_000 + 0.001 * p[1]^2 + 0.001 * p[2]^2 for p in x]
 vals = FunctionEvaluations(x, z)

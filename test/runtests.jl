@@ -1,7 +1,9 @@
 using JuMP
 using PiecewiseLinearApprox
+using StableRNGs
 using Test
 using Xpress
+rng = StableRNG(123)
 
 const PWL = PiecewiseLinearApprox
 const optimizer = optimizer_with_attributes(Xpress.Optimizer, MOI.Silent()=>true)
