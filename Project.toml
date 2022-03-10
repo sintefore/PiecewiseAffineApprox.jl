@@ -1,7 +1,7 @@
 name = "PiecewiseLinearApprox"
 uuid = "bc5b63fc-d94a-42ea-9f3c-2beb293a2178"
 authors = ["Truls Flatberg <Truls.Flatberg@sintef.no>, Lars Hellemo <Lars.Hellemo@sintef.no>, Thiago Silva <Thiago.Silva.sintef.no>"]
-version = "0.3.2"
+version = "0.3.3"
 
 [deps]
 Combinatorics = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
@@ -13,6 +13,8 @@ Requires = "ae029012-a4dd-5104-9daa-d747884805df"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 
 [compat]
-JuMP = "^0.22"
+Combinatorics = "1"
+Distributions = "0.25"
+JuMP = "^0.23, 1"
 Requires = "^1.1"
 julia = "^1.6"

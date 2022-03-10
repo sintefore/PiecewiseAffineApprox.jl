@@ -6,7 +6,7 @@ X = [repeat(xg, inner=[size(yg,1)]) repeat(yg, outer=[size(xg,1)])]
 z = X[:,1].^2 + X[:,2].^2
 z_concave = z.*-1
 
-np = 5
+np = 17
 
 pwl1 = approx(FunctionEvaluations(PWL.mat2tuples(X), z), Convex(), Optimized() ;optimizer=quadopt(1.7), planes=np, dimensions=2, strict=:above, pen=:l2)
 pwl2 = approx(FunctionEvaluations(PWL.mat2tuples(X), z_concave), Concave(), Optimized(); optimizer=quadopt(1.7), planes=np, dimensions=2, strict=:above, pen=:l2)
@@ -24,38 +24,40 @@ m = Model()
 
 tuple_var = (xvar, yvar)
 
-# TODO: FIX/Update (Optimization fails with most recent Xpress release)
-#y = PiecewiseLinearApprox.convex_pwlinear(m,tuple_var,X,z,quadopt(1.7);planes=4, dimensions=2, strict=:above, pen=:l2, z=test_f)
+y = PWL.pwlinear(m,tuple_var,approx(
+        FunctionEvaluations(PWL.mat2tuples(X),z), Convex(), Optimized(); optimizer=quadopt(0.1), planes=np, dimensions=2, strict=:above, pen=:l2); z=test_f)
 
-# @objective(m, Min, y)
-# set_optimizer(m,quadopt())
-# @constraint(m, xvar >= 0.3)
-# optimize!(m)
+@objective(m, Min, y)
+set_optimizer(m,quadopt())
+@constraint(m, xvar == √0.5)
+@constraint(m, yvar == √0.5)
+optimize!(m)
 
-# xval = JuMP.value(m[:xvar])
-# yval = JuMP.value(m[:yvar])
-# fval = JuMP.value(m[:test_f])
+xval = JuMP.value(m[:xvar])
+yval = JuMP.value(m[:yvar])
+fval = JuMP.value(m[:test_f])
 
-@test_broken isapprox(value(m[:test_f]), -0.36, atol=0.04)
+@test isapprox(value(m[:test_f]), 1.0, rtol=0.12)
 
-# m = Model()
-# @variable(m, xvar_conc)
-# @variable(m, yvar_conc)
-# @variable(m, f_conc)
+m = Model()
+@variable(m, xvar_conc)
+@variable(m, yvar_conc)
+@variable(m, f_conc)
 
-# tuple_var_conc = (xvar_conc, yvar_conc)
+tuple_var_conc = (xvar_conc, yvar_conc)
 
-# y_concave = PWL.pwlinear(m,tuple_var_conc,FunctionEvaluations(PWL.mat2tuples(X),z_concave),Concave(),Optimized();optimizer=quadopt(1.7),planes=np, dimensions=2, strict=:above, pen=:l2, z=f_conc)
+y_concave = PWL.pwlinear(m,tuple_var_conc,FunctionEvaluations(PWL.mat2tuples(X),z_concave),Concave(),Optimized();optimizer=quadopt(0.1), planes=np, dimensions=2, strict=:above, pen=:l2, z=f_conc)
 
-# @objective(m, Max, y_concave)
-# set_optimizer(m,quadopt(2.2))
-# @constraint(m, xvar_conc >= 0.3)
-# optimize!(m)
+@objective(m, Max, y_concave)
+set_optimizer(m, optimizer)
+@constraint(m, xvar_conc == √0.5)
+@constraint(m, yvar_conc == √0.5)
+optimize!(m)
 
-# xval_conc = JuMP.value(m[:xvar_conc])
-# yval_conc = JuMP.value(m[:yvar_conc])
-# fval_conc = JuMP.value(m[:f_conc])
+xval_conc = JuMP.value(m[:xvar_conc])
+yval_conc = JuMP.value(m[:yvar_conc])
+fval_conc = JuMP.value(m[:f_conc])
 
-@test_broken isapprox(fval, -fval_conc, atol=0.01)
-@test_broken isapprox(xval, xval_conc, atol=0.01)
-@test_broken isapprox(yval, yval_conc, atol=0.01)
+@test isapprox(fval, -fval_conc, atol=0.01)
+@test isapprox(xval, xval_conc, atol=0.01)
+@test isapprox(yval, yval_conc, atol=0.01)
