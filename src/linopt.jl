@@ -70,7 +70,7 @@ constr(::Type{Concave},m,z,p,x) = JuMP.@constraint(m, z ≤ dot(-1 .* p.α, x) -
 Add constraints to JuMP-model `m` for JuMP-variable `z` as a  
 piecewise linear function/approximation `pwl` of JuMP-variables `x`    
 """
-function pwlinear(m::JuMP.Model, x::Tuple, pwl::PWLFunc{C,D}; z=nothing, kwargs...) where {C,D}
+function pwlinear(m::JuMP.Model, x, pwl::PWLFunc{C,D}; z=nothing, kwargs...) where {C,D}
     initPWL!(m)
     counter = m.ext[:PWL].counter + 1
     m.ext[:PWL].counter = counter
@@ -85,7 +85,7 @@ function pwlinear(m::JuMP.Model, x::Tuple, pwl::PWLFunc{C,D}; z=nothing, kwargs.
     end
     return z
 end
-pwlinear(m::JuMP.Model, x::Tuple, fevals::FunctionEvaluations,curvature::Curvature,a::Algorithm;kwargs...) = pwlinear(m,x,approx(fevals,curvature,a;kwargs...);kwargs...)
+pwlinear(m::JuMP.Model, x, fevals::FunctionEvaluations,curvature::Curvature,a::Algorithm;kwargs...) = pwlinear(m,x,approx(fevals,curvature,a;kwargs...);kwargs...)
 
 @deprecate convex_pwlinear pwlinear
 function convex_pwlinear(m::JuMP.Model, x::Tuple, pwl::PWLFunc{C,D}; z=nothing) where {C<:Convex,D}
