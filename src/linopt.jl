@@ -112,7 +112,7 @@ function convex_pwlinear(m::JuMP.Model, x::Tuple, pwl::PWLFunc{C,D}; z=nothing) 
     return z
 end
 
-# TO DO: integrate with convex version
+@deprecate concave_pwlinear pwlinear
 function concave_pwlinear(m::JuMP.Model, x::Tuple, pwl::PWLFunc{C,D}; z=nothing) where {C<:Concave, D}
     initPWL!(m)
     counter = m.ext[:PWL].counter + 1
