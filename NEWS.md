@@ -1,6 +1,10 @@
 PiecewiseLinearApprox release notes
 ===================================
 
+Version 0.3.4 (2022-04-07)
+--------------------------
+- Fix type of pwlinear parameter for JuMP-variables
+
 Version 0.3.3 (2022-03-10)
 --------------------------
 - Update dependencies to JuMP 0.23/1.0 (#13)
