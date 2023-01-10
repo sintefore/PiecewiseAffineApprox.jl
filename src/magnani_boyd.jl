@@ -1,8 +1,8 @@
 
 function approx_error(x, z, pwl::PWLFunc, penalty = :l1)
     err = 0.0
-    for i in 1:size(x,2)
-        x̄ = x[:,i]
+    for i ∈ 1:size(x, 2)
+        x̄ = x[:, i]
         v = evaluate(pwl, x̄)
 
         if penalty == :l1
@@ -15,7 +15,7 @@ function approx_error(x, z, pwl::PWLFunc, penalty = :l1)
     end
 
     if penalty == :rms
-        err = err / size(x,2)
+        err = err / size(x, 2)
     end
 
     if penalty == :l2 || penalty == :rms
@@ -25,10 +25,14 @@ function approx_error(x, z, pwl::PWLFunc, penalty = :l1)
     return err
 end
 
-
 function convex_linearization_mb(x::Matrix, z::Vector; kwargs...)
-
-    defaults = (planes=defaultplanes(), pen=defaultpenalty(), trials=20, itlim=50, strict=:none)
+    defaults = (
+        planes = defaultplanes(),
+        pen = defaultpenalty(),
+        trials = 20,
+        itlim = 50,
+        strict = :none,
+    )
     options = merge(defaults, kwargs)
 
     Nᵗʳ = options.trials     # Number of trials
@@ -42,14 +46,14 @@ function convex_linearization_mb(x::Matrix, z::Vector; kwargs...)
     min_error = Inf
 
     @info "Starting heuristic search "
-    for i in 1:Nᵗʳ 
-        @info "  Trial $i"     
+    for i ∈ 1:Nᵗʳ
+        @info "  Trial $i"
         #@info "Creating random partition"
         𝒫 = random_partition(x, K)
-      
+
         #@info "Searching for optimal partition"
         pwl = optimal_partition(x, z, 𝒫, lᵐᵃˣ, penalty, optimizer, strict)
-      
+
         e = approx_error(x, z, pwl, penalty)
         @info "  Approximation error = $e ($penalty)"
         if e < min_error
@@ -61,42 +65,40 @@ function convex_linearization_mb(x::Matrix, z::Vector; kwargs...)
     return pwl_best
 end
 
-dist(x,y) = sqrt(sum((x[i] - y[i])^2 for i in 1:length(x)))
+dist(x, y) = sqrt(sum((x[i] - y[i])^2 for i ∈ 1:length(x)))
 
 function random_partition(x, K)
-
     N = size(x)[2]
 
-    μ = vec(mean(x, dims=2))
-    σ² = cov(x, dims=2)
+    μ = vec(mean(x, dims = 2))
+    σ² = cov(x, dims = 2)
     n = MvNormal(μ, σ²)
     p = rand(n, K)
-    
-    𝒫 = Dict(j => [] for j in 1:K)
-    for i in 1:N
+
+    𝒫 = Dict(j => [] for j ∈ 1:K)
+    for i ∈ 1:N
         # Find the nearest point amongst the p's
-        jmin = argmin([dist(x[:,i], p[:,j]) for j in 1:K])
-        push!(𝒫[jmin], i)  
+        jmin = argmin([dist(x[:, i], p[:, j]) for j ∈ 1:K])
+        push!(𝒫[jmin], i)
     end
     return 𝒫
 end
 
 function optimal_partition(x, z, 𝒫, lᵐᵃˣ, penalty, optimizer, strict)
-
-    D = size(x,1)
+    D = size(x, 1)
     pwl = nothing
-    for it in 1:lᵐᵃˣ
+    for it ∈ 1:lᵐᵃˣ
         pwl = PWLFunc{Convex,D}()
-        for j in 1:length(𝒫)
-            if length(𝒫[j]) > 0 
-                x̄ = x[:, 𝒫[j] ]
+        for j ∈ 1:length(𝒫)
+            if length(𝒫[j]) > 0
+                x̄ = x[:, 𝒫[j]]
                 z̄ = z[𝒫[j]]
-                a,b = local_fit(x̄, z̄, penalty, optimizer, strict)
+                a, b = local_fit(x̄, z̄, penalty, optimizer, strict)
                 addplane!(pwl, a, b)
             end
         end
         𝒫ⁿᵉʷ = update_partition(x, pwl)
-        if  𝒫ⁿᵉʷ == 𝒫
+        if 𝒫ⁿᵉʷ == 𝒫
             break
         end
         𝒫 = 𝒫ⁿᵉʷ
@@ -106,46 +108,45 @@ function optimal_partition(x, z, 𝒫, lᵐᵃˣ, penalty, optimizer, strict)
 end
 
 function local_fit(x̄, z̄, penalty, optimizer, strict)
-
     M, N = size(x̄)
-    
+
     # Create an optimization model to find the best a and b such that  ax + b ≈ y
     m = Model()
 
     @variable(m, a[1:M])
     @variable(m, b)
-    @variable(m, ẑ[1:N]) 
+    @variable(m, ẑ[1:N])
 
-    for i in 1:N
-        @constraint(m, ẑ[i] == sum(a[j] * x̄[j,i] for j in 1:M) + b)
+    for i ∈ 1:N
+        @constraint(m, ẑ[i] == sum(a[j] * x̄[j, i] for j ∈ 1:M) + b)
     end
 
     if strict == :above
-        for i in 1:N
+        for i ∈ 1:N
             @constraint(m, ẑ[i] ≥ z̄[i])
         end
     elseif strict == :below
-        for i in 1:N
+        for i ∈ 1:N
             @constraint(m, ẑ[i] ≤ z̄[i])
         end
     end
 
     obj = AffExpr()
-    if penalty == :l2 || penalty ==:rms
+    if penalty == :l2 || penalty == :rms
         obj = sum((z̄[i] - ẑ[i])^2 for i ∈ 1:N)
     elseif penalty == :max
         @variable(m, t)
         obj = t
         for i ∈ 1:N
-            @constraint(m,  t ≥ (z̄[i] - ẑ[i]) )
-            @constraint(m,  t ≥ (ẑ[i] - z̄[i]) )
+            @constraint(m, t ≥ (z̄[i] - ẑ[i]))
+            @constraint(m, t ≥ (ẑ[i] - z̄[i]))
         end
     elseif penalty == :l1
         @variable(m, t[1:N])
-        obj = sum(t[i] for i in 1:N)
+        obj = sum(t[i] for i ∈ 1:N)
         for i ∈ 1:N
-            @constraint(m, t[i] ≥ (z̄[i] - ẑ[i]) )
-            @constraint(m, t[i] ≥ (ẑ[i] - z̄[i]) )
+            @constraint(m, t[i] ≥ (z̄[i] - ẑ[i]))
+            @constraint(m, t[i] ≥ (ẑ[i] - z̄[i]))
         end
     else
         error("Unrecognized/unsupported penalty type $(options.pen)")
@@ -155,7 +156,7 @@ function local_fit(x̄, z̄, penalty, optimizer, strict)
 
     @objective(m, Min, obj)
 
-    set_optimizer(m,optimizer)
+    set_optimizer(m, optimizer)
     set_silent(m)
     optimize!(m)
 
@@ -170,10 +171,9 @@ function local_fit(x̄, z̄, penalty, optimizer, strict)
 end
 
 function update_partition(x, pwl)
-    𝒫 = Dict(j => [] for j in 1:planes(pwl))
-    for i in 1:size(x,2)
-       push!(𝒫[active(pwl, x[:,i])], i) 
+    𝒫 = Dict(j => [] for j ∈ 1:planes(pwl))
+    for i ∈ 1:size(x, 2)
+        push!(𝒫[active(pwl, x[:, i])], i)
     end
     return 𝒫
 end
-
