@@ -1,5 +1,5 @@
 # Points to approximate
-x = [i for i in -2:0.1:2]
+x = [i for i ∈ -2:0.1:2]
 z = x .^ 2
 
 # Test interpolation routine

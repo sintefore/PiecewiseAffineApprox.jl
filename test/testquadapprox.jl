@@ -1,5 +1,5 @@
 # Points to approximate
-points = [i => i^2 for i in 0:0.1:1]
+points = [i => i^2 for i ∈ 0:0.1:1]
 
 # Test with constraints added to existing model
 m = Model()
@@ -8,8 +8,8 @@ y = PiecewiseLinearApprox.pwlinear(
     m,
     tuple(x),
     FunctionEvaluations(
-        [tuple(i.first) for i in points],
-        [i.second for i in points],
+        [tuple(i.first) for i ∈ points],
+        [i.second for i ∈ points],
     ),
     Convex(),
     Optimized();
@@ -33,8 +33,8 @@ y = PiecewiseLinearApprox.pwlinear(
     m,
     tuple(x),
     FunctionEvaluations(
-        [tuple(i.first) for i in points],
-        [i.second for i in points],
+        [tuple(i.first) for i ∈ points],
+        [i.second for i ∈ points],
     ),
     Convex(),
     Optimized();

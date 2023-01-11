@@ -1,5 +1,5 @@
 # big-M for a 1D function
-x = [i for i in -1:0.1:1]
+x = [i for i ∈ -1:0.1:1]
 z = x .^ 2
 
 M₁ = PWL.conv_linear_big_M(x, z)
@@ -30,8 +30,8 @@ pwl₁⁺ = approx(
 @test isless(M₁⁺, M₁)  # new big-M is smaller than previous but gives a better approximation
 
 # big-M for a 2D function
-xg = [i for i in -1:0.5:1]
-yg = [j for j in -1:0.5:1]
+xg = [i for i ∈ -1:0.5:1]
+yg = [j for j ∈ -1:0.5:1]
 
 X = [repeat(xg, inner = [size(yg, 1)]) repeat(yg, outer = [size(xg, 1)])]
 

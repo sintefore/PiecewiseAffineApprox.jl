@@ -3,11 +3,11 @@ using Revise, GLMakie, PiecewiseLinearApprox, Xpress, JuMP
 Opt = Xpress.Optimizer
 PWL = PiecewiseLinearApprox
 
-xg = [i for i in -1:0.5:1]
-yg = [j for j in -1:0.5:1]
+xg = [i for i ∈ -1:0.5:1]
+yg = [j for j ∈ -1:0.5:1]
 X = [repeat(xg, inner = [size(yg, 1)]) repeat(yg, outer = [size(xg, 1)])]
 
-𝒫 = collect(Tuple(X'[:, i]) for i in 1:size(X', 2))
+𝒫 = collect(Tuple(X'[:, i]) for i ∈ 1:size(X', 2))
 
 z = X[:, 1] .^ 2 + X[:, 2] .^ 2
 z_concave = z .* -1

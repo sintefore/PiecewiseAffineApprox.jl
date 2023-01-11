@@ -1,5 +1,5 @@
-xg = [i for i in -1:0.5:1]
-yg = [j for j in -1:0.5:1]
+xg = [i for i ∈ -1:0.5:1]
+yg = [j for j ∈ -1:0.5:1]
 
 X = [repeat(xg, inner = [size(yg, 1)]) repeat(yg, outer = [size(xg, 1)])]
 
@@ -12,7 +12,7 @@ pwl1 = approx(
     FunctionEvaluations(PWL.mat2tuples(X), z),
     Convex(),
     Optimized();
-    optimizer = quadopt(1.7),
+    optimizer = quadopt(1.75),
     planes = np,
     dimensions = 2,
     strict = :above,
@@ -22,7 +22,7 @@ pwl2 = approx(
     FunctionEvaluations(PWL.mat2tuples(X), z_concave),
     Concave(),
     Optimized();
-    optimizer = quadopt(1.7),
+    optimizer = quadopt(1.75),
     planes = np,
     dimensions = 2,
     strict = :above,
