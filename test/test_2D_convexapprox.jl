@@ -9,31 +9,31 @@ z_concave = z .* -1
 np = 17
 
 pwl1 = approx(
-    FunctionEvaluations(PWL.mat2tuples(X), z),
+    FunctionEvaluations(PWA.mat2tuples(X), z),
     Convex(),
     Optimized();
-    optimizer = quadopt(1.75),
+    optimizer = optimizer,
     planes = np,
     dimensions = 2,
     strict = :above,
-    pen = :l2,
+    pen = :l1,
 )
 pwl2 = approx(
-    FunctionEvaluations(PWL.mat2tuples(X), z_concave),
+    FunctionEvaluations(PWA.mat2tuples(X), z_concave),
     Concave(),
     Optimized();
-    optimizer = quadopt(1.75),
+    optimizer = optimizer,
     planes = np,
     dimensions = 2,
     strict = :above,
-    pen = :l2,
+    pen = :l1,
 )
 
 # @test length(pwl1.a) == np
-@test isapprox(PWL.evaluate(pwl1, (0.5, 0.5)), 0.5, atol = 0.1)
+@test isapprox(PWA.evaluate(pwl1, (0.5, 0.5)), 0.5, atol = 0.1)
 @test isapprox(
-    PWL.evaluate(pwl1, (-0.3, 0.4)),
-    -PWL.evaluate(pwl2, (-0.3, 0.4)),
+    PWA.evaluate(pwl1, (-0.3, 0.4)),
+    -PWA.evaluate(pwl2, (-0.3, 0.4)),
     atol = 0.01,
 )
 
@@ -45,24 +45,24 @@ m = Model()
 
 tuple_var = (xvar, yvar)
 
-y = PWL.pwlinear(
+y = PWA.pwlinear(
     m,
     tuple_var,
     approx(
-        FunctionEvaluations(PWL.mat2tuples(X), z),
+        FunctionEvaluations(PWA.mat2tuples(X), z),
         Convex(),
         Optimized();
-        optimizer = quadopt(0.1),
+        optimizer = optimizer,
         planes = np,
         dimensions = 2,
         strict = :above,
-        pen = :l2,
+        pen = :l1,
     );
     z = test_f,
 )
 
 @objective(m, Min, y)
-set_optimizer(m, quadopt())
+set_optimizer(m, optimizer)
 @constraint(m, xvar == √0.5)
 @constraint(m, yvar == √0.5)
 optimize!(m)
@@ -80,17 +80,17 @@ m = Model()
 
 tuple_var_conc = (xvar_conc, yvar_conc)
 
-y_concave = PWL.pwlinear(
+y_concave = PWA.pwlinear(
     m,
     tuple_var_conc,
-    FunctionEvaluations(PWL.mat2tuples(X), z_concave),
+    FunctionEvaluations(PWA.mat2tuples(X), z_concave),
     Concave(),
     Optimized();
-    optimizer = quadopt(0.1),
+    optimizer = optimizer,
     planes = np,
     dimensions = 2,
     strict = :above,
-    pen = :l2,
+    pen = :l1,
     z = f_conc,
 )
 

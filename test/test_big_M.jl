@@ -1,9 +1,9 @@
 # big-M for a 1D function
-x = [i for i ∈ -1:0.1:1]
+x = collect(range(-1, 1; length = 10))
 z = x .^ 2
 
-M₁ = PWL.conv_linear_big_M(x, z)
-M₁⁺ = PWL.linear_big_M(x, z)
+M₁ = PWA.conv_linear_big_M(x, z)
+M₁⁺ = PWA.linear_big_M(x, z)
 
 pwl₁ = approx(
     FunctionEvaluations(Tuple.(x), z),
@@ -24,14 +24,14 @@ pwl₁⁺ = approx(
     bigM = :linear_big_M,
 )
 
-@test isapprox(PWL.evaluate(pwl₁, 0.4), 0.16, atol = 0.015)
-@test isapprox(PWL.evaluate(pwl₁⁺, 0.4), 0.16, atol = 0.015)
+@test isapprox(PWA.evaluate(pwl₁, 0.4), 0.16, atol = 0.015)
+@test isapprox(PWA.evaluate(pwl₁⁺, 0.4), 0.16, atol = 0.015)
 
 @test isless(M₁⁺, M₁)  # new big-M is smaller than previous but gives a better approximation
 
 # big-M for a 2D function
-xg = [i for i ∈ -1:0.5:1]
-yg = [j for j ∈ -1:0.5:1]
+xg = collect(range(-1, 1; length = 4))
+yg = collect(range(-1, 1; length = 4))
 
 X = [repeat(xg, inner = [size(yg, 1)]) repeat(yg, outer = [size(xg, 1)])]
 
@@ -39,37 +39,37 @@ z = X[:, 1] .^ 2 + X[:, 2] .^ 2
 np = 5
 
 pwl₂ = approx(
-    FunctionEvaluations(PWL.mat2tuples(X), z),
+    FunctionEvaluations(PWA.mat2tuples(X), z),
     Convex(),
     Optimized();
-    optimizer = quadopt(1.7),
+    optimizer = optimizer,
     planes = np,
     dimensions = 2,
     strict = :above,
-    pen = :l2,
+    pen = :l1,
     bigM = :conv_linear_big_M_ND,
 ) # old estimate for big-M
 
 pwl₂⁺ = approx(
-    FunctionEvaluations(PWL.mat2tuples(X), z),
+    FunctionEvaluations(PWA.mat2tuples(X), z),
     Convex(),
     Optimized();
-    optimizer = quadopt(1.7),
+    optimizer = optimizer,
     planes = np,
     dimensions = 2,
     strict = :above,
-    pen = :l2,
+    pen = :l1,
     bigM = :linear_big_M,
 )
 
 @test isapprox(
-    PWL.evaluate(pwl₂, (0.5, 0.5)),
-    PWL.evaluate(pwl₂⁺, (0.5, 0.5)),
+    PWA.evaluate(pwl₂, (0.5, 0.5)),
+    PWA.evaluate(pwl₂⁺, (0.5, 0.5)),
     atol = 0.01,
 )
 
-M₂⁺ = PWL.linear_big_M(x, z)
-M₂ = PWL.conv_linear_big_M_ND(x, z)  # old estimate for big-M
+M₂⁺ = PWA.linear_big_M(x, z)
+M₂ = PWA.conv_linear_big_M_ND(x, z)  # old estimate for big-M
 
 @test isless(M₂, M₂⁺)
 
@@ -77,6 +77,6 @@ M₂ = PWL.conv_linear_big_M_ND(x, z)  # old estimate for big-M
     x = [302.3633312955, 300.6680553405, 274.281686739, 274.281686739]
     z = [-184.9368247, -183.9371662, -167.94263, -167.94263]
 
-    @test_broken !isnan(PWL.linear_big_M(x, z))
-    @test PWL.linear_big_M(unique(x), unique(z)) ≈ 17.02 atol = 0.01
+    @test_broken !isnan(PWA.linear_big_M(x, z))
+    @test PWA.linear_big_M(unique(x), unique(z)) ≈ 17.02 atol = 0.01
 end

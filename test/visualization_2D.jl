@@ -1,7 +1,7 @@
 using Revise, GLMakie, PiecewiseLinearApprox, Xpress, JuMP
 
 Opt = Xpress.Optimizer
-PWL = PiecewiseLinearApprox
+PWA = PiecewiseAffineApprox
 
 xg = [i for i ∈ -1:0.5:1]
 yg = [j for j ∈ -1:0.5:1]
@@ -31,8 +31,8 @@ pwl3 = concave_linearization(
 )
 
 ϵ = 1e-06
-diff_1 = abs(PWL.evaluate(pwl1, (0.5, 0.5)) - f(0.5, 0.5)) / (f(0.5, 0.5) + ϵ)
-diff_2 = abs(PWL.evaluate(pwl2, (0.5, 0.5)) - f(0.5, 0.5)) / (f(0.5, 0.5) + ϵ)
+diff_1 = abs(PWA.evaluate(pwl1, (0.5, 0.5)) - f(0.5, 0.5)) / (f(0.5, 0.5) + ϵ)
+diff_2 = abs(PWA.evaluate(pwl2, (0.5, 0.5)) - f(0.5, 0.5)) / (f(0.5, 0.5) + ϵ)
 
 sc1 = plotconvND(pwl1, X, z)
 sc2 = plotconvND(pwl2, X, z)

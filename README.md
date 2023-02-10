@@ -1,4 +1,4 @@
-# PiecewiseLinearApprox
+# PiecewiseAffineApprox
 
 Add convex (or concave) piecewise linear approximations of functions or a set of points to optimization models modelled in [JuMP](https://jump.dev/). 
 

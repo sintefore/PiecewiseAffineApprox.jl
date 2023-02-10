@@ -4,7 +4,7 @@ points = [i => i^2 for i ∈ 0:0.1:1]
 # Test with constraints added to existing model
 m = Model()
 @variable(m, x)
-y = PiecewiseLinearApprox.pwlinear(
+y = PWA.pwlinear(
     m,
     tuple(x),
     FunctionEvaluations(
@@ -29,7 +29,7 @@ optimize!(m)
 m = Model()
 @variable(m, x)
 @variable(m, test_y)
-y = PiecewiseLinearApprox.pwlinear(
+y = PWA.pwlinear(
     m,
     tuple(x),
     FunctionEvaluations(

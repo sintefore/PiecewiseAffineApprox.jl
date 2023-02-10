@@ -1,4 +1,4 @@
-module PiecewiseLinearApprox
+module PiecewiseAffineApprox
 
 using JuMP
 using Printf
