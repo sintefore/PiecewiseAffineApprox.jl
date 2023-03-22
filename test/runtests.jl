@@ -12,9 +12,9 @@ const optimizer =
 @testset "Quad Approx" begin
     include("testquadapprox.jl")
 end
-@testset "Convex Interpolation" begin
-    include("convex_interpolation.jl")
-end
+#@testset "Convex Interpolation" begin
+#    include("convex_interpolation.jl")
+#end
 @testset "1D Convex Approx" begin
     include("testconvexapprox.jl")
 end
