@@ -12,20 +12,20 @@ For non-convex functions, consider using [PiecewiseLinearOpt.jl](https://github.
 ## Usage
 
 ```julia
-using JuMP, PiecewiseLinearApprox, Cbc
+using JuMP, PiecewiseAffineApprox, HiGHS
 
-m = Model()
+m = Model(HiGHS.Optimizer)
 @variable(m, x)
-@variable(m, test_z)
-# Compute and add constraints approximating x^2 on the interval [0,1]
-z = approx(x -> x[1]^2, [(-1, 1)], Convex(), Optimized(); optimizer, planes=5, z=test_z)
+# Create a piecewise linear approximation to x^2 on the interval [-1, 1]
+pwl = approx(x -> x[1]^2, [(-1, 1)], Convex(), Optimized(); optimizer = HiGHS.Optimizer, planes=5)
+# Add the pwl function to the model
+z = pwlinear(m, x, pwl)
 # Minimize
 @objective(m, Min, z)
-set_optimizer(m, Cbc.Optimizer)
 # Check approximation/solution at x = 0.5
 @constraint(m, x >= 0.5)
 optimize!(m)
-value(m[:test_z]) # 0.2533
+value(z) # 0.2653
 ```
 
 To keep dependencies light, PiecewiseLinearApprox does not include plotting by default. If the Plots package is loaded
@@ -34,15 +34,13 @@ before using the module, some simple plotting routines will be available
 The following demonstrates how this can be achieved:
 
 ```julia
-using Plots, PiecewiseLinearApprox, Cbc
+using Plots, PiecewiseAffineApprox, HiGHS
 
-function plotquademo(N=3,opt=Cbc.Optimizer)
-    x = [i for i in 0:0.1:1]
-    z = x.^2
-    pwl = convex_linearization(x,z,opt; planes=N)
-    p = plot(x,z,seriestype=:scatter,markershape=:x,ylims=(-0.5,1))
-    PiecewiseLinearApprox.plot!(p, pwl)
-    
+function plotquademo(N = 3, opt = HiGHS.Optimizer)
+    pwl = approx(x -> x[1]^2, [(0,1)], Convex(), Optimized(), optimizer = opt; planes=N)
+    x = LinRange(0, 1, 20)
+    p = plot(x, x.^2, seriestype=:scatter, markershape=:x, ylims=(-0.5,1))
+    PiecewiseAffineApprox.plot!(p, pwl, (0,1))
     return p
 end
 
@@ -59,11 +57,8 @@ function gifdemo()
     for i in 1:5
         frame(anim,plotquademo(i))
     end
-    gif(anim,"approxanim.gif";fps=0.3)
+    gif(anim,"approxanim.gif";fps=1)
 end
+gifdemo()
 ```
 ![](docs/approxanim.gif)
-
-
-
-[![Code Style: Blue](https://img.shields.io/badge/code%20style-blue-4495d1.svg)](https://github.com/invenia/BlueStyle)

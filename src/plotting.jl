@@ -1,61 +1,16 @@
-function plot!(p::Plots.Plot, pwl::ConvexPWLFunction)
-    xmin = minimum(pwl.x)
-    xmax = maximum(pwl.x)
-    zmin = minimum(pwl.z)
-    zmax = maximum(pwl.z)
+function plot!(p::Plots.Plot, pwl::PWLFunc{C,1}, xlims) where {C}
+    x̄ = LinRange(xlims[1], xlims[2], 100)
 
-    for k ∈ 1:length(pwl.c)
-        Plots.plot!(
-            p,
-            [xmin, xmax],
-            [pwl.d[k] + pwl.c[k] * xmin, pwl.d[k] + pwl.c[k] * xmax],
-            legend = :none,
-            ylims = (zmin - 0.5, zmax + 0.5),
-            linestyle = :dot,
-        )
+    for plane ∈ pwl.planes
+        f = [evaluate(plane, x̄[i]) for i ∈ eachindex(x̄)]
+        Plots.plot!(p, x̄, f, legend = :none, linestyle = :dash)
     end
-    Plots.plot!(
-        p,
-        pwl.x,
-        pwl.z,
-        linecolor = :black,
-        ylims = (zmin - 0.5, zmax + 0.5),
-        legend = :none,
-    )
+    f = [evaluate(pwl, x̄[i]) for i ∈ eachindex(x̄)]
+    Plots.plot!(p, x̄, f, legend = :none, linecolor = :black)
+
     return p
 end
 
-function plot(pwl::ConvexPWLFunction)
-    return plot!(Plots.plot(), pwl)
-end
-
-function plot!(p::Plots.Plot, concave::ConcavePWLFunction)
-    pwl = concave.pwl
-
-    xmin = minimum(pwl.x)
-    xmax = maximum(pwl.x)
-    zmin = -maximum(pwl.z)
-    zmax = -minimum(pwl.z)
-
-    for k ∈ 1:length(pwl.c)
-        Plots.plot!(
-            p,
-            [xmin, xmax],
-            [-pwl.d[k] - pwl.c[k] * xmin, -pwl.d[k] - pwl.c[k] * xmax],
-            ylims = (zmin - 0.5, zmax + 0.5),
-            linestyle = :dot,
-        )
-    end
-    Plots.plot!(
-        p,
-        pwl.x,
-        -pwl.z,
-        linecolor = :black,
-        ylims = (zmin - 0.5, zmax + 0.5),
-    )
-    return p
-end
-
-function plot(pwl::ConcavePWLFunction)
-    return plot!(Plots.plot(), pwl)
+function plot(pwl::PWLFunc{C,1}, xlims) where {C}
+    return plot!(Plots.plot(), pwl, xlims)
 end
