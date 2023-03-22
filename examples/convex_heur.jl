@@ -1,9 +1,10 @@
 using GLMakie
-using Xpress
+using HiGHS
 
 using PiecewiseAffineApprox
-
 const PWA = PiecewiseAffineApprox
+
+optimizer = HiGHS.Optimizer
 
 # Quadratic with random sampling
 
@@ -16,7 +17,7 @@ pwl = approx(
     vals,
     Convex(),
     Heuristic();
-    optimizer = Xpress.Optimizer,
+    optimizer = optimizer,
     planes = 5,
 )
 
@@ -29,9 +30,9 @@ pwl = approx(
     vals,
     Convex(),
     Heuristic();
-    optimizer = Xpress.Optimizer,
-    planes = 7,
-    strict = :below,
+    optimizer = optimizer,
+    planes = 9,
+    strict = :none,
 )
 PWA.plotconv2D(vals, pwl)
 
@@ -44,10 +45,23 @@ pwl = approx(
     vals,
     Convex(),
     Heuristic(),
-    optimizer = Xpress.Optimizer,
+    optimizer = optimizer,
     planes = 10,
+    penalty = :l2
 )
 PWA.plotconv2D(vals, pwl)
+
+# Concave quadratic
+f(x) = 4 - x[1]^2 - x[2]^2
+vals = PWA.sample_uniform(f, [(-1, 1), (-1, 1)], 10)
+pwl = approx(
+    vals,
+    Concave(),
+    Heuristic(),
+    optimizer = optimizer,
+    planes = 10,
+    penalty = :l1
+)
 
 # Log sum exp
 h(x) = log(exp(x[1]) + exp(x[2]))
@@ -56,7 +70,7 @@ pwl = approx(
     vals,
     Convex(),
     Heuristic(),
-    optimizer = Xpress.Optimizer,
+    optimizer = optimizer,
     planes = 5,
 )
 PWA.plotconv2D(vals, pwl)
@@ -68,7 +82,7 @@ pwl = approx(
     vals,
     Convex(),
     Heuristic(),
-    optimizer = Xpress.Optimizer,
+    optimizer = optimizer,
     planes = 10,
 )
 PWA.plotconv2D(vals, pwl)
@@ -80,7 +94,7 @@ pwl = approx(
     vals,
     Convex(),
     Heuristic(),
-    optimizer = Xpress.Optimizer,
+    optimizer = optimizer,
     planes = 10,
 )
 PWA.plotconv2D(vals, pwl)
@@ -92,9 +106,9 @@ pwl = approx(
     vals,
     Convex(),
     Heuristic(),
-    optimizer = Xpress.Optimizer,
+    optimizer = optimizer,
     planes = 8,
-    pen = :max,
+    pen = :l1,
 )
 PWA.plotconv2D(vals, pwl)
 
@@ -105,7 +119,7 @@ pwl = approx(
     vals,
     Convex(),
     Heuristic(),
-    optimizer = Xpress.Optimizer,
+    optimizer = optimizer,
     planes = 8,
     pen = :rms,
 )
