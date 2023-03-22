@@ -43,5 +43,12 @@ xmat = 2 * rand(rng, 2, I) .- 1
 x = [Tuple(xmat[:, i]) for i ∈ 1:size(xmat, 2)]
 z = [10_000 + 0.001 * p[1]^2 + 0.001 * p[2]^2 for p ∈ x]
 vals = FunctionEvaluations(x, z)
-pwl = approx(vals, Convex(), Optimized(); optimizer = optimizer, planes = 4, pen = :l1)
+pwl = approx(
+    vals,
+    Convex(),
+    Optimized();
+    optimizer = optimizer,
+    planes = 4,
+    pen = :l1,
+)
 @test PWA.evaluate(pwl, (0, 0)) ≈ 10_000.0 atol = 0.1

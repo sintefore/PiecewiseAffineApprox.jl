@@ -32,6 +32,4 @@ export approx
 export pwlinear
 export evaluate
 
-
-
 end # module

@@ -3,7 +3,7 @@
 # in the given points. Support for multiple metrics (l1, l2, max).
 function _approx_error(X::Matrix, z::Vector, pwl::PWLFunc, penalty = :l1)
     err = 0.0
-    for (i,x̄) in enumerate(eachcol(X))
+    for (i, x̄) in enumerate(eachcol(X))
         v = evaluate(pwl, x̄)
 
         if penalty == :l1
@@ -30,8 +30,7 @@ end
 # X is a matrix with a column for each data point and z is a vector with the 
 # corresponding function values
 function _convex_linearization_mb(X::Matrix, z::Vector; kwargs...)
-    
-    @assert(size(X,2) == length(z))
+    @assert(size(X, 2) == length(z))
 
     defaults = (
         planes = defaultplanes(),
@@ -53,7 +52,7 @@ function _convex_linearization_mb(X::Matrix, z::Vector; kwargs...)
     min_error = Inf
 
     @info "Starting heuristic search "
-    for i ∈ 1 : Nᵗʳ
+    for i ∈ 1:Nᵗʳ
         @info "  Trial $i"
         𝒫 = _random_partition(X, K)
 
@@ -71,22 +70,21 @@ function _convex_linearization_mb(X::Matrix, z::Vector; kwargs...)
 end
 
 # Euclidean distance between two points
-_dist(x, y) = sqrt(sum((x-y).^2))
+_dist(x, y) = sqrt(sum((x - y) .^ 2))
 
 # Create a random partition of the points into K sets
 # by generating K random points and group each data point to the
 # closest of these random points.
 function _random_partition(X, K)
-    
     μ = vec(mean(X, dims = 2))
     σ² = cov(X, dims = 2)
     n = MvNormal(μ, σ²)
     P = rand(n, K)
 
-    𝒫 = [[] for j ∈ 1 : K]
+    𝒫 = [[] for j ∈ 1:K]
     for (i, x) in enumerate(eachcol(X))
         # Find the nearest point amongst the p's
-        jmin = argmin(_dist(x, P[:, j]) for j ∈ 1 : K)
+        jmin = argmin(_dist(x, P[:, j]) for j ∈ 1:K)
         push!(𝒫[jmin], i)
     end
     return 𝒫
@@ -102,7 +100,7 @@ end
 function _refine_partition(X, z, 𝒫, lᵐᵃˣ, penalty, optimizer, strict)
     D = size(X, 1)
     pwl = nothing
-    for it ∈ 1 : lᵐᵃˣ
+    for it ∈ 1:lᵐᵃˣ
         pwl = PWLFunc{Convex,D}()
         for p in 𝒫
             if length(p) > 0
@@ -135,7 +133,6 @@ function _local_fit(X̄, z̄, penalty, optimizer, strict)
     @variable(m, b)
     @variable(m, ẑ[1:N])
 
-        
     for i ∈ 1:N
         @constraint(m, ẑ[i] == sum(a[j] * X̄[j, i] for j ∈ 1:M) + b)
     end
@@ -186,13 +183,15 @@ function _local_fit(X̄, z̄, penalty, optimizer, strict)
 end
 
 # The hyperplane being active at the point x for a convex pwl function 
-_active(pwl::PWLFunc{Convex,D}, x) where {D} = argmax(collect(evaluate(p, x) for p ∈ pwl.planes))
+function _active(pwl::PWLFunc{Convex,D}, x) where {D}
+    return argmax(collect(evaluate(p, x) for p ∈ pwl.planes))
+end
 
 # Creating an updated partition by associating each data point to
 # the hyperplane being active for the data point
 function _update_partition(X, pwl)
-    𝒫 = [ [] for j ∈ 1:_planes(pwl)]
-    for (i, x) in enumerate(eachcol(X)) 
+    𝒫 = [[] for j ∈ 1:_planes(pwl)]
+    for (i, x) in enumerate(eachcol(X))
         push!(𝒫[_active(pwl, x)], i)
     end
     return 𝒫

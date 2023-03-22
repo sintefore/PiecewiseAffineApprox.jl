@@ -13,7 +13,6 @@ end
 
 const VarOrAff = Union{JuMP.VariableRef,JuMP.AffExpr}
 
-
 constr(::Type{Convex}, m, z, p, x) = JuMP.@constraint(m, z ≥ dot(p.α, x) + p.β)
 function constr(::Type{Concave}, m, z, p, x)
     JuMP.@constraint(m, z ≤ dot(-1 .* p.α, x) - p.β)
@@ -46,7 +45,6 @@ function pwlinear(
     end
     return z
 end
-
 
 function pwlinear(
     m::JuMP.Model,

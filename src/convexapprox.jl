@@ -427,8 +427,6 @@ function concave_linearization(f::Function, xmin, xmax, optimizer; kwargs...)
     end
 end
 
-
-
 function mat2tuples(x::Matrix)
     return collect(Tuple(x'[:, i]) for i ∈ 1:size(x', 2))
 end
@@ -525,4 +523,3 @@ function linear_big_M(x, z)
         error("Big-M calculation works only for 2 and 3 dimensions.")
     end
 end
-

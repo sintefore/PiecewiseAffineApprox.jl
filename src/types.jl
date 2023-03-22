@@ -69,10 +69,8 @@ function evaluate(pwl::PWLFunc{Concave,D}, x) where {D}
     return -evaluate(PWLFunc{Convex,D}(pwl.planes), x)
 end
 
-
 # The number of planes defining the piecewise linar function
 _planes(pwl) = length(pwl.planes)
 
 _addplane!(pwl::PWLFunc{C,D}, p::Plane{D}) where {C,D} = push!(pwl.planes, p)
 _addplane!(pwl::PWLFunc, α, β) = push!(pwl.planes, Plane(α, β))
-

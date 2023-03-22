@@ -6,13 +6,16 @@ struct PWLFunction1D
 
     function PWLFunction1D(x::Vector{Float64}, z::Vector{Float64})
         @assert length(x) == length(z)
-        @assert issorted(x)        
+        @assert issorted(x)
         return new(x, z)
     end
 end
 
 function PWLFunction1D(x::Vector, z::Vector)
-    return PWLFunction1D(convert(Vector{Float64}, x), convert(Vector{Float64}, z))
+    return PWLFunction1D(
+        convert(Vector{Float64}, x),
+        convert(Vector{Float64}, z),
+    )
 end
 
 function _asconvex(pwl::PWLFunction1D)
@@ -23,9 +26,8 @@ function _asconvex(pwl::PWLFunction1D)
     c = [(z[i+1] - z[i]) / (x[i+1] - x[i]) for i ∈ 1:(N-1)]
     d = [z[i] - c[i] * x[i] for i ∈ 1:(N-1)]
 
-    return PWLFunc{Convex,1}(Plane.(c, d)) 
+    return PWLFunc{Convex,1}(Plane.(c, d))
 end
-
 
 # Create a convex approximation to a general pwl function
 # by perturbing function values as little as possible (l1-deviation)
@@ -149,5 +151,7 @@ function _interpolatepw(x, z, optimizer; kwargs...)
 end
 
 function _convex_linearization_ipol(x, z, optimizer; kwargs...)
-    return _asconvex(_convexify1D(_interpolatepw(x, z, optimizer; kwargs...), optimizer))
+    return _asconvex(
+        _convexify1D(_interpolatepw(x, z, optimizer; kwargs...), optimizer),
+    )
 end
