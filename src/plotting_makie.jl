@@ -14,7 +14,7 @@ function plotconv2D(x, z, pwl::PWLFunc{Convex,2})
     ax2 = Axis(fig[1, 3])
     ax3 = Axis(fig[2, 3])
 
-    scatter!(ax1, x[1, :], x[2, :], z, color = :red, markersize = 1)
+    scatter!(ax1, x[1, :], x[2, :], z, color = :red, markersize = 8)
     for p ∈ pwl.planes
         f = [evaluate(p, [x̄[i], ȳ[j]]) for i ∈ 1:length(x̄), j ∈ 1:length(ȳ)]
         surface!(ax1, x̄, ȳ, f)
