@@ -8,8 +8,12 @@ z_concave = z .* -1
 
 np = 17
 
+function mat2tuples(x::Matrix)
+    return collect(Tuple(x'[:, i]) for i ∈ 1:size(x', 2))
+end
+
 pwl1 = approx(
-    FunctionEvaluations(PWA.mat2tuples(X), z),
+    FunctionEvaluations(mat2tuples(X), z),
     Convex(),
     Optimized();
     optimizer = optimizer,
@@ -19,7 +23,7 @@ pwl1 = approx(
     pen = :l1,
 )
 pwl2 = approx(
-    FunctionEvaluations(PWA.mat2tuples(X), z_concave),
+    FunctionEvaluations(mat2tuples(X), z_concave),
     Concave(),
     Optimized();
     optimizer = optimizer,
@@ -49,7 +53,7 @@ y = PWA.pwlinear(
     m,
     tuple_var,
     approx(
-        FunctionEvaluations(PWA.mat2tuples(X), z),
+        FunctionEvaluations(mat2tuples(X), z),
         Convex(),
         Optimized();
         optimizer = optimizer,
@@ -83,7 +87,7 @@ tuple_var_conc = (xvar_conc, yvar_conc)
 y_concave = PWA.pwlinear(
     m,
     tuple_var_conc,
-    FunctionEvaluations(PWA.mat2tuples(X), z_concave),
+    FunctionEvaluations(mat2tuples(X), z_concave),
     Concave(),
     Optimized();
     optimizer = optimizer,

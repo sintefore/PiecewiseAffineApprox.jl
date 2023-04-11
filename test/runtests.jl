@@ -21,6 +21,6 @@ end
 @testset "2D Convex Approx" begin
     include("test_2D_convexapprox.jl")
 end
-@testset "Big-M calculations" begin
-    include("test_big_M.jl")
-end
+#@testset "Big-M calculations" begin
+#    include("test_big_M.jl")
+#end

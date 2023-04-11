@@ -8,6 +8,7 @@ pwl1 = approx(
     Optimized(),
     ;
     optimizer,
+    pen = :l1,
     planes = 5,
 )
 @test length(pwl1.planes) == 5
@@ -15,7 +16,7 @@ pwl1 = approx(
 @test isapprox(PWA.evaluate(pwl1, 0.4), 0.16, atol = 0.035)
 
 pwl2 =
-    approx(x -> x[1]^2, [(-1, 1)], Convex(), Optimized(); optimizer, planes = 5)
+    approx(x -> x[1]^2, [(-1, 1)], Convex(), Optimized(); optimizer, pen = :l1, planes = 5)
 @test length(pwl2.planes) == 5
 @test isapprox(PWA.evaluate(pwl2, 0.4), 0.1733, atol = 0.015)
 
@@ -25,6 +26,7 @@ pwl3 = approx(
     Convex(),
     Optimized();
     optimizer,
+    pen = :l1,
     planes = 5,
     strict = true,
 )

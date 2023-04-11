@@ -14,6 +14,7 @@ y = PWA.pwlinear(
     Convex(),
     Optimized();
     optimizer,
+    pen = :l1,
     planes = 5,
 )
 @objective(m, Min, y)
@@ -39,6 +40,7 @@ y = PWA.pwlinear(
     Convex(),
     Optimized();
     optimizer,
+    pen = :l1,
     planes = 5,
     z = test_y,
 )
