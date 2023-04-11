@@ -15,8 +15,15 @@ pwl1 = approx(
 @test issorted((p.α for p ∈ pwl1.planes))
 @test isapprox(PWA.evaluate(pwl1, 0.4), 0.16, atol = 0.035)
 
-pwl2 =
-    approx(x -> x[1]^2, [(-1, 1)], Convex(), Optimized(); optimizer, pen = :l1, planes = 5)
+pwl2 = approx(
+    x -> x[1]^2,
+    [(-1, 1)],
+    Convex(),
+    Optimized();
+    optimizer,
+    pen = :l1,
+    planes = 5,
+)
 @test length(pwl2.planes) == 5
 @test isapprox(PWA.evaluate(pwl2, 0.4), 0.1733, atol = 0.015)
 

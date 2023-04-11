@@ -45,13 +45,10 @@ function approx(
     ::Val{1};
     kwargs...,
 ) where {D}
-    defaults = (
-        planes = defaultplanes(),
-        pen = defaultpenalty(),
-        strict = :none,
-    )
+    defaults =
+        (planes = defaultplanes(), pen = defaultpenalty(), strict = :none)
     options = merge(defaults, kwargs)
-    
+
     return _convex_linearization_ipol(
         [i[1] for i ∈ input.points],
         input.values,
@@ -103,7 +100,7 @@ function approx(
     ℐₚ = 1:D
 
     Mᵇⁱᵍ = _linear_big_M(input)
-    
+
     m = Model()
 
     set_time_limit_sec(m, options.maxtime)
@@ -249,15 +246,18 @@ end
 # Measure on the elongation of the triangle defined
 # by v2, v2 and v3
 function _sliver_parameter(v1, v2, v3)
-
-    area = 0.5 * abs(v1[1] * (v2[2] - v3[2]) + 
-        v2[1] * (v3[2] - v1[2]) + v3[1] * (v1[2] - v2[2]))
+    area =
+        0.5 * abs(
+            v1[1] * (v2[2] - v3[2]) +
+            v2[1] * (v3[2] - v1[2]) +
+            v3[1] * (v1[2] - v2[2]),
+        )
     perimeter = norm(v1 .- v2) + norm(v1 .- v3) + norm(v2 .- v3)
     return 2 * area / perimeter
 end
 
 function _linear_big_M(input::FunctionEvaluations{D}) where {D}
-    Mᵇⁱᵍ = 0 
+    Mᵇⁱᵍ = 0
     if D == 1
         # For one dimensional problems calculate a big M by
         # checking all planes passing through two consecutive
@@ -286,7 +286,7 @@ function _linear_big_M(input::FunctionEvaluations{D}) where {D}
             v2 = t[2][1:2]
             v3 = t[3][1:2]
             empty = true
-            for pt in x 
+            for pt in x
                 if !(pt in [v1, v2, v3]) && _point_in_triangle(pt, v1, v2, v3)
                     empty = false
                 end
@@ -295,7 +295,9 @@ function _linear_big_M(input::FunctionEvaluations{D}) where {D}
             if empty && _sliver_parameter(v1, v2, v3) > 0.05
                 normal = cross(collect(t[1] .- t[2]), collect(t[1] .- t[3]))
                 d = dot(normal, t[1])
-                M = maximum(z[i] - _plane_f(x[i], normal, d)  for i ∈ 1:length(x))
+                M = maximum(
+                    z[i] - _plane_f(x[i], normal, d) for i ∈ 1:length(x)
+                )
                 if M > Mᵇⁱᵍ
                     Mᵇⁱᵍ = M
                 end
@@ -308,4 +310,3 @@ function _linear_big_M(input::FunctionEvaluations{D}) where {D}
     # Increase slightly to avoid rounding errors
     return 1.1 * Mᵇⁱᵍ
 end
-

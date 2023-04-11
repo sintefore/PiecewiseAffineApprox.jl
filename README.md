@@ -28,7 +28,7 @@ optimize!(m)
 value(z) # 0.2653
 ```
 
-To keep dependencies light, PiecewiseLinearApprox does not include plotting by default. If the Plots package is loaded
+To keep dependencies light, PiecewiseAffineApprox does not include plotting by default. If the Plots package is loaded
 before using the module, some simple plotting routines will be available
 
 The following demonstrates how this can be achieved:
