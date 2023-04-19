@@ -1,6 +1,10 @@
-using .GLMakie
+module GLMakieExt
 
-function plotconv2D(x, z, pwl::PWLFunc{Convex,2})
+using GLMakie
+using PiecewiseAffineApprox
+PAA = PiecewiseAffineApprox
+
+function PAA.plotconv2D(x, z, pwl::PWLFunc{Convex,2})
     xmin = minimum(x[1, :])
     xmax = maximum(x[1, :])
 
@@ -37,8 +41,10 @@ function plotconv2D(x, z, pwl::PWLFunc{Convex,2})
     return display(fig)
 end
 
-function plotconv2D(input::FunctionEvaluations{2}, pwl::PWLFunc{Convex,2})
+function PAA.plotconv2D(input::FunctionEvaluations{2}, pwl::PWLFunc{Convex,2})
     x = [p[i] for i ∈ 1:2, p ∈ input.points]
     z = input.values
     return plotconv2D(x, z, pwl)
+end
+
 end
