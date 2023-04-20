@@ -2,9 +2,8 @@ module GLMakieExt
 
 using GLMakie
 using PiecewiseAffineApprox
-PAA = PiecewiseAffineApprox
 
-function PAA.plotconv2D(x, z, pwl::PWLFunc{Convex,2})
+function GLMakie.plot(x, z, pwl::PWLFunc{Convex,2})
     xmin = minimum(x[1, :])
     xmax = maximum(x[1, :])
 
@@ -23,16 +22,16 @@ function PAA.plotconv2D(x, z, pwl::PWLFunc{Convex,2})
         f = [evaluate(p, [x̄[i], ȳ[j]]) for i ∈ 1:length(x̄), j ∈ 1:length(ȳ)]
         surface!(ax1, x̄, ȳ, f)
     end
-    l1 = _approx_error(x, z, pwl, :l1)
-    l2 = _approx_error(x, z, pwl, :l2)
-    lmax = _approx_error(x, z, pwl, :max)
+    l1 = PiecewiseAffineApprox._approx_error(x, z, pwl, :l1)
+    l2 = PiecewiseAffineApprox._approx_error(x, z, pwl, :l2)
+    lmax = PiecewiseAffineApprox._approx_error(x, z, pwl, :max)
     ax1.title = "l1 = $(round(l1, digits=2)), l2 = $(round(l2, digits=2)), max = $(round(lmax, digits=2))"
     z̄ = [abs(evaluate(pwl, x[:, i]) - z[i]) for i ∈ 1:length(z)]
     θ = 20 / maximum(z̄)
     ax2.title = "Max error = $(round(maximum(z̄),digits=2))"
     scatter!(ax2, x[1, :], x[2, :]; markersize = θ * z̄)
 
-    𝒫 = _update_partition(x, pwl)
+    𝒫 = PiecewiseAffineApprox._update_partition(x, pwl)
     for j ∈ 1:length(𝒫)
         x̄ = x[:, 𝒫[j]]
         scatter!(ax3, x̄[1, :], x̄[2, :], marker = :xcross)
@@ -41,10 +40,10 @@ function PAA.plotconv2D(x, z, pwl::PWLFunc{Convex,2})
     return display(fig)
 end
 
-function PAA.plotconv2D(input::FunctionEvaluations{2}, pwl::PWLFunc{Convex,2})
+function GLMakie.plot(input::FunctionEvaluations{2}, pwl::PWLFunc{Convex,2})
     x = [p[i] for i ∈ 1:2, p ∈ input.points]
     z = input.values
-    return plotconv2D(x, z, pwl)
+    return GLMakie.plot(x, z, pwl)
 end
 
 end

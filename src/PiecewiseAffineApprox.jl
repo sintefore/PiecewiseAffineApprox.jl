@@ -13,8 +13,6 @@ include("linopt.jl")
 include("magnani_boyd.jl")
 include("interpolation.jl")
 
-function plotconv2D end
-
 export Convex, Concave
 export Optimized, Heuristic, Interpol
 export Plane
@@ -23,6 +21,5 @@ export PWLFunc
 export approx
 export pwlinear
 export evaluate
-export plotconv2D
 
 end # module
