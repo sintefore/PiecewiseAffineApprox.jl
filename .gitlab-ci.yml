@@ -8,7 +8,7 @@ test:latest:
     - which git || (apt-get update -qq && apt-get install --no-install-recommends -qqqy git)
     - command -v ssh-agent >/dev/null || ( apt-get update -y && apt-get install openssh-client -y )
     - eval $(ssh-agent -s)
-    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - echo "$PRIVATE_DEPLOY_KEY_JULIAOPT" | tr -d '\r' | ssh-add -
     # - git config --global url."https://gitlab-ci-token:${CI_TEST_ACCESS}@gitlab.sintef.no/".insteadOf "git@gitlab.sintef.no:"
     # - git config --global url."https://gitlab-ci-token:${CI_TEST_ACCESS}@gitlab.sintef.no/".insteadOf "https://gitlab.sintef.no" --add
     # - git clone https://ACCESS_USER:${CI_TEST_ACCESS}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git PiecewiseLinearApprox
