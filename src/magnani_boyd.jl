@@ -16,7 +16,7 @@ function _approx_error(X::Matrix, z::Vector, pwl::PWLFunc, penalty = :l1)
     end
 
     if penalty == :rms
-        err = err / size(x, 2)
+        err = err / size(X, 2)
     end
 
     if penalty == :l2 || penalty == :rms

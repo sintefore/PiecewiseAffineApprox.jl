@@ -8,9 +8,10 @@ using Random
 
 using PiecewiseAffineApprox
 PWA = PiecewiseAffineApprox
+optimizer = HiGHS.Optimizer
 
 f(x) = x[1]^2 + x[2]^2
-vals = PWA.sample_uniform(f, [(-1, 1), (-1, 1)], 10)
+vals = PWA._sample_uniform(f, [(-1, 1), (-1, 1)], 10)
 pwl = approx(
     vals,
     Convex(),
