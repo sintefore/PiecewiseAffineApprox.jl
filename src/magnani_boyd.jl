@@ -1,8 +1,9 @@
 
-function approx_error(x, z, pwl::PWLFunc, penalty = :l1)
+# Approximation error using the value of the pwl function
+# in the given points. Support for multiple metrics (l1, l2, max).
+function _approx_error(X::Matrix, z::Vector, pwl::PWLFunc, penalty = :l1)
     err = 0.0
-    for i ∈ 1:size(x, 2)
-        x̄ = x[:, i]
+    for (i, x̄) in enumerate(eachcol(X))
         v = evaluate(pwl, x̄)
 
         if penalty == :l1
@@ -25,7 +26,12 @@ function approx_error(x, z, pwl::PWLFunc, penalty = :l1)
     return err
 end
 
-function convex_linearization_mb(x::Matrix, z::Vector; kwargs...)
+# Finds a pwl convex approximation for the provided data
+# X is a matrix with a column for each data point and z is a vector with the 
+# corresponding function values
+function _convex_linearization_mb(X::Matrix, z::Vector; kwargs...)
+    @assert(size(X, 2) == length(z))
+
     defaults = (
         planes = defaultplanes(),
         pen = defaultpenalty(),
@@ -48,13 +54,11 @@ function convex_linearization_mb(x::Matrix, z::Vector; kwargs...)
     @info "Starting heuristic search "
     for i ∈ 1:Nᵗʳ
         @info "  Trial $i"
-        #@info "Creating random partition"
-        𝒫 = random_partition(x, K)
+        𝒫 = _random_partition(X, K)
 
-        #@info "Searching for optimal partition"
-        pwl = optimal_partition(x, z, 𝒫, lᵐᵃˣ, penalty, optimizer, strict)
+        pwl = _refine_partition(X, z, 𝒫, lᵐᵃˣ, penalty, optimizer, strict)
 
-        e = approx_error(x, z, pwl, penalty)
+        e = _approx_error(X, z, pwl, penalty)
         @info "  Approximation error = $e ($penalty)"
         if e < min_error
             min_error = e
@@ -65,39 +69,48 @@ function convex_linearization_mb(x::Matrix, z::Vector; kwargs...)
     return pwl_best
 end
 
-dist(x, y) = sqrt(sum((x[i] - y[i])^2 for i ∈ 1:length(x)))
+# Euclidean distance between two points
+_dist(x, y) = sqrt(sum((x - y) .^ 2))
 
-function random_partition(x, K)
-    N = size(x)[2]
-
-    μ = vec(mean(x, dims = 2))
-    σ² = cov(x, dims = 2)
+# Create a random partition of the points into K sets
+# by generating K random points and group each data point to the
+# closest of these random points.
+function _random_partition(X, K)
+    μ = vec(mean(X, dims = 2))
+    σ² = cov(X, dims = 2)
     n = MvNormal(μ, σ²)
-    p = rand(n, K)
+    P = rand(n, K)
 
-    𝒫 = Dict(j => [] for j ∈ 1:K)
-    for i ∈ 1:N
+    𝒫 = [[] for j ∈ 1:K]
+    for (i, x) in enumerate(eachcol(X))
         # Find the nearest point amongst the p's
-        jmin = argmin([dist(x[:, i], p[:, j]) for j ∈ 1:K])
+        jmin = argmin(_dist(x, P[:, j]) for j ∈ 1:K)
         push!(𝒫[jmin], i)
     end
     return 𝒫
 end
 
-function optimal_partition(x, z, 𝒫, lᵐᵃˣ, penalty, optimizer, strict)
-    D = size(x, 1)
+# Improve a partition by fitting a hyperplane for all points 
+# belonging to each subset of the partition and then 
+# updating the partition such that each point is associated with the
+# plane being active at the point. 
+#
+# The process terminates after a given number of iterations returning
+# the pwl function corresponding to the final partition.
+function _refine_partition(X, z, 𝒫, lᵐᵃˣ, penalty, optimizer, strict)
+    D = size(X, 1)
     pwl = nothing
     for it ∈ 1:lᵐᵃˣ
         pwl = PWLFunc{Convex,D}()
-        for j ∈ 1:length(𝒫)
-            if length(𝒫[j]) > 0
-                x̄ = x[:, 𝒫[j]]
-                z̄ = z[𝒫[j]]
-                a, b = local_fit(x̄, z̄, penalty, optimizer, strict)
-                addplane!(pwl, a, b)
+        for p in 𝒫
+            if length(p) > 0
+                x̄ = X[:, p]
+                z̄ = z[p]
+                a, b = _local_fit(x̄, z̄, penalty, optimizer, strict)
+                _addplane!(pwl, a, b)
             end
         end
-        𝒫ⁿᵉʷ = update_partition(x, pwl)
+        𝒫ⁿᵉʷ = _update_partition(X, pwl)
         if 𝒫ⁿᵉʷ == 𝒫
             break
         end
@@ -107,10 +120,13 @@ function optimal_partition(x, z, 𝒫, lᵐᵃˣ, penalty, optimizer, strict)
     return pwl
 end
 
-function local_fit(x̄, z̄, penalty, optimizer, strict)
-    M, N = size(x̄)
+# Finds the hypeplane best fitting the given subset of points 
+# using the given penalty and possible restrictions on whether
+# the plane should be strictly above or below the points
+function _local_fit(X̄, z̄, penalty, optimizer, strict)
+    M, N = size(X̄)
 
-    # Create an optimization model to find the best a and b such that  ax + b ≈ y
+    # Create an optimization model to find the best a and b such that  ax + b ≈ z
     m = Model()
 
     @variable(m, a[1:M])
@@ -118,17 +134,13 @@ function local_fit(x̄, z̄, penalty, optimizer, strict)
     @variable(m, ẑ[1:N])
 
     for i ∈ 1:N
-        @constraint(m, ẑ[i] == sum(a[j] * x̄[j, i] for j ∈ 1:M) + b)
+        @constraint(m, ẑ[i] == sum(a[j] * X̄[j, i] for j ∈ 1:M) + b)
     end
 
     if strict == :above
-        for i ∈ 1:N
-            @constraint(m, ẑ[i] ≥ z̄[i])
-        end
+        @constraint(m, ẑ .≥ z̄)
     elseif strict == :below
-        for i ∈ 1:N
-            @constraint(m, ẑ[i] ≤ z̄[i])
-        end
+        @constraint(m, ẑ .≤ z̄)
     end
 
     obj = AffExpr()
@@ -170,10 +182,17 @@ function local_fit(x̄, z̄, penalty, optimizer, strict)
     return ā, b̄
 end
 
-function update_partition(x, pwl)
-    𝒫 = Dict(j => [] for j ∈ 1:planes(pwl))
-    for i ∈ 1:size(x, 2)
-        push!(𝒫[active(pwl, x[:, i])], i)
+# The hyperplane being active at the point x for a convex pwl function 
+function _active(pwl::PWLFunc{Convex,D}, x) where {D}
+    return argmax(collect(evaluate(p, x) for p ∈ pwl.planes))
+end
+
+# Creating an updated partition by associating each data point to
+# the hyperplane being active for the data point
+function _update_partition(X, pwl)
+    𝒫 = [[] for j ∈ 1:_planes(pwl)]
+    for (i, x) in enumerate(eachcol(X))
+        push!(𝒫[_active(pwl, x)], i)
     end
     return 𝒫
 end

@@ -1,13 +1,5 @@
 [deps]
 HiGHS = "87dc4568-4c63-4d18-b0c0-bb2238e4078b"
 JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
-SCIP = "82193955-e24f-5292-bf16-6f2c5261a85f"
-SCIP_PaPILO_jll = "fc9abe76-a5e6-5fed-b0b7-a12f309cf031"
-SCIP_jll = "e5ac4fe4-a920-5659-9bf8-f9f73e9e79ce"
 StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
-
-[compat]
-SCIP = "0.11.10"
-SCIP_jll = "800.0.300"
-SCIP_PaPILO_jll ="800.0.300"

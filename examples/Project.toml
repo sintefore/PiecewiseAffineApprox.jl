@@ -1,0 +1,6 @@
+[deps]
+Hypatia = "b99e6be6-89ff-11e8-14f8-45c827f4f8f2"
+Juniper = "2ddba703-00a4-53a7-87a5-e8b9971dde84"
+Pajarito = "2f354839-79df-5901-9f0a-cdb2aac6fe30"
+PiecewiseAffineApprox = "bc5b63fc-d94a-42ea-9f3c-2beb293a2178"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"

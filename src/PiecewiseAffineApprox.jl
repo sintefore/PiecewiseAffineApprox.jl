@@ -1,8 +1,7 @@
-module PiecewiseLinearApprox
+module PiecewiseAffineApprox
 
 using JuMP
 using Printf
-
 using Requires
 using LinearAlgebra
 using Statistics
@@ -13,6 +12,7 @@ include("types.jl")
 include("convexapprox.jl")
 include("linopt.jl")
 include("magnani_boyd.jl")
+include("interpolation.jl")
 
 function __init__()
     @require Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80" include(
@@ -23,29 +23,13 @@ function __init__()
     )
 end
 
-# New exports
-# Types:
 export Convex, Concave
 export Optimized, Heuristic, Interpol
 export Plane
 export FunctionEvaluations
 export PWLFunc
-
-# Methods:
 export approx
-
-# Old exports (to be revised)
-export ConvexPWLFunction
-export ConcavePWLFunction
-export convex_linearization
-export concave_linearization
-export convex_pwlinear
-export concave_pwlinear
-
-export plot
-export plotconvND
-
-export ConcavePWLFunctionND
-export ConvexPWLFunctionND
+export pwlinear
+export evaluate
 
 end # module
