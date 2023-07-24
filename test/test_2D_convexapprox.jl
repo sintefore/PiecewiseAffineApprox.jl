@@ -1,3 +1,4 @@
+@testset "2D Convex Approx" begin
 xg = [i for i ∈ -1:0.5:1]
 yg = [j for j ∈ -1:0.5:1]
 
@@ -111,3 +112,4 @@ fval_conc = JuMP.value(m[:f_conc])
 @test isapprox(fval, -fval_conc, atol = 0.01)
 @test isapprox(xval, xval_conc, atol = 0.01)
 @test isapprox(yval, yval_conc, atol = 0.01)
+end

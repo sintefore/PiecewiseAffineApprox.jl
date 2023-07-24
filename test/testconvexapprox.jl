@@ -1,4 +1,4 @@
-
+@testset "1D Convex Approx" begin
 x = collect(range(-1, 1; length = 10))
 z = x .^ 2
 
@@ -61,3 +61,4 @@ pwl = approx(
     pen = :l1,
 )
 @test PWA.evaluate(pwl, (0, 0)) ≈ 10_000.0 atol = 0.1
+end
