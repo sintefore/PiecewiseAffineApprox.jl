@@ -1,6 +1,8 @@
+using COSMO
 using PiecewiseAffineApprox
 using JuMP
 using HiGHS
+using Pajarito
 using StableRNGs
 using Test
 rng = StableRNG(123)
@@ -8,19 +10,25 @@ rng = StableRNG(123)
 const PWA = PiecewiseAffineApprox
 const optimizer =
     optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent() => true)
+const qp_optimizer = optimizer_with_attributes(
+    Pajarito.Optimizer,
+    "oa_solver" => optimizer_with_attributes(
+        HiGHS.Optimizer,
+        MOI.Silent() => true,
+        "mip_feasibility_tolerance" => 1e-8,
+        "mip_rel_gap" => 1e-6,
+    ),
+    "conic_solver" =>
+        optimizer_with_attributes(COSMO.Optimizer, MOI.Silent() => true),
+    MOI.Silent() => true,
+)
 
-@testset "Quad Approx" begin
-    include("testquadapprox.jl")
-end
+include("testquadapprox.jl")
 #@testset "Convex Interpolation" begin
 #    include("convex_interpolation.jl")
 #end
-@testset "1D Convex Approx" begin
-    include("testconvexapprox.jl")
-end
-@testset "2D Convex Approx" begin
-    include("test_2D_convexapprox.jl")
-end
+include("testconvexapprox.jl")
+include("test_2D_convexapprox.jl")
 #@testset "Big-M calculations" begin
 #    include("test_big_M.jl")
 #end
