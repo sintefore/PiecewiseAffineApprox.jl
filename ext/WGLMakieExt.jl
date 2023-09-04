@@ -12,7 +12,7 @@ function WGLMakie.plot(x, z, pwl::PWLFunc{Convex,2})
 
     x̄ = LinRange(xmin, xmax, 20)
     ȳ = LinRange(ymin, ymax, 20)
-    fig = Figure(resolution = (1000, 1000))
+    fig = Figure(resolution = (800, 800))
     ax1 = Axis3(fig[1:2, 1:2])
     ax2 = Axis(fig[1, 3])
     ax3 = Axis(fig[2, 3])
