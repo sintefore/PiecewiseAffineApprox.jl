@@ -156,7 +156,7 @@ function _local_fit(X̄, z̄, penalty, optimizer, strict)
             @constraint(m, t[i] ≥ (ẑ[i] - z̄[i]))
         end
     else
-        error("Unrecognized/unsupported penalty type $(options.pen)")
+        error("Unrecognized/unsupported penalty type $(penalty)")
     end
 
     # TODO: consider adding regularization term
