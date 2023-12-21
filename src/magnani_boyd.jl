@@ -26,6 +26,14 @@ function _approx_error(X::Matrix, z::Vector, pwl::PWLFunc, penalty = :l1)
     return err
 end
 
+
+function _convex_linearization_mb_single(X::Matrix, z::Vector, K, lᵐᵃˣ, penalty, optimizer, strict)
+    𝒫 = _random_partition(X, K)
+    pwl = _refine_partition(X, z, 𝒫, lᵐᵃˣ, penalty, optimizer, strict)
+    e = _approx_error(X, z, pwl, penalty)
+    return e=>pwl
+end
+
 # Finds a pwl convex approximation for the provided data
 # X is a matrix with a column for each data point and z is a vector with the 
 # corresponding function values
@@ -48,23 +56,10 @@ function _convex_linearization_mb(X::Matrix, z::Vector; kwargs...)
     strict = options.strict
     optimizer = options.optimizer
 
-    pwl_best = nothing
-    min_error = Inf
-
     @info "Starting heuristic search "
-    for i ∈ 1:Nᵗʳ
-        @info "  Trial $i"
-        𝒫 = _random_partition(X, K)
-
-        pwl = _refine_partition(X, z, 𝒫, lᵐᵃˣ, penalty, optimizer, strict)
-
-        e = _approx_error(X, z, pwl, penalty)
-        @info "  Approximation error = $e ($penalty)"
-        if e < min_error
-            min_error = e
-            pwl_best = pwl
-        end
-    end
+    approxes = fetch.(@spawn _convex_linearization_mb_single(X, z, K, lᵐᵃˣ, penalty, optimizer, strict) for i ∈ 1:Nᵗʳ)
+    min_error, pwl_best = argmin(first, approxes)
+    
     @info "Terminating search - best approximation error = $(min_error) ($penalty)"
     return pwl_best
 end
