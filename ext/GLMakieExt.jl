@@ -3,7 +3,7 @@ module GLMakieExt
 using GLMakie
 using PiecewiseAffineApprox
 
-function GLMakie.plot(x, z, pwl::PWLFunc{Convex,2})
+function GLMakie.plot(x, z, pwl::PWLFunc{C,2}) where {C}
     xmin = minimum(x[1, :])
     xmax = maximum(x[1, :])
 
@@ -12,7 +12,7 @@ function GLMakie.plot(x, z, pwl::PWLFunc{Convex,2})
 
     x̄ = LinRange(xmin, xmax, 20)
     ȳ = LinRange(ymin, ymax, 20)
-    fig = Figure(resolution = (1000, 1000))
+    fig = Figure(size = (1000, 1000))
     ax1 = Axis3(fig[1:2, 1:2])
     ax2 = Axis(fig[1, 3])
     ax3 = Axis(fig[2, 3])
@@ -40,10 +40,30 @@ function GLMakie.plot(x, z, pwl::PWLFunc{Convex,2})
     return display(fig)
 end
 
-function GLMakie.plot(input::FunctionEvaluations{2}, pwl::PWLFunc{Convex,2})
+function GLMakie.plot(input::FunctionEvaluations{2}, pwl::PWLFunc{C,2}) where {C}
     x = [p[i] for i ∈ 1:2, p ∈ input.points]
     z = input.values
     return GLMakie.plot(x, z, pwl)
 end
+
+
+function GLMakie.plot(x, y, pwl::PWLFunc{C,1}) where {C}
+   
+    fig = Figure(size = (1000, 1000))
+    ax = Axis(fig[1, 1])
+   
+    x̄ = LinRange(minimum(x), maximum(x), 100)
+    
+    scatter!(ax, x, y, color = :red, markersize = 8)
+    for plane ∈ pwl.planes
+        f = [-evaluate(plane, i) for i ∈ x̄]
+        lines!(ax, x̄, f)
+    end
+    
+    display(fig)
+end
+
+
+
 
 end
