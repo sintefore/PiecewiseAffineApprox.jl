@@ -19,7 +19,7 @@ function GLMakie.plot(x, z, pwl::PWLFunc{C,2}) where {C}
 
     scatter!(ax1, x[1, :], x[2, :], z, color = :red, markersize = 8)
     for p ∈ pwl.planes
-        f = [evaluate(p, [x̄[i], ȳ[j]]) for i ∈ 1:length(x̄), j ∈ 1:length(ȳ)]
+        f = [evaluate(p, [x̄[i], ȳ[j]], C) for i ∈ 1:length(x̄), j ∈ 1:length(ȳ)]
         surface!(ax1, x̄, ȳ, f)
     end
     l1 = PiecewiseAffineApprox._approx_error(x, z, pwl, :l1)
@@ -46,7 +46,6 @@ function GLMakie.plot(input::FunctionEvaluations{2}, pwl::PWLFunc{C,2}) where {C
     return GLMakie.plot(x, z, pwl)
 end
 
-
 function GLMakie.plot(x, y, pwl::PWLFunc{C,1}) where {C}
    
     fig = Figure(size = (1000, 1000))
@@ -56,7 +55,7 @@ function GLMakie.plot(x, y, pwl::PWLFunc{C,1}) where {C}
     
     scatter!(ax, x, y, color = :red, markersize = 8)
     for plane ∈ pwl.planes
-        f = [-evaluate(plane, i) for i ∈ x̄]
+        f = [evaluate(plane, i, C) for i ∈ x̄]
         lines!(ax, x̄, f)
     end
     
