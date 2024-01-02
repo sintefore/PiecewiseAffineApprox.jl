@@ -19,7 +19,10 @@ function Makie.plot(x, z, pwl::PWLFunc{C,2}) where {C}
 
     scatter!(ax1, x[1, :], x[2, :], z, color = :red, markersize = 8)
     for p ∈ pwl.planes
-        f = [evaluate(p, [x̄[i], ȳ[j]], C) for i ∈ eachindex(x̄), j ∈ eachindex(ȳ)]
+        f = [
+            evaluate(p, [x̄[i], ȳ[j]], C) for i ∈ eachindex(x̄),
+            j ∈ eachindex(ȳ)
+        ]
         surface!(ax1, x̄, ȳ, f)
     end
     l1 = PiecewiseAffineApprox._approx_error(x, z, pwl, :l1)
@@ -47,19 +50,18 @@ function Makie.plot(input::FunctionEvaluations{2}, pwl::PWLFunc{C,2}) where {C}
 end
 
 function Makie.plot(x, y, pwl::PWLFunc{C,1}) where {C}
-   
     fig = Figure(size = (1000, 1000))
     ax = Axis(fig[1, 1])
-   
+
     x̄ = LinRange(minimum(x), maximum(x), 100)
-    
+
     scatter!(ax, x, y, color = :red, markersize = 8)
     for plane ∈ pwl.planes
         f = [evaluate(plane, i, C) for i ∈ x̄]
         lines!(ax, x̄, f)
     end
-    
-    display(fig)
+
+    return display(fig)
 end
 
 end
