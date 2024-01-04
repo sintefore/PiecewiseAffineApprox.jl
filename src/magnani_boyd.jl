@@ -26,12 +26,19 @@ function _approx_error(X::Matrix, z::Vector, pwl::PWLFunc, penalty = :l1)
     return err
 end
 
-
-function _convex_linearization_mb_single(X::Matrix, z::Vector, K, lᵐᵃˣ, penalty, optimizer, strict)
+function _convex_linearization_mb_single(
+    X::Matrix,
+    z::Vector,
+    K,
+    lᵐᵃˣ,
+    penalty,
+    optimizer,
+    strict,
+)
     𝒫 = _random_partition(X, K)
     pwl = _refine_partition(X, z, 𝒫, lᵐᵃˣ, penalty, optimizer, strict)
     e = _approx_error(X, z, pwl, penalty)
-    return e=>pwl
+    return e => pwl
 end
 
 # Finds a pwl convex approximation for the provided data
@@ -59,7 +66,7 @@ function _convex_linearization_mb(X::Matrix, z::Vector; kwargs...)
     @info "Starting heuristic search "
     approxes = fetch.(@spawn _convex_linearization_mb_single(X, z, K, lᵐᵃˣ, penalty, optimizer, strict) for i ∈ 1:Nᵗʳ)
     min_error, pwl_best = argmin(first, approxes)
-    
+
     @info "Terminating search - best approximation error = $(min_error) ($penalty)"
     return pwl_best
 end
@@ -123,8 +130,8 @@ function _local_fit(X̄, z̄, penalty, optimizer, strict)
 
     # Create an optimization model to find the best a and b such that  ax + b ≈ z
     m = Model()
-    
-    if Threads.nthreads() > 1 
+
+    if Threads.nthreads() > 1
         # Use threading for individual problems, avoid oversubscribing by limiting threads for each problem
         MOI.set(m, MOI.NumberOfThreads(), 1)
     end
@@ -190,7 +197,7 @@ end
 # Creating an updated partition by associating each data point to
 # the hyperplane being active for the data point
 function _update_partition(X, pwl)
-    𝒫 = [[] for j ∈ 1:_planes(pwl)]
+    𝒫 = [[] for _ ∈ 1:_planes(pwl)]
     for (i, x) in enumerate(eachcol(X))
         push!(𝒫[_active(pwl, x)], i)
     end

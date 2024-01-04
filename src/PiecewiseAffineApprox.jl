@@ -14,7 +14,6 @@ include("linopt.jl")
 include("magnani_boyd.jl")
 include("interpolation.jl")
 
-
 export Convex, Concave
 export Optimized, Heuristic, Interpol
 export Plane
