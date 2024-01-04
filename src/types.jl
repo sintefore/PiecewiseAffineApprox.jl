@@ -31,7 +31,8 @@ end
 Plane(a::NTuple{N}, b) where {N} = Plane{N}(a, b)
 Plane(a::Vector, b) = Plane(Tuple(a), b)
 Plane(a::Number, b::Number) = Plane{1}(Tuple(a), b)
-evaluate(p::Plane, x) = dot(p.α, x) + p.β
+evaluate(p::Plane, x, c = Convex) = dot(p.α, x) + p.β # Planes defined for convex functions
+evaluate(p::Plane, x, c::Type{Concave}) = -evaluate(p, x, Convex) # Flip for concave functions 
 
 """
     PWLFunc{C<:Curvature,D}

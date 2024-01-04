@@ -1,9 +1,9 @@
-module WGLMakieExt
+module MakieExt
 
-using WGLMakie
+using Makie
 using PiecewiseAffineApprox
 
-function WGLMakie.plot(x, z, pwl::PWLFunc{Convex,2})
+function Makie.plot(x, z, pwl::PWLFunc{C,2}) where {C}
     xmin = minimum(x[1, :])
     xmax = maximum(x[1, :])
 
@@ -12,14 +12,17 @@ function WGLMakie.plot(x, z, pwl::PWLFunc{Convex,2})
 
     x̄ = LinRange(xmin, xmax, 20)
     ȳ = LinRange(ymin, ymax, 20)
-    fig = Figure(size = (800, 800))
+    fig = Figure(size = (1000, 1000))
     ax1 = Axis3(fig[1:2, 1:2])
     ax2 = Axis(fig[1, 3])
     ax3 = Axis(fig[2, 3])
 
     scatter!(ax1, x[1, :], x[2, :], z, color = :red, markersize = 8)
     for p ∈ pwl.planes
-        f = [evaluate(p, [x̄[i], ȳ[j]]) for i ∈ eachindex(x̄), j ∈ eachindex(ȳ)]
+        f = [
+            evaluate(p, [x̄[i], ȳ[j]], C) for i ∈ eachindex(x̄),
+            j ∈ eachindex(ȳ)
+        ]
         surface!(ax1, x̄, ȳ, f)
     end
     l1 = PiecewiseAffineApprox._approx_error(x, z, pwl, :l1)
@@ -40,10 +43,25 @@ function WGLMakie.plot(x, z, pwl::PWLFunc{Convex,2})
     return display(fig)
 end
 
-function WGLMakie.plot(input::FunctionEvaluations{2}, pwl::PWLFunc{Convex,2})
+function Makie.plot(input::FunctionEvaluations{2}, pwl::PWLFunc{C,2}) where {C}
     x = [p[i] for i ∈ 1:2, p ∈ input.points]
     z = input.values
-    return WGLMakie.plot(x, z, pwl)
+    return Makie.plot(x, z, pwl)
+end
+
+function Makie.plot(x, y, pwl::PWLFunc{C,1}) where {C}
+    fig = Figure(size = (1000, 1000))
+    ax = Axis(fig[1, 1])
+
+    x̄ = LinRange(minimum(x), maximum(x), 100)
+
+    scatter!(ax, x, y, color = :red, markersize = 8)
+    for plane ∈ pwl.planes
+        f = [evaluate(plane, i, C) for i ∈ x̄]
+        lines!(ax, x̄, f)
+    end
+
+    return display(fig)
 end
 
 end
