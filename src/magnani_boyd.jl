@@ -64,7 +64,19 @@ function _convex_linearization_mb(X::Matrix, z::Vector; kwargs...)
     optimizer = options.optimizer
 
     @info "Starting heuristic search "
-    approxes = fetch.(@spawn _convex_linearization_mb_single(X, z, K, lᵐᵃˣ, penalty, optimizer, strict) for i ∈ 1:Nᵗʳ)
+    approxes = collect(
+        fetch.(
+            @spawn _convex_linearization_mb_single(
+                X,
+                z,
+                K,
+                lᵐᵃˣ,
+                penalty,
+                optimizer,
+                strict,
+            ) for i ∈ 1:Nᵗʳ
+        ),
+    )
     min_error, pwl_best = argmin(first, approxes)
 
     @info "Terminating search - best approximation error = $(min_error) ($penalty)"
