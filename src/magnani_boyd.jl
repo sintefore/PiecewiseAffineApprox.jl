@@ -123,6 +123,11 @@ function _local_fit(X̄, z̄, penalty, optimizer, strict)
 
     # Create an optimization model to find the best a and b such that  ax + b ≈ z
     m = Model()
+    
+    if Threads.nthreads() > 1 
+        # Use threading for individual problems, avoid oversubscribing by limiting threads for each problem
+        MOI.set(m, MOI.NumberOfThreads(), 1)
+    end
 
     @variable(m, a[1:M])
     @variable(m, b)
