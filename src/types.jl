@@ -4,8 +4,24 @@ struct Concave <: Curvature end
 struct Convex <: Curvature end
 
 abstract type Algorithm end
+"""
+    Heuristic
+Compute affine approximation using the method proposed by Mangani & Boyd.
+
+Note that this algoritm computes multiple approximations and selects the best. 
+If julia is started with multiple threads, these are computed in parallel. Consider
+ how many threads will be beneficial, particularly when using a commercial solver where
+ the license may restrict the number of simultanous solver instances.
+"""
 struct Heuristic <: Algorithm end
 struct Interpol <: Algorithm end
+"""
+    Optimized
+Compute affine approximation using a variation of the method proposed by Toriello & Vielma.
+
+Note that the resulting approximation is sensitive to the selection of the Big-M value used when
+solving the optimization problem.
+"""
 struct Optimized <: Algorithm end
 
 """
