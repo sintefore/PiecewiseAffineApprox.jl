@@ -6,6 +6,7 @@ using JuMP
 using LinearAlgebra
 using Printf
 using Statistics
+using Base.Threads: @spawn
 
 include("types.jl")
 include("convexapprox.jl")
