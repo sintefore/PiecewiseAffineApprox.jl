@@ -8,20 +8,12 @@ M₁⁺ = PWA.linear_big_M(x, z)
 pwl₁ = approx(
     FunctionEvaluations(Tuple.(x), z),
     Convex(),
-    Optimized(),
-    ;
-    optimizer,
-    planes = 5,
-    bigM = :conv_linear_big_M,
+    Optimized(optimizer, planes = 5, bigM = :conv_linear_big_M),
 )
 pwl₁⁺ = approx(
     FunctionEvaluations(Tuple.(x), z),
     Convex(),
-    Optimized(),
-    ;
-    optimizer,
-    planes = 5,
-    bigM = :linear_big_M,
+    Optimized(optimizer, planes = 5, bigM = :linear_big_M),
 )
 
 @test isapprox(PWA.evaluate(pwl₁, 0.4), 0.16, atol = 0.015)
@@ -41,25 +33,25 @@ np = 5
 pwl₂ = approx(
     FunctionEvaluations(PWA.mat2tuples(X), z),
     Convex(),
-    Optimized();
-    optimizer = optimizer,
-    planes = np,
-    dimensions = 2,
-    strict = :above,
-    pen = :l1,
-    bigM = :conv_linear_big_M_ND,
+    Optimized(
+        optimizer = optimizer,
+        planes = np,
+        dimensions = 2,
+        strict = :above,
+        pen = :l1,
+    )bigM = :conv_linear_big_M_ND,
 ) # old estimate for big-M
 
 pwl₂⁺ = approx(
     FunctionEvaluations(PWA.mat2tuples(X), z),
     Convex(),
-    Optimized();
-    optimizer = optimizer,
-    planes = np,
-    dimensions = 2,
-    strict = :above,
-    pen = :l1,
-    bigM = :linear_big_M,
+    Optimized(
+        optimizer = optimizer,
+        planes = np,
+        dimensions = 2,
+        strict = :above,
+        pen = :l1,
+    )bigM = :linear_big_M,
 )
 
 @test isapprox(

@@ -13,7 +13,7 @@ I = 100
 x = 2 * rand(I) .- 1
 z = x .^ 2
 vals = FunctionEvaluations(Tuple.(x), z)
-pwl = approx(vals, Convex(), Heuristic(); optimizer = optimizer, planes = 5)
+pwl = approx(vals, Convex(), Heuristic(; optimizer = optimizer, planes = 5))
 
 # 2D
 xmat = 2 * rand(2, I) .- 1
@@ -23,10 +23,10 @@ vals = FunctionEvaluations(x, z)
 pwl = approx(
     vals,
     Convex(),
-    Heuristic();
+    Heuristic(;
     optimizer = optimizer,
     planes = 9,
-    strict = :none,
+    strict = :none,)
 )
 plot(vals, pwl)
 
@@ -38,10 +38,10 @@ vals = PWA._sample_uniform(f, [(-1, 1), (-1, 1)], 10)
 pwl = approx(
     vals,
     Convex(),
-    Heuristic(),
+    Heuristic(;
     optimizer = optimizer,
     planes = 10,
-    penalty = :l2,
+    penalty = :l2,)
 )
 plot(vals, pwl)
 
@@ -51,10 +51,10 @@ vals = PWA._sample_uniform(f, [(-1, 1), (-1, 1)], 10)
 pwl = approx(
     vals,
     Concave(),
-    Heuristic(),
+    Heuristic(; 
     optimizer = optimizer,
     planes = 10,
-    penalty = :l1,
+    penalty = :l1,)
 )
 
 # Log sum exp
@@ -81,10 +81,10 @@ vals = PWA._sample_uniform(f, [(-1, 1), (-1, 1)], 10)
 pwl = approx(
     vals,
     Convex(),
-    Heuristic(),
+    Heuristic(;
     optimizer = optimizer,
     planes = 8,
-    pen = :l1,
+    pen = :l1,)
 )
 plot(vals, pwl)
 
@@ -94,8 +94,8 @@ vals = PWA._sample_uniform(h, [(-5, 5), (-5, 5), (-5, 5)], 10)
 pwl = approx(
     vals,
     Convex(),
-    Heuristic(),
+    Heuristic(;
     optimizer = optimizer,
     planes = 8,
-    pen = :rms,
+    pen = :rms,)
 )

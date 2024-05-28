@@ -15,10 +15,10 @@ vals = PWA._sample_uniform(f, [(-1, 1), (-1, 1)], 10)
 pwl = approx(
     vals,
     Convex(),
-    Heuristic(),
+    Heuristic(
     optimizer = optimizer,
     planes = 10,
-    penalty = :l2,
+    penalty = :l2)
 )
 
 struct Instance

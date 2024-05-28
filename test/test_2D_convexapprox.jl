@@ -16,22 +16,24 @@
     pwl1 = approx(
         FunctionEvaluations(mat2tuples(X), z),
         Convex(),
-        Optimized();
-        optimizer = optimizer,
-        planes = np,
-        dimensions = 2,
-        strict = :above,
-        pen = :l1,
+        Optimized(
+            optimizer = optimizer,
+            planes = np,
+            dimensions = 2,
+            strict = :above,
+            pen = :l1,
+        ),
     )
     pwl2 = approx(
         FunctionEvaluations(mat2tuples(X), z_concave),
         Concave(),
-        Optimized();
-        optimizer = optimizer,
-        planes = np,
-        dimensions = 2,
-        strict = :above,
-        pen = :l1,
+        Optimized(
+            optimizer = optimizer,
+            planes = np,
+            dimensions = 2,
+            strict = :above,
+            pen = :l1,
+        ),
     )
 
     # @test length(pwl1.a) == np
@@ -56,12 +58,13 @@
         approx(
             FunctionEvaluations(mat2tuples(X), z),
             Convex(),
-            Optimized();
-            optimizer = optimizer,
-            planes = np,
-            dimensions = 2,
-            strict = :above,
-            pen = :l1,
+            Optimized(
+                optimizer = optimizer,
+                planes = np,
+                dimensions = 2,
+                strict = :above,
+                pen = :l1,
+            ),
         );
         z = test_f,
     )
@@ -90,13 +93,13 @@
         tuple_var_conc,
         FunctionEvaluations(mat2tuples(X), z_concave),
         Concave(),
-        Optimized();
-        optimizer = optimizer,
-        planes = np,
-        dimensions = 2,
-        strict = :above,
-        pen = :l1,
-        z = f_conc,
+        Optimized(
+            optimizer = optimizer,
+            planes = np,
+            dimensions = 2,
+            strict = :above,
+            pen = :l1,
+        )z = f_conc,
     )
 
     @objective(m, Max, y_concave)

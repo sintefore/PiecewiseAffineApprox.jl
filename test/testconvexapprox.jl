@@ -5,11 +5,7 @@
     pwl1 = approx(
         FunctionEvaluations(Tuple.(x), z),
         Convex(),
-        Optimized(),
-        ;
-        optimizer,
-        pen = :l1,
-        planes = 5,
+        Optimized(; optimizer, pen = :l1, planes = 5),
     )
     @test length(pwl1.planes) == 5
     @test issorted((p.α for p ∈ pwl1.planes))
@@ -19,10 +15,7 @@
         x -> x[1]^2,
         [(-1, 1)],
         Convex(),
-        Optimized();
-        optimizer,
-        pen = :l1,
-        planes = 5,
+        Optimized(optimizer, pen = :l1, planes = 5),
     )
     @test length(pwl2.planes) == 5
     @test isapprox(PWA.evaluate(pwl2, 0.4), 0.1733, atol = 0.015)
@@ -31,11 +24,7 @@
         x -> x[1]^2,
         [(-1, 1)],
         Convex(),
-        Optimized();
-        optimizer,
-        pen = :l1,
-        planes = 5,
-        strict = true,
+        Optimized(optimizer, pen = :l1, planes = 5, strict = :strict),
     )
     @test length(pwl2.planes) == 5
     @test isapprox(PWA.evaluate(pwl3, 0.4), 0.16, atol = 0.03)
@@ -61,10 +50,7 @@
     pwl = approx(
         vals,
         Convex(),
-        Optimized();
-        optimizer = optimizer,
-        planes = 4,
-        pen = :l1,
+        Optimized(optimizer = optimizer, planes = 4, pen = :l1),
     )
     @test PWA.evaluate(pwl, (0, 0)) ≈ 10_000.0 atol = 0.1
 end
