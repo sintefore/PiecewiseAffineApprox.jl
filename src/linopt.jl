@@ -24,19 +24,13 @@ end
 Add constraints to JuMP-model `m` for JuMP-variable `z` as a  
 piecewise linear function/approximation `pwl` of JuMP-variables `x`    
 """
-function pwlinear(
-    m::JuMP.Model,
-    x,
-    pwl::PWLFunc{C,D};
-    z = nothing,
-    kwargs...,
-) where {C,D}
+function pwlinear(m::JuMP.Model, x, pwl::PWLFunc{C,D}; z = nothing) where {C,D}
     initPWL!(m)
     counter = m.ext[:PWL].counter + 1
     m.ext[:PWL].counter = counter
 
     if isnothing(z)
-        #@warn "NB: Skipping bounds for now"
+        # @warn "NB: Skipping bounds for now"
         z = JuMP.@variable(m, base_name = "z_$(counter)")
     end
     for (k, p) ∈ enumerate(pwl.planes)
@@ -52,7 +46,7 @@ function pwlinear(
     fevals::FunctionEvaluations,
     curvature::Curvature,
     a::Algorithm;
-    kwargs...,
+    z = nothing,
 )
-    return pwlinear(m, x, approx(fevals, curvature, a; kwargs...); kwargs...)
+    return pwlinear(m, x, approx(fevals, curvature, a); z = z)
 end

@@ -31,7 +31,7 @@ end
 
 # Create a convex approximation to a general pwl function
 # by perturbing function values as little as possible (l1-deviation)
-function _convexify1D(pwl::PWLFunction1D, optimizer)
+function _convexify1D(pwl::PWLFunction1D, options)
     N = length(pwl.x)
     𝒩 = 1:N
     x = pwl.x
@@ -53,7 +53,7 @@ function _convexify1D(pwl::PWLFunction1D, optimizer)
         )
     end
 
-    set_optimizer(m, optimizer)
+    set_optimizer(m, options.optimizer)
     optimize!(m)
     if termination_status(m) != MOI.OPTIMAL
         error("Optimization failed")
@@ -65,15 +65,12 @@ function _convexify1D(pwl::PWLFunction1D, optimizer)
     return PWLFunction1D(x, [z[i] + dp[i] - dn[i] for i ∈ 𝒩])
 end
 
-_convexify1D(x, z, optimizer) = _convexify1D(PWLFunction1D(x, z), optimizer)
+_convexify1D(x, z, options) = _convexify1D(PWLFunction1D(x, z), options)
 
 # Create a pwl interpolant to the given points with a maximum number of 
 # segments 
-function _interpolatepw(x, z, optimizer; kwargs...)
+function _interpolatepw(x, z, options)
     @assert(length(x) == length(z))
-
-    defaults = (planes = defaultplanes(), pen = defaultpenalty())
-    options = merge(defaults, kwargs)
 
     N = length(x)
     𝒩 = 1:N
@@ -135,7 +132,7 @@ function _interpolatepw(x, z, optimizer; kwargs...)
         )
     end
 
-    set_optimizer(m, optimizer)
+    set_optimizer(m, options.optimizer)
     optimize!(m)
     if termination_status(m) != MOI.OPTIMAL
         error("Optimization failed")
@@ -150,8 +147,6 @@ function _interpolatepw(x, z, optimizer; kwargs...)
     return PWLFunction1D(xᴼᵖᵗ, zᴼᵖᵗ)
 end
 
-function _convex_linearization_ipol(x, z, optimizer; kwargs...)
-    return _asconvex(
-        _convexify1D(_interpolatepw(x, z, optimizer; kwargs...), optimizer),
-    )
+function _convex_linearization_ipol(x, z, options)
+    return _asconvex(_convexify1D(_interpolatepw(x, z, options), options))
 end

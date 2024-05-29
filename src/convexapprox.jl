@@ -3,24 +3,12 @@ defaultplanes() = 4
 defaulttimelimit() = 60
 
 """
-    approx(input::FunctionEvaluations{D}, c::Curvature, a::Algorithm; kwargs...)
+    approx(input::FunctionEvaluations{D}, c::Curvature, a::Algorithm)
 
 Return PWLFunc{Convex,D} or PWLFunc{Concave,D} depending on `c`, approximating the `input` points in `D` dimensions
-
-Accepted keyword arguments currently include:
-- `optimizer`: JuMP Optimizer
-- `planes`: number of (hyper)planes to use for approximation (default = 4)
-- `strict`: (TODO: Better name?) `strict ∈ (:none, :over, :under)`
-- `pen`:  the metric used to measure deviation `pen ∈ (:l1, :l2, :max)`
-- 'maxtime': the time limit for the optimization (seconds)
 """
-function approx(input, c::Concave, a::Algorithm; kwargs...)
-    cv = approx(
-        FunctionEvaluations(input.points, -input.values),
-        Convex(),
-        a;
-        kwargs...,
-    )
+function approx(input, c::Concave, a::Algorithm)
+    cv = approx(FunctionEvaluations(input.points, -input.values), Convex(), a;)
     return PWLFunc{Concave,dims(cv)}(cv.planes)
 end
 
@@ -28,13 +16,8 @@ dims(pwl::PWLFunc{C,D}) where {C,D} = D
 
 # Using dispatch for specializing on dimensions. If performance were a concern,
 # maybe just do branching and call specialized function directly
-function approx(
-    input::FunctionEvaluations{D},
-    c::Convex,
-    a;
-    kwargs...,
-) where {D}
-    return approx(input, c, a, Val(D); kwargs...)
+function approx(input::FunctionEvaluations{D}, c::Convex, a;) where {D}
+    return approx(input, c, a, Val(D))
 end
 
 # Specialized for 1D and interpolation
@@ -43,17 +26,11 @@ function approx(
     c::Convex,
     a::Interpol,
     ::Val{1};
-    kwargs...,
 ) where {D}
-    defaults =
-        (planes = defaultplanes(), pen = defaultpenalty(), strict = :none)
-    options = merge(defaults, kwargs)
-
     return _convex_linearization_ipol(
         [i[1] for i ∈ input.points],
         input.values,
-        options.optimizer;
-        kwargs...,
+        a;
     )
 end
 
@@ -70,29 +47,18 @@ function approx(
     input::FunctionEvaluations{D},
     c::Convex,
     a::Heuristic;
-    kwargs...,
 ) where {D}
     x = [p[i] for i ∈ 1:D, p ∈ input.points]
     z = input.values
-    return _convex_linearization_mb(x, z; kwargs...)
+    return _convex_linearization_mb(x, z, a)
 end
 
 # Optimal convex approximation using mixed integer optimization 
 function approx(
     input::FunctionEvaluations{D},
     c::Convex,
-    a::Optimized,
-    dims;
-    kwargs...,
+    options::Optimized,
 ) where {D}
-    defaults = (
-        planes = defaultplanes(),
-        pen = defaultpenalty(),
-        strict = :none,
-        maxtime = defaulttimelimit(),
-    )
-    options = merge(defaults, kwargs)
-
     𝒫 = input.points
     z = input.values
     zᵖ = Dict(zip(𝒫, z))
@@ -205,19 +171,10 @@ Approximate the function using a uniform sampling over the bounding box `bbox`
 Additional keyword arguments:
 - `nsample`: the number of points used in each dimension (default = 10)
 """
-function approx(
-    f::Function,
-    bbox::Vector{<:Tuple},
-    c::Curvature,
-    a::Algorithm;
-    kwargs...,
-)
-    defaults = (nsample = 10, planes = defaultplanes())
-    options = merge(defaults, kwargs)
+function approx(f::Function, bbox::Vector{<:Tuple}, c::Curvature, a::Algorithm;)
+    samples = 3 * a.planes
 
-    samples = max(options.nsample, 3 * options.planes)
-
-    return approx(_sample_uniform(f, bbox, samples), c, a; kwargs...)
+    return approx(_sample_uniform(f, bbox, samples), c, a)
 end
 
 # Utility function to find the value of a hyperplane at the point x

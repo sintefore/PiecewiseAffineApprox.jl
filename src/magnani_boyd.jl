@@ -44,19 +44,10 @@ end
 # Finds a pwl convex approximation for the provided data
 # X is a matrix with a column for each data point and z is a vector with the 
 # corresponding function values
-function _convex_linearization_mb(X::Matrix, z::Vector; kwargs...)
+function _convex_linearization_mb(X::Matrix, z::Vector, options::Heuristic)
     @assert(size(X, 2) == length(z))
 
-    defaults = (
-        planes = defaultplanes(),
-        pen = defaultpenalty(),
-        trials = 20,
-        itlim = 50,
-        strict = :none,
-    )
-    options = merge(defaults, kwargs)
-
-    Nᵗʳ = options.trials     # Number of trials
+    Nᵗʳ = options.trials    # Number of trials
     lᵐᵃˣ = options.itlim    # Iteration limit
     K = options.planes
     penalty = options.pen

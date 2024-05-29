@@ -19,7 +19,6 @@
         Optimized(
             optimizer = optimizer,
             planes = np,
-            dimensions = 2,
             strict = :above,
             pen = :l1,
         ),
@@ -30,7 +29,6 @@
         Optimized(
             optimizer = optimizer,
             planes = np,
-            dimensions = 2,
             strict = :above,
             pen = :l1,
         ),
@@ -61,7 +59,6 @@
             Optimized(
                 optimizer = optimizer,
                 planes = np,
-                dimensions = 2,
                 strict = :above,
                 pen = :l1,
             ),
@@ -96,10 +93,10 @@
         Optimized(
             optimizer = optimizer,
             planes = np,
-            dimensions = 2,
             strict = :above,
             pen = :l1,
-        )z = f_conc,
+        );
+        z = f_conc,
     )
 
     @objective(m, Max, y_concave)

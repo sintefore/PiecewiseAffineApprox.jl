@@ -13,13 +13,19 @@ If julia is started with multiple threads, these are computed in parallel. Consi
  how many threads will be beneficial, particularly when using a commercial solver where
  the license may restrict the number of simultanous solver instances.
 """
-@kwdef struct Heuristic{T<:MOI.AbstractOptimizer} <: Algorithm
-    planes::Int =
-        defaultplanes(), pen::Symbol =
-            defaultpenalty(), trials::Int =
-                20, itlim::Int = 50, strict::Symbol = :none, optimizer::T
+@kwdef struct Heuristic{T} <: Algorithm
+    planes::Int = defaultplanes()
+    pen::Symbol = defaultpenalty()
+    trials::Int = 20
+    itlim::Int = 50
+    strict::Symbol = :none
+    optimizer::T
 end
-struct Interpol <: Algorithm end
+@kwdef struct Interpol{T} <: Algorithm
+    planes::Int = defaultplanes()
+    pen = defaultpenalty()
+    optimizer::T
+end
 """
     Optimized
 Compute affine approximation using a variation of the method proposed by Toriello & Vielma.
@@ -27,11 +33,12 @@ Compute affine approximation using a variation of the method proposed by Toriell
 Note that the resulting approximation is sensitive to the selection of the Big-M value used when
 solving the optimization problem.
 """
-@kwdef struct Optimized{T<:MOI.AbstractOptimizer} <: Algorithm
-    planes::Int =
-        defaultplanes(), pen::Symbol =
-            defaultpenalty(), strict::Symbol =
-                :none, maxtime::Int = defaulttimelimit(), optimizer::T
+@kwdef struct Optimized{T} <: Algorithm
+    planes::Int = defaultplanes()
+    pen::Symbol = defaultpenalty()
+    strict::Symbol = :none
+    maxtime::Int = defaulttimelimit()
+    optimizer::T
 end
 
 """
