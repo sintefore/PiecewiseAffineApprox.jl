@@ -14,7 +14,7 @@
                 [i.second for i ∈ points],
             ),
             Convex(),
-            Optimized(; optimizer, pen = :l1, planes = 5),
+            Optimized(optimizer = optimizer, pen = :l1, planes = 5),
         )
         @objective(m, Min, y)
         set_optimizer(m, optimizer)
@@ -51,8 +51,8 @@
     @testset "L2" begin
         # Test with constraints added to existing model
         for met in [
-            Heuristic(; optimizer = qp_optimizer, pen = :l2, planes = 5),
-            Optimized(; optimizer = qp_optimizer, pen = :l2, planes = 5),
+            Heuristic(optimizer = qp_optimizer, pen = :l2, planes = 5),
+            Optimized(optimizer = qp_optimizer, pen = :l2, planes = 5),
         ]
             m = Model()
             @variable(m, x)

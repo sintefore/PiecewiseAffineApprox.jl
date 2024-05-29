@@ -41,11 +41,10 @@
         Convex(),
         Interpol(optimizer = optimizer, planes = 10),
     )
-    # There is an issue with this test case, are we keeping Interpol?
+
     @test isapprox(PWA.evaluate(pwl4, 0.4), 0.16, atol = 0.015)
 
     #Check approximation for flat function with releatively high values:
-
     I = 10
     xmat = 2 * rand(rng, 2, I) .- 1
     x = [Tuple(xmat[:, i]) for i ∈ 1:size(xmat, 2)]

@@ -24,9 +24,9 @@ const qp_optimizer = optimizer_with_attributes(
 )
 
 include("testquadapprox.jl")
-#@testset "Convex Interpolation" begin
-#    include("convex_interpolation.jl")
-#end
+
+include("convex_interpolation.jl")
+
 include("testconvexapprox.jl")
 include("test_2D_convexapprox.jl")
 #@testset "Big-M calculations" begin

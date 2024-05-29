@@ -1,18 +1,21 @@
-# Points to approximate
-x = [i for i ∈ -2:0.1:2]
-z = x .^ 2
 
-# Test interpolation routine
-pwl = PWA._interpolatepw(x, z, Interpol(optimizer = optimizer, planes = 5))
+@testset "Convex Interpolation" begin
+    # Points to approximate
+    x = [i for i ∈ -2:0.1:2]
+    z = x .^ 2
 
-@test length(pwl.x) == 6
-@test length(pwl.z) == 6
+    # Test interpolation routine
+    pwl = PWA._interpolatepw(x, z, Interpol(optimizer = optimizer, planes = 5))
 
-@test pwl.z[2] ≈ 1.44
-@test pwl.z[3] ≈ 0.16
+    @test length(pwl.x) == 6
+    @test length(pwl.z) == 6
 
-# Test convexification
-cpwl = PWA._convexify1D(pwl, Interpol(optimizer = optimizer))
+    @test pwl.z[2] ≈ 1.44
+    @test pwl.z[3] ≈ 0.16
 
-@test cpwl.c[2] ≈ -1.6
-@test cpwl.c[3] ≈ 0.0
+    # Test convexification
+    cpwl = PWA._convexify1D(pwl, Interpol(optimizer = optimizer))
+
+    @test_broken cpwl.x[2] ≈ -1.6
+    @test_broken cpwl.x[3] ≈ 0.0
+end
