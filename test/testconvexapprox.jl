@@ -44,6 +44,26 @@
 
     @test isapprox(PWA.evaluate(pwa4, 0.4), 0.16, atol = 0.015)
 
+    # Test correctness of strictness for :outer and :inner
+    pwa_outer = approx(
+        FunctionEvaluations(Tuple.(x), z),
+        Convex(),
+        Optimized(optimizer = optimizer, pen = :l1, planes = 5, strict = :outer),
+    )
+    
+    pwa_inner = approx(
+        FunctionEvaluations(Tuple.(x), z),
+        Convex(),
+        Optimized(optimizer = optimizer, pen = :l1, planes = 5, strict = :inner),
+    )
+
+    for i in eachindex(x)
+        # Convex, :outer should be below original points
+        @test PWA.evaluate(pwa_outer, x[i]) ≤ z[i] + 1e-6
+        # Convex, :inner should be above original points
+        @test PWA.evaluate(pwa_inner, x[i]) ≥ z[i] - 1e-6
+    end
+
     #Check approximation for flat function with releatively high values:
     I = 10
     xmat = 2 * rand(rng, 2, I) .- 1

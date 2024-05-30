@@ -19,7 +19,7 @@
         Optimized(
             optimizer = optimizer,
             planes = np,
-            strict = :above,
+            strict = :outer,
             pen = :l1,
         ),
     )
@@ -29,7 +29,7 @@
         Optimized(
             optimizer = optimizer,
             planes = np,
-            strict = :above,
+            strict = :outer,
             pen = :l1,
         ),
     )
@@ -59,7 +59,7 @@
             Optimized(
                 optimizer = optimizer,
                 planes = np,
-                strict = :above,
+                strict = :outer,
                 pen = :l1,
             ),
         );
@@ -93,7 +93,7 @@
         Optimized(
             optimizer = optimizer,
             planes = np,
-            strict = :above,
+            strict = :outer,
             pen = :l1,
         );
         z = f_conc,
