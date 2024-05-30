@@ -14,10 +14,7 @@
                 [i.second for i ∈ points],
             ),
             Convex(),
-            Optimized();
-            optimizer,
-            pen = :l1,
-            planes = 5,
+            Optimized(optimizer = optimizer, pen = :l1, planes = 5),
         )
         @objective(m, Min, y)
         set_optimizer(m, optimizer)
@@ -40,10 +37,8 @@
                 [i.second for i ∈ points],
             ),
             Convex(),
-            Optimized();
-            optimizer,
-            pen = :l1,
-            planes = 5,
+            Optimized(optimizer = optimizer, pen = :l1, planes = 5),
+            ;
             z = test_y,
         )
         @objective(m, Min, y)
@@ -55,7 +50,10 @@
 
     @testset "L2" begin
         # Test with constraints added to existing model
-        for met in [Heuristic(), Optimized()]
+        for met in [
+            Heuristic(optimizer = qp_optimizer, pen = :l2, planes = 5),
+            Optimized(optimizer = qp_optimizer, pen = :l2, planes = 5),
+        ]
             m = Model()
             @variable(m, x)
             y = PWA.pwlinear(
@@ -67,9 +65,6 @@
                 ),
                 Convex(),
                 met;
-                optimizer = qp_optimizer,
-                pen = :l2,
-                planes = 5,
             )
             @objective(m, Min, y)
             set_optimizer(m, optimizer)
