@@ -230,7 +230,7 @@ function _linear_big_M(input::FunctionEvaluations{D}) where {D}
             # Avoid points that are too close
             if abs(x1 - x2) > δ
                 # Check for datapoints in the interior
-                empty = (count(p -> p > min(x1, x2) && p < max(x1, x2), x) == 0)
+                empty = (count(p -> p > min(x1, x2) + δ && p < max(x1, x2) - δ, x) == 0)
                 if empty
                     a = (z2 - z1) / (x2 - x1)
                     b = z1 - a * x1
