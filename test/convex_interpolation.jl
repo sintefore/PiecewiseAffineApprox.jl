@@ -16,6 +16,6 @@
     # Test convexification
     cpwl = PWA._convexify1D(pwl, Interpol(optimizer = optimizer))
 
-    @test_broken cpwl.x[2] ≈ -1.6
-    @test_broken cpwl.x[3] ≈ 0.0
+    @test cpwl.x[2] ≈ -1.2
+    @test cpwl.x[3] ≈ -0.4
 end

@@ -37,7 +37,7 @@ end
 """
     approx(input::FunctionEvaluations{D}, c::Convex, a::Heuristic; kwargs...) where D
 
-Approximate using a heuristic that works for general dimensions. 
+Approximate using a heuristic that works for general dimensions.
 
 Additional keyword arguments:
 - `trials`: number of restarts (default = 20)
@@ -53,7 +53,7 @@ function approx(
     return _convex_linearization_mb(x, z, a)
 end
 
-# Optimal convex approximation using mixed integer optimization 
+# Optimal convex approximation using mixed integer optimization
 function approx(
     input::FunctionEvaluations{D},
     c::Convex,
@@ -217,23 +217,33 @@ function _linear_big_M(input::FunctionEvaluations{D}) where {D}
     Mᵇⁱᵍ = 0
     if D == 1
         # For one dimensional problems calculate a big M by
-        # checking all planes passing through two consecutive
-        # points in sorted order
-        p = sortperm(input.points)
-        x = collect(input.points[i][1] for i in p)
-        z = collect(input.values[i] for i in p)
-        N = length(x)
-        for i ∈ 2:N
-            a = (z[i] - z[i-1]) / (x[i] - x[i-1])
-            b = z[i] - a * x[i]
-            M = maximum(z[i] - a * x[i][1] - b for i ∈ 1:N)
-            Mᵇⁱᵍ = max(M, Mᵇⁱᵍ)
+        # checking all segments not having another data point in the interior
+        x = [p[1] for p in input.points]
+        z = input.values
+        x₊ = [(x[i], z[i]) for i ∈ 1:length(x)]
+
+        δ = (maximum(x) - minimum(x)) / 1000
+        segments = collect(combinations(x₊, 2))
+        for s in segments
+            x1, z1 = s[1]
+            x2, z2 = s[2]
+            # Avoid points that are too close
+            if abs(x1 - x2) > δ
+                # Check for datapoints in the interior
+                empty = (count(p -> p > min(x1, x2) && p < max(x1, x2), x) == 0)
+                if empty
+                    a = (z2 - z1) / (x2 - x1)
+                    b = z1 - a * x1
+                    M = maximum(z .- a .* x .- b)
+                    Mᵇⁱᵍ = max(M, Mᵇⁱᵍ)
+                end
+            end
         end
     elseif D == 2
         # For two dimensions, chcck all planes that
         # is tangential to a triangle formed by three
         # of the points, avoiding triangles that have data points
-        # in the interior or those that are very elongated. 
+        # in the interior or those that are very elongated.
         x = input.points
         z = input.values
         x₊ = [(x[i]..., z[i]) for i ∈ 1:length(x)]
@@ -255,9 +265,7 @@ function _linear_big_M(input::FunctionEvaluations{D}) where {D}
                 M = maximum(
                     z[i] - _plane_f(x[i], normal, d) for i ∈ 1:length(x)
                 )
-                if M > Mᵇⁱᵍ
-                    Mᵇⁱᵍ = M
-                end
+                Mᵇⁱᵍ = max(M, Mᵇⁱᵍ)
             end
         end
     else
