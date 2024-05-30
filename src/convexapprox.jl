@@ -12,7 +12,7 @@ function approx(input, c::Concave, a::Algorithm)
     return PWLFunc{Concave,dims(cv)}(cv.planes)
 end
 
-dims(pwl::PWLFunc{C,D}) where {C,D} = D
+dims(pwa::PWLFunc{C,D}) where {C,D} = D
 
 # Using dispatch for specializing on dimensions. If performance were a concern,
 # maybe just do branching and call specialized function directly

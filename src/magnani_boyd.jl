@@ -1,10 +1,10 @@
 
-# Approximation error using the value of the pwl function
+# Approximation error using the value of the pwa function
 # in the given points. Support for multiple metrics (l1, l2, max).
-function _approx_error(X::Matrix, z::Vector, pwl::PWLFunc, penalty = :l1)
+function _approx_error(X::Matrix, z::Vector, pwa::PWLFunc, penalty = :l1)
     err = 0.0
     for (i, x̄) in enumerate(eachcol(X))
-        v = evaluate(pwl, x̄)
+        v = evaluate(pwa, x̄)
 
         if penalty == :l1
             err += abs(v - z[i])
@@ -36,12 +36,12 @@ function _convex_linearization_mb_single(
     strict,
 )
     𝒫 = _random_partition(X, K)
-    pwl = _refine_partition(X, z, 𝒫, lᵐᵃˣ, penalty, optimizer, strict)
-    e = _approx_error(X, z, pwl, penalty)
-    return e => pwl
+    pwa = _refine_partition(X, z, 𝒫, lᵐᵃˣ, penalty, optimizer, strict)
+    e = _approx_error(X, z, pwa, penalty)
+    return e => pwa
 end
 
-# Finds a pwl convex approximation for the provided data
+# Finds a pwa convex approximation for the provided data
 # X is a matrix with a column for each data point and z is a vector with the 
 # corresponding function values
 function _convex_linearization_mb(X::Matrix, z::Vector, options::Heuristic)
@@ -68,10 +68,10 @@ function _convex_linearization_mb(X::Matrix, z::Vector, options::Heuristic)
             ) for i ∈ 1:Nᵗʳ
         ),
     )
-    min_error, pwl_best = argmin(first, approxes)
+    min_error, pwa_best = argmin(first, approxes)
 
     @info "Terminating search - best approximation error = $(min_error) ($penalty)"
-    return pwl_best
+    return pwa_best
 end
 
 # Euclidean distance between two points
@@ -101,28 +101,28 @@ end
 # plane being active at the point. 
 #
 # The process terminates after a given number of iterations returning
-# the pwl function corresponding to the final partition.
+# the pwa function corresponding to the final partition.
 function _refine_partition(X, z, 𝒫, lᵐᵃˣ, penalty, optimizer, strict)
     D = size(X, 1)
-    pwl = nothing
+    pwa = nothing
     for it ∈ 1:lᵐᵃˣ
-        pwl = PWLFunc{Convex,D}()
+        pwa = PWLFunc{Convex,D}()
         for p in 𝒫
             if length(p) > 0
                 x̄ = X[:, p]
                 z̄ = z[p]
                 a, b = _local_fit(x̄, z̄, penalty, optimizer, strict)
-                _addplane!(pwl, a, b)
+                _addplane!(pwa, a, b)
             end
         end
-        𝒫ⁿᵉʷ = _update_partition(X, pwl)
+        𝒫ⁿᵉʷ = _update_partition(X, pwa)
         if 𝒫ⁿᵉʷ == 𝒫
             break
         end
         𝒫 = 𝒫ⁿᵉʷ
     end
 
-    return pwl
+    return pwa
 end
 
 # Finds the hypeplane best fitting the given subset of points 
@@ -192,17 +192,17 @@ function _local_fit(X̄, z̄, penalty, optimizer, strict)
     return ā, b̄
 end
 
-# The hyperplane being active at the point x for a convex pwl function 
-function _active(pwl::PWLFunc{Convex,D}, x) where {D}
-    return argmax(collect(evaluate(p, x) for p ∈ pwl.planes))
+# The hyperplane being active at the point x for a convex pwa function 
+function _active(pwa::PWLFunc{Convex,D}, x) where {D}
+    return argmax(collect(evaluate(p, x) for p ∈ pwa.planes))
 end
 
 # Creating an updated partition by associating each data point to
 # the hyperplane being active for the data point
-function _update_partition(X, pwl)
-    𝒫 = [[] for _ ∈ 1:_planes(pwl)]
+function _update_partition(X, pwa)
+    𝒫 = [[] for _ ∈ 1:_planes(pwa)]
     for (i, x) in enumerate(eachcol(X))
-        push!(𝒫[_active(pwl, x)], i)
+        push!(𝒫[_active(pwa, x)], i)
     end
     return 𝒫
 end

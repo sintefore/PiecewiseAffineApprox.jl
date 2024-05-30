@@ -18,10 +18,10 @@ function PWLFunction1D(x::Vector, z::Vector)
     )
 end
 
-function _asconvex(pwl::PWLFunction1D)
-    N = length(pwl.x)
-    x = pwl.x
-    z = pwl.z
+function _asconvex(pwa::PWLFunction1D)
+    N = length(pwa.x)
+    x = pwa.x
+    z = pwa.z
 
     c = [(z[i+1] - z[i]) / (x[i+1] - x[i]) for i ∈ 1:(N-1)]
     d = [z[i] - c[i] * x[i] for i ∈ 1:(N-1)]
@@ -29,13 +29,13 @@ function _asconvex(pwl::PWLFunction1D)
     return PWLFunc{Convex,1}(Plane.(c, d))
 end
 
-# Create a convex approximation to a general pwl function
+# Create a convex approximation to a general pwa function
 # by perturbing function values as little as possible (l1-deviation)
-function _convexify1D(pwl::PWLFunction1D, options)
-    N = length(pwl.x)
+function _convexify1D(pwa::PWLFunction1D, options)
+    N = length(pwa.x)
     𝒩 = 1:N
-    x = pwl.x
-    z = pwl.z
+    x = pwa.x
+    z = pwa.z
 
     m = Model()
 
@@ -67,7 +67,7 @@ end
 
 _convexify1D(x, z, options) = _convexify1D(PWLFunction1D(x, z), options)
 
-# Create a pwl interpolant to the given points with a maximum number of 
+# Create a pwa interpolant to the given points with a maximum number of 
 # segments 
 function _interpolatepw(x, z, options)
     @assert(length(x) == length(z))

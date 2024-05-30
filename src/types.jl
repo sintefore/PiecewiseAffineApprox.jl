@@ -74,7 +74,7 @@ A piecewise linear function that can be either convex and concave
 represented by a set of (hyper)planes.
 
 If the curvature of the function is convex, the piecewise linear Function
-is defined as the pointwise maximum over the planes. A concave pwl function
+is defined as the pointwise maximum over the planes. A concave pwa function
 is handled by storing its negative and negating when evaluting.
 """
 struct PWLFunc{C<:Curvature,D}
@@ -86,25 +86,25 @@ end
 PWLFunc{C,D}() where {C,D} = PWLFunc{C,D}(Vector{Plane{D}}())
 
 """
-    evaluate(pwl::PWLFunc{Convex,D}, x) where {D}
+    evaluate(pwa::PWLFunc{Convex,D}, x) where {D}
 
 Evaluate the convex piecewise linear function at the point x.
 """
-function evaluate(pwl::PWLFunc{Convex,D}, x) where {D}
-    return maximum(dot(p.α, x) + p.β for p ∈ pwl.planes)
+function evaluate(pwa::PWLFunc{Convex,D}, x) where {D}
+    return maximum(dot(p.α, x) + p.β for p ∈ pwa.planes)
 end
 
 """
-    evaluate(pwl::PWLFunc{Concave,D}, x) where {D}
+    evaluate(pwa::PWLFunc{Concave,D}, x) where {D}
 
 Evaluate the concave piecewise linear function at the point x.
 """
-function evaluate(pwl::PWLFunc{Concave,D}, x) where {D}
-    return -evaluate(PWLFunc{Convex,D}(pwl.planes), x)
+function evaluate(pwa::PWLFunc{Concave,D}, x) where {D}
+    return -evaluate(PWLFunc{Convex,D}(pwa.planes), x)
 end
 
 # The number of planes defining the piecewise linar function
-_planes(pwl) = length(pwl.planes)
+_planes(pwa) = length(pwa.planes)
 
-_addplane!(pwl::PWLFunc{C,D}, p::Plane{D}) where {C,D} = push!(pwl.planes, p)
-_addplane!(pwl::PWLFunc, α, β) = push!(pwl.planes, Plane(α, β))
+_addplane!(pwa::PWLFunc{C,D}, p::Plane{D}) where {C,D} = push!(pwa.planes, p)
+_addplane!(pwa::PWLFunc, α, β) = push!(pwa.planes, Plane(α, β))

@@ -17,9 +17,9 @@ using JuMP, PiecewiseAffineApprox, HiGHS
 m = Model(HiGHS.Optimizer)
 @variable(m, x)
 # Create a piecewise linear approximation to x^2 on the interval [-1, 1]
-pwl = approx(x -> x[1]^2, [(-1, 1)], Convex(), Optimized(optimizer = HiGHS.Optimizer, planes=5))
-# Add the pwl function to the model
-z = pwlinear(m, x, pwl)
+pwa = approx(x -> x[1]^2, [(-1, 1)], Convex(), Optimized(optimizer = HiGHS.Optimizer, planes=5))
+# Add the pwa function to the model
+z = pwaffine(m, x, pwa)
 # Minimize
 @objective(m, Min, z)
 # Check approximation/solution at x = 0.5
@@ -37,10 +37,10 @@ The following demonstrates how this can be achieved:
 using Plots, PiecewiseAffineApprox, HiGHS
 
 function plotquademo(N = 3, opt = HiGHS.Optimizer)
-    pwl = approx(x -> x[1]^2, [(0,1)], Convex(), Optimized( optimizer = opt; planes=N))
+    pwa = approx(x -> x[1]^2, [(0,1)], Convex(), Optimized( optimizer = opt; planes=N))
     x = LinRange(0, 1, 20)
     p = plot(x, x.^2, seriestype=:scatter, markershape=:x, ylims=(-0.5,1))
-    PiecewiseAffineApprox.plot!(p, pwl, (0,1))
+    PiecewiseAffineApprox.plot!(p, pwa, (0,1))
     return p
 end
 

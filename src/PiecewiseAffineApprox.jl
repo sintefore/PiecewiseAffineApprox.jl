@@ -20,7 +20,7 @@ export Plane
 export FunctionEvaluations
 export PWLFunc
 export approx
-export pwlinear
+export pwaffine
 export evaluate
 
 end # module

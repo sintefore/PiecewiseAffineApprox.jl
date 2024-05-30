@@ -19,12 +19,12 @@ function constr(::Type{Concave}, m, z, p, x)
 end
 
 """
-    pwlinear(m::JuMP.Model, x::Tuple, pwl::PWLFunc{C,D}; z=nothing, kwargs...) where {C,D}
+    pwaffine(m::JuMP.Model, x::Tuple, pwa::PWLFunc{C,D}; z=nothing, kwargs...) where {C,D}
 
 Add constraints to JuMP-model `m` for JuMP-variable `z` as a  
-piecewise linear function/approximation `pwl` of JuMP-variables `x`    
+piecewise linear function/approximation `pwa` of JuMP-variables `x`    
 """
-function pwlinear(m::JuMP.Model, x, pwl::PWLFunc{C,D}; z = nothing) where {C,D}
+function pwaffine(m::JuMP.Model, x, pwa::PWLFunc{C,D}; z = nothing) where {C,D}
     initPWL!(m)
     counter = m.ext[:PWL].counter + 1
     m.ext[:PWL].counter = counter
@@ -33,14 +33,14 @@ function pwlinear(m::JuMP.Model, x, pwl::PWLFunc{C,D}; z = nothing) where {C,D}
         # @warn "NB: Skipping bounds for now"
         z = JuMP.@variable(m, base_name = "z_$(counter)")
     end
-    for (k, p) ∈ enumerate(pwl.planes)
+    for (k, p) ∈ enumerate(pwa.planes)
         con = constr(C, m, z, p, x)
-        JuMP.set_name(con, "pwl_$(counter)_$(k)")
+        JuMP.set_name(con, "pwa_$(counter)_$(k)")
     end
     return z
 end
 
-function pwlinear(
+function pwaffine(
     m::JuMP.Model,
     x,
     fevals::FunctionEvaluations,
@@ -48,5 +48,5 @@ function pwlinear(
     a::Algorithm;
     z = nothing,
 )
-    return pwlinear(m, x, approx(fevals, curvature, a); z = z)
+    return pwaffine(m, x, approx(fevals, curvature, a); z = z)
 end

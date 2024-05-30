@@ -6,7 +6,7 @@
         # Test with constraints added to existing model
         m = Model()
         @variable(m, x)
-        y = PWA.pwlinear(
+        y = PWA.pwaffine(
             m,
             tuple(x),
             FunctionEvaluations(
@@ -29,7 +29,7 @@
         m = Model()
         @variable(m, x)
         @variable(m, test_y)
-        y = PWA.pwlinear(
+        y = PWA.pwaffine(
             m,
             tuple(x),
             FunctionEvaluations(
@@ -56,7 +56,7 @@
         ]
             m = Model()
             @variable(m, x)
-            y = PWA.pwlinear(
+            y = PWA.pwaffine(
                 m,
                 tuple(x),
                 FunctionEvaluations(
