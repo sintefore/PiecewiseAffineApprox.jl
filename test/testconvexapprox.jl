@@ -48,13 +48,23 @@
     pwa_outer = approx(
         FunctionEvaluations(Tuple.(x), z),
         Convex(),
-        Optimized(optimizer = optimizer, pen = :l1, planes = 5, strict = :outer),
+        Optimized(
+            optimizer = optimizer,
+            pen = :l1,
+            planes = 5,
+            strict = :outer,
+        ),
     )
-    
+
     pwa_inner = approx(
         FunctionEvaluations(Tuple.(x), z),
         Convex(),
-        Optimized(optimizer = optimizer, pen = :l1, planes = 5, strict = :inner),
+        Optimized(
+            optimizer = optimizer,
+            pen = :l1,
+            planes = 5,
+            strict = :inner,
+        ),
     )
 
     for i in eachindex(x)
