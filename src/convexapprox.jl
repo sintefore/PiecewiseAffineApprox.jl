@@ -220,9 +220,12 @@ function _linear_big_M(input::FunctionEvaluations{D}) where {D}
         # checking all segments not having another data point in the interior
         x = [p[1] for p in input.points]
         z = input.values
-        x₊ = [(x[i], z[i]) for i ∈ 1:length(x)]
+        x₊ = collect(zip(x, z))
 
-        δ = (maximum(x) - minimum(x)) / 1000
+        # Consider points that are closer than 1/100 of the average distance
+        # to be so close that they are not considered as a segment
+        δ = (maximum(x) - minimum(x)) / (100 * length(x))
+
         segments = collect(combinations(x₊, 2))
         for s in segments
             x1, z1 = s[1]
@@ -230,7 +233,9 @@ function _linear_big_M(input::FunctionEvaluations{D}) where {D}
             # Avoid points that are too close
             if abs(x1 - x2) > δ
                 # Check for datapoints in the interior
-                empty = (count(p -> p > min(x1, x2) + δ && p < max(x1, x2) - δ, x) == 0)
+                empty = (
+                    count(p -> p > min(x1, x2) + δ && p < max(x1, x2) - δ, x) == 0
+                )
                 if empty
                     a = (z2 - z1) / (x2 - x1)
                     b = z1 - a * x1
