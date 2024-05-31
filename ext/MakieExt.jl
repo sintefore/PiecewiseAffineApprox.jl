@@ -3,7 +3,7 @@ module MakieExt
 using Makie
 using PiecewiseAffineApprox
 
-function Makie.plot(x, z, pwa::PWLFunc{C,2}) where {C}
+function Makie.plot(x, z, pwa::PWAFunc{C,2}) where {C}
     xmin = minimum(x[1, :])
     xmax = maximum(x[1, :])
 
@@ -43,13 +43,13 @@ function Makie.plot(x, z, pwa::PWLFunc{C,2}) where {C}
     return display(fig)
 end
 
-function Makie.plot(input::FunctionEvaluations{2}, pwa::PWLFunc{C,2}) where {C}
+function Makie.plot(input::FunctionEvaluations{2}, pwa::PWAFunc{C,2}) where {C}
     x = [p[i] for i ∈ 1:2, p ∈ input.points]
     z = input.values
     return Makie.plot(x, z, pwa)
 end
 
-function Makie.plot(x, y, pwa::PWLFunc{C,1}) where {C}
+function Makie.plot(x, y, pwa::PWAFunc{C,1}) where {C}
     fig = Figure(size = (1000, 1000))
     ax = Axis(fig[1, 1])
 

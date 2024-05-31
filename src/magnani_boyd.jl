@@ -1,7 +1,7 @@
 
 # Approximation error using the value of the pwa function
 # in the given points. Support for multiple metrics (l1, l2, max).
-function _approx_error(X::Matrix, z::Vector, pwa::PWLFunc, penalty = :l1)
+function _approx_error(X::Matrix, z::Vector, pwa::PWAFunc, penalty = :l1)
     err = 0.0
     for (i, x̄) in enumerate(eachcol(X))
         v = evaluate(pwa, x̄)
@@ -106,7 +106,7 @@ function _refine_partition(X, z, 𝒫, lᵐᵃˣ, penalty, optimizer, strict)
     D = size(X, 1)
     pwa = nothing
     for it ∈ 1:lᵐᵃˣ
-        pwa = PWLFunc{Convex,D}()
+        pwa = PWAFunc{Convex,D}()
         for p in 𝒫
             if length(p) > 0
                 x̄ = X[:, p]
@@ -193,7 +193,7 @@ function _local_fit(X̄, z̄, penalty, optimizer, strict)
 end
 
 # The hyperplane being active at the point x for a convex pwa function 
-function _active(pwa::PWLFunc{Convex,D}, x) where {D}
+function _active(pwa::PWAFunc{Convex,D}, x) where {D}
     return argmax(collect(evaluate(p, x) for p ∈ pwa.planes))
 end
 

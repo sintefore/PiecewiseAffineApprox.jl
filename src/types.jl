@@ -68,7 +68,7 @@ evaluate(p::Plane, x, c = Convex) = dot(p.α, x) + p.β # Planes defined for con
 evaluate(p::Plane, x, c::Type{Concave}) = -evaluate(p, x, Convex) # Flip for concave functions 
 
 """
-    PWLFunc{C<:Curvature,D}
+    PWAFunc{C<:Curvature,D}
 
 A piecewise linear function that can be either convex and concave
 represented by a set of (hyper)planes.
@@ -77,34 +77,34 @@ If the curvature of the function is convex, the piecewise linear Function
 is defined as the pointwise maximum over the planes. A concave pwa function
 is handled by storing its negative and negating when evaluting.
 """
-struct PWLFunc{C<:Curvature,D}
+struct PWAFunc{C<:Curvature,D}
     planes::Vector{Plane{D}}
 end
-function PWLFunc(planes::Vector{Plane{D}}, C::Curvature) where {D}
-    return PWLFunc{typeof(C),D}(planes)
+function PWAFunc(planes::Vector{Plane{D}}, C::Curvature) where {D}
+    return PWAFunc{typeof(C),D}(planes)
 end
-PWLFunc{C,D}() where {C,D} = PWLFunc{C,D}(Vector{Plane{D}}())
+PWAFunc{C,D}() where {C,D} = PWAFunc{C,D}(Vector{Plane{D}}())
 
 """
-    evaluate(pwa::PWLFunc{Convex,D}, x) where {D}
+    evaluate(pwa::PWAFunc{Convex,D}, x) where {D}
 
 Evaluate the convex piecewise linear function at the point x.
 """
-function evaluate(pwa::PWLFunc{Convex,D}, x) where {D}
+function evaluate(pwa::PWAFunc{Convex,D}, x) where {D}
     return maximum(dot(p.α, x) + p.β for p ∈ pwa.planes)
 end
 
 """
-    evaluate(pwa::PWLFunc{Concave,D}, x) where {D}
+    evaluate(pwa::PWAFunc{Concave,D}, x) where {D}
 
 Evaluate the concave piecewise linear function at the point x.
 """
-function evaluate(pwa::PWLFunc{Concave,D}, x) where {D}
-    return -evaluate(PWLFunc{Convex,D}(pwa.planes), x)
+function evaluate(pwa::PWAFunc{Concave,D}, x) where {D}
+    return -evaluate(PWAFunc{Convex,D}(pwa.planes), x)
 end
 
 # The number of planes defining the piecewise linar function
 _planes(pwa) = length(pwa.planes)
 
-_addplane!(pwa::PWLFunc{C,D}, p::Plane{D}) where {C,D} = push!(pwa.planes, p)
-_addplane!(pwa::PWLFunc, α, β) = push!(pwa.planes, Plane(α, β))
+_addplane!(pwa::PWAFunc{C,D}, p::Plane{D}) where {C,D} = push!(pwa.planes, p)
+_addplane!(pwa::PWAFunc, α, β) = push!(pwa.planes, Plane(α, β))

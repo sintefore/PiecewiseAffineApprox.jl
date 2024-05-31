@@ -18,7 +18,7 @@ export Convex, Concave
 export Optimized, Heuristic, Interpol
 export Plane
 export FunctionEvaluations
-export PWLFunc
+export PWAFunc
 export approx
 export pwaffine
 export evaluate
