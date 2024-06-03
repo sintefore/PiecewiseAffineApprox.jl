@@ -12,6 +12,7 @@ include("types.jl")
 include("convexapprox.jl")
 include("linopt.jl")
 include("magnani_boyd.jl")
+include("kazda_li.jl")
 include("interpolation.jl")
 
 export Convex, Concave
