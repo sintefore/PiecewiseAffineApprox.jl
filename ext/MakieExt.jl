@@ -40,7 +40,7 @@ function Makie.plot(x, z, pwa::PWAFunc{C,2}) where {C}
         scatter!(ax3, x̄[1, :], x̄[2, :], marker = :xcross)
     end
 
-    return display(fig)
+    return fig
 end
 
 function Makie.plot(input::FunctionEvaluations{2}, pwa::PWAFunc{C,2}) where {C}
@@ -61,7 +61,7 @@ function Makie.plot(x, y, pwa::PWAFunc{C,1}) where {C}
         lines!(ax, x̄, f)
     end
 
-    return display(fig)
+    return fig
 end
 
 end

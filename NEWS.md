@@ -1,4 +1,4 @@
-PiecewiseLinearApprox release notes
+PiecewiseAffineApprox release notes
 ===================================
 
 Version 0.5.0 (2024-05-31)
