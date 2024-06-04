@@ -105,12 +105,19 @@ end
 # Add an extra plane to the pwa by identifying the point lying
 # further away and use the corresponding plane in the full order pwa
 # to update the allocation of points to planes.
-function _increase_order(f::FunctionEvaluations, pwa_red, pwa)
+function _increase_order(f::FunctionEvaluations, pwa_red, pwa, used)
     s = [z - evaluate(pwa_red, x) for (x, z) in point_vals(f)]
-    i = argmax(s)
-    push!(pwa_red.planes, pwa.planes[i])
+    imax = 0
+    smax = 0
+    for i in 1 : length(f.points)
+        if s[i] > smax && !(i in used)
+            imax = i
+            smax = s[i]
+        end
+    end
+    push!(pwa_red.planes, pwa.planes[imax])
     U = _update_allocation(f, pwa_red)
-    return U
+    return U, vcat(used, imax)
 end
 
 # Calucate the approximation error between input data points and the piecewise
@@ -154,11 +161,13 @@ function _progressive_pwa(
 
     # Increase the number of planes until the required tolerance is met
     pwa_red = _allocation_improvement(f, p, U, optimizer)
-    while _approx_error(f, pwa_red, penalty) > δᵗᵒˡ
-        U = _increase_order(f, pwa_red, pwa)
+    used = []
+    while _approx_error(f, pwa_red, penalty) > δᵗᵒˡ && p < length(f.points)
+        U, used = _increase_order(f, pwa_red, pwa, used)
         p += 1
         pwa_red = _allocation_improvement(f, p, U, optimizer)
     end
+    @info "Fitting finished, error = $(round(_approx_error(f, pwa_red, penalty); digits = 3)), p = $p"
     return pwa_red
 end
 
