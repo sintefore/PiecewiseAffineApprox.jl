@@ -111,11 +111,11 @@ function approx(
         @constraint(m, 𝑧̂[p] <= maximum(z) * 1.1)
     end
 
-    if options.strict == :above
+    if options.strict == :outer
         for p ∈ 𝒫, k ∈ 𝒦
             @constraint(m, zᵖ[p] ≥ sum(a[j, k] * p[j] for j ∈ ℐₚ) + b[k])
         end
-    elseif options.strict == :below
+    elseif options.strict == :inner
         for p ∈ 𝒫, k ∈ 𝒦
             @constraint(m, zᵖ[p] ≤ sum(a[j, k] * p[j] for j ∈ ℐₚ) + b[k])
         end
