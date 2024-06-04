@@ -3,7 +3,7 @@ module PlotsExt
 using PiecewiseAffineApprox
 using Plots
 
-function Plots.plot!(p::Plots.Plot, pwa::PWLFunc{C,1}, xlims) where {C}
+function Plots.plot!(p::Plots.Plot, pwa::PWAFunc{C,1}, xlims) where {C}
     x̄ = LinRange(xlims[1], xlims[2], 100)
 
     for plane ∈ pwa.planes
@@ -16,7 +16,7 @@ function Plots.plot!(p::Plots.Plot, pwa::PWLFunc{C,1}, xlims) where {C}
     return p
 end
 
-function Plots.plot(pwa::PWLFunc{C,1}, xlims) where {C}
+function Plots.plot(pwa::PWAFunc{C,1}, xlims) where {C}
     return plot!(Plots.plot(), pwa, xlims)
 end
 

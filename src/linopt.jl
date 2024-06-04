@@ -19,12 +19,12 @@ function constr(::Type{Concave}, m, z, p, x)
 end
 
 """
-    pwaffine(m::JuMP.Model, x::Tuple, pwa::PWLFunc{C,D}; z=nothing, kwargs...) where {C,D}
+    pwaffine(m::JuMP.Model, x::Tuple, pwa::PWAFunc{C,D}; z=nothing, kwargs...) where {C,D}
 
 Add constraints to JuMP-model `m` for JuMP-variable `z` as a  
 piecewise linear function/approximation `pwa` of JuMP-variables `x`    
 """
-function pwaffine(m::JuMP.Model, x, pwa::PWLFunc{C,D}; z = nothing) where {C,D}
+function pwaffine(m::JuMP.Model, x, pwa::PWAFunc{C,D}; z = nothing) where {C,D}
     initPWL!(m)
     counter = m.ext[:PWL].counter + 1
     m.ext[:PWL].counter = counter
