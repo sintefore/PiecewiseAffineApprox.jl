@@ -9,7 +9,11 @@
         pwa_red = approx(
             f,
             Convex(),
-            ProgressiveFitting(optimizer = optimizer, tolerance = tol, pen = pen),
+            ProgressiveFitting(
+                optimizer = optimizer,
+                tolerance = tol,
+                pen = pen,
+            ),
         )
         for (x, z) in PWA.point_vals(f)
             pv = evaluate(pwa_red, x)
@@ -26,17 +30,20 @@
         ProgressiveFitting(optimizer = optimizer, tolerance = 0.2, pen = :max),
     )
     @test length(pwa_red.planes) == 9
-    @test evaluate(pwa_red, (0,0)) ≈ 0.0082 atol=0.0001
+    @test evaluate(pwa_red, (0, 0)) ≈ 0.0082 atol = 0.0001
 
     @testset "Nonconvex" begin
-        h(x) = sin(5*x[1]) * (x[1]^2 + x[2]^2)
+        h(x) = sin(5 * x[1]) * (x[1]^2 + x[2]^2)
         vals = PiecewiseAffineApprox._sample_uniform(h, [(-1, 1), (-1, 1)], 10)
 
         @test_throws ErrorException approx(
             vals,
             Convex(),
-            ProgressiveFitting(optimizer = optimizer, tolerance = 2.0, pen=:l2),
+            ProgressiveFitting(
+                optimizer = optimizer,
+                tolerance = 2.0,
+                pen = :l2,
+            ),
         )
     end
-
 end

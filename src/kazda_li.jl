@@ -109,7 +109,7 @@ function _increase_order(f::FunctionEvaluations, pwa_red, pwa, used)
     s = [z - evaluate(pwa_red, x) for (x, z) in point_vals(f)]
     imax = 0
     smax = 0
-    for i in 1 : length(f.points)
+    for i = 1:length(f.points)
         if s[i] > smax && !(i in used)
             imax = i
             smax = s[i]
