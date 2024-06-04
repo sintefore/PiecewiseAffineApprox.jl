@@ -1,6 +1,5 @@
 
 function _full_order_pwa(f::FunctionEvaluations{D}, optimizer) where {D}
-
     K = length(f.points)
     m = Model(optimizer)
 
@@ -8,25 +7,32 @@ function _full_order_pwa(f::FunctionEvaluations{D}, optimizer) where {D}
     @variable(m, b[1:K])
 
     for (l, (x, z)) in enumerate(point_vals(f))
-        for k in 1:K
-            @constraint(m, z ≥ sum(a[k, i] * x[i] for i in 1:D) + b[k])
+        for k = 1:K
+            @constraint(m, z ≥ sum(a[k, i] * x[i] for i = 1:D) + b[k])
         end
-        @constraint(m, z ≤ sum(a[l, i] * x[i] for i in 1:D) + b[l])
+        @constraint(m, z ≤ sum(a[l, i] * x[i] for i = 1:D) + b[l])
     end
     optimize!(m)
 
     if !is_solved_and_feasible(m)
-        error("No full order convex approximation exists. Function evaluations should be " *
-              "from a convex function.")
+        error(
+            "No full order convex approximation exists. Function evaluations should be " *
+            "from a convex function.",
+        )
     end
 
     aᶠ = value.(a)
     bᶠ = value.(b)
-    pwa = PWAFunc([Plane(aᶠ[k,:], bᶠ[k]) for k in 1:K], Convex())
+    pwa = PWAFunc([Plane(aᶠ[k, :], bᶠ[k]) for k = 1:K], Convex())
     return pwa
 end
 
-function _reduced_order_pwa(f::FunctionEvaluations{D}, p, U, optimizer) where {D}
+function _reduced_order_pwa(
+    f::FunctionEvaluations{D},
+    p,
+    U,
+    optimizer,
+) where {D}
     K = length(f.points)
     m = Model(optimizer)
 
@@ -35,16 +41,20 @@ function _reduced_order_pwa(f::FunctionEvaluations{D}, p, U, optimizer) where {D
     @variable(m, s[1:K] ≥ 0)
 
     for (x, z) in point_vals(f)
-        for k in 1:p
-            @constraint(m, z ≥ sum(ared[k, i] * x[i] for i in 1:D) + bred[k])
+        for k = 1:p
+            @constraint(m, z ≥ sum(ared[k, i] * x[i] for i = 1:D) + bred[k])
         end
     end
 
-    for (l,k) in U
-        @constraint(m, f.values[l] ≤ sum(ared[k, i] * f.points[l][i] for i in 1:D) + bred[k] + s[k])
+    for (l, k) in U
+        @constraint(
+            m,
+            f.values[l] ≤
+            sum(ared[k, i] * f.points[l][i] for i = 1:D) + bred[k] + s[k]
+        )
     end
 
-    @objective(m, Min, sum(s[k] for k in 1:K))
+    @objective(m, Min, sum(s[k] for k = 1:K))
 
     optimize!(m)
 
@@ -53,7 +63,7 @@ function _reduced_order_pwa(f::FunctionEvaluations{D}, p, U, optimizer) where {D
     aʳ = value.(ared)
     bʳ = value.(bred)
 
-    pwa_red = PWAFunc([Plane(aʳ[k,:], bʳ[k]) for k in 1:p], Convex())
+    pwa_red = PWAFunc([Plane(aʳ[k, :], bʳ[k]) for k = 1:p], Convex())
 
     return obj, pwa_red
 end
@@ -111,7 +121,12 @@ function _approx_error(f::FunctionEvaluations, pwa::PWAFunc, penalty = :l1)
     return err
 end
 
-function _progressive_pwa(f::FunctionEvaluations, optimizer, δᵗᵒˡ = 1e-3, penalty = :max)
+function _progressive_pwa(
+    f::FunctionEvaluations,
+    optimizer,
+    δᵗᵒˡ = 1e-3,
+    penalty = :max,
+)
 
     # Check if the function evaluations is from a convex function
     # by solving a full order approximation problem
@@ -119,7 +134,7 @@ function _progressive_pwa(f::FunctionEvaluations, optimizer, δᵗᵒˡ = 1e-3, 
 
     # Start with an approximation with one plane and allocate all points to that segment
     p = 1
-    U = [(l, 1) for l in 1:length(f.points)]
+    U = [(l, 1) for l = 1:length(f.points)]
 
     # Increase the number of planes until the required tolerance is met
     pwa_red = _allocation_improvement(f, p, U, optimizer)
@@ -132,5 +147,10 @@ function _progressive_pwa(f::FunctionEvaluations, optimizer, δᵗᵒˡ = 1e-3, 
 end
 
 function _progressive_pwa(f::FunctionEvaluations, options::ProgressiveFitting)
-    return _progressive_pwa(f, options.optimizer, options.tolerance, options.pen)
+    return _progressive_pwa(
+        f,
+        options.optimizer,
+        options.tolerance,
+        options.pen,
+    )
 end
