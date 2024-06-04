@@ -1,11 +1,26 @@
+#=
+This file holds an implementation of a progressive fitting heuristic
+inspired by the algorithm in the paper "A linear programming approach to
+difference-of-convex piecewise linear approximation" by Kazda and Li (2024).
 
+The current implementation requires that the function evaluations are
+samples of a convex function, i.e. it is not robust with regard to noisy
+and non-convex data.
+
+The main algorithm consists of the following steps:
+1. While error < tolerance
+    a. Introduce an extra plane in the pwa approximation
+    b. Find local optimum for allocating points to plane (using linear programming)
+=#
+
+# Create a full order convex approximation for the given data points,
+# i.e. using a separate plane for each data point.
 function _full_order_pwa(f::FunctionEvaluations{D}, optimizer) where {D}
     K = length(f.points)
-    m = Model(optimizer)
 
+    m = Model(optimizer)
     @variable(m, a[1:K, 1:D])
     @variable(m, b[1:K])
-
     for (l, (x, z)) in enumerate(point_vals(f))
         for k = 1:K
             @constraint(m, z ≥ sum(a[k, i] * x[i] for i = 1:D) + b[k])
@@ -27,42 +42,36 @@ function _full_order_pwa(f::FunctionEvaluations{D}, optimizer) where {D}
     return pwa
 end
 
+# Create a pwa approximation using `p` planes where `U` provides a mapping from
+# data points to the indices of planes. The planes are required to lie below
+# all data points. Points are allowed to lie above their associated plane with
+# a penalty that is minimized in the optimization.
 function _reduced_order_pwa(
     f::FunctionEvaluations{D},
-    p,
+    p::Int,
     U,
     optimizer,
 ) where {D}
     K = length(f.points)
-    m = Model(optimizer)
 
+    m = Model(optimizer)
     @variable(m, ared[1:p, 1:D])
     @variable(m, bred[1:p])
     @variable(m, s[1:K] ≥ 0)
-
     for (x, z) in point_vals(f)
         for k = 1:p
             @constraint(m, z ≥ sum(ared[k, i] * x[i] for i = 1:D) + bred[k])
         end
     end
-
-    for (l, k) in U
-        @constraint(
-            m,
-            f.values[l] ≤
-            sum(ared[k, i] * f.points[l][i] for i = 1:D) + bred[k] + s[k]
-        )
+    for ((x, z), k) in U
+        @constraint(m, z ≤ sum(ared[k, i] * x[i] for i = 1:D) + bred[k] + s[k])
     end
-
     @objective(m, Min, sum(s[k] for k = 1:K))
-
     optimize!(m)
-
     obj = objective_value(m)
 
     aʳ = value.(ared)
     bʳ = value.(bred)
-
     pwa_red = PWAFunc([Plane(aʳ[k, :], bʳ[k]) for k = 1:p], Convex())
 
     return obj, pwa_red
@@ -73,11 +82,14 @@ function _active_plane(pwl::PWAFunc{Convex,D}, x) where {D}
     return argmax(collect(evaluate(p, x) for p ∈ pwl.planes))
 end
 
+# Map data points to the active plane for the piecewise approximation
 function _update_allocation(f::FunctionEvaluations, pwa_red)
-    U = [(l, _active_plane(pwa_red, x)) for (l, x) in enumerate(f.points)]
+    U = [((x, z), _active_plane(pwa_red, x)) for (x, z) in point_vals(f)]
     return U
 end
 
+# Do a local improvement of point allocation to planes until error
+# is not further reduced
 function _allocation_improvement(f::FunctionEvaluations, p, Uᴵ, optimizer)
     U = Uᴵ
     prev_obj = Inf64
@@ -90,6 +102,9 @@ function _allocation_improvement(f::FunctionEvaluations, p, Uᴵ, optimizer)
     return pwa_red
 end
 
+# Add an extra plane to the pwa by identifying the point lying
+# further away and use the corresponding plane in the full order pwa
+# to update the allocation of points to planes.
 function _increase_order(f::FunctionEvaluations, pwa_red, pwa)
     s = [z - evaluate(pwa_red, x) for (x, z) in point_vals(f)]
     i = argmax(s)
@@ -99,7 +114,7 @@ function _increase_order(f::FunctionEvaluations, pwa_red, pwa)
 end
 
 # Calucate the approximation error between input data points and the piecewise
-# affine approximation
+# affine approximation in different metrics
 function _approx_error(f::FunctionEvaluations, pwa::PWAFunc, penalty = :l1)
     err = 0.0
     for (x, z) in point_vals(f)
@@ -121,6 +136,7 @@ function _approx_error(f::FunctionEvaluations, pwa::PWAFunc, penalty = :l1)
     return err
 end
 
+# Main algorithm
 function _progressive_pwa(
     f::FunctionEvaluations,
     optimizer,
@@ -128,13 +144,13 @@ function _progressive_pwa(
     penalty = :max,
 )
 
-    # Check if the function evaluations is from a convex function
-    # by solving a full order approximation problem
+    # Find the full order convex approximation, will error if the points are
+    # not convex
     pwa = _full_order_pwa(f, optimizer)
 
     # Start with an approximation with one plane and allocate all points to that segment
     p = 1
-    U = [(l, 1) for l = 1:length(f.points)]
+    U = [((x, z), 1) for (x, z) in point_vals(f)]
 
     # Increase the number of planes until the required tolerance is met
     pwa_red = _allocation_improvement(f, p, U, optimizer)
@@ -146,6 +162,7 @@ function _progressive_pwa(
     return pwa_red
 end
 
+# Map algorithm structure to correct parameters
 function _progressive_pwa(f::FunctionEvaluations, options::ProgressiveFitting)
     return _progressive_pwa(
         f,
