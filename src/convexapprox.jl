@@ -35,7 +35,7 @@ function approx(
 end
 
 """
-    approx(input::FunctionEvaluations{D}, c::Convex, a::Heuristic; kwargs...) where D
+    approx(input::FunctionEvaluations, c::Convex, a::Heuristic)
 
 Approximate using a heuristic that works for general dimensions.
 
@@ -51,6 +51,23 @@ function approx(
     x = [p[i] for i ∈ 1:D, p ∈ input.points]
     z = input.values
     return _convex_linearization_mb(x, z, a)
+end
+
+"""
+    approx(input::FunctionEvaluations, c::Convex, a::ProgressiveFitting)
+
+Approximate using a progressive fitting heuristic that adds planes until
+a specified error tolerance is met.
+
+This algorithm requires that the data points provided are samples from
+a convex function.
+"""
+function approx(
+    input::FunctionEvaluations{D},
+    c::Convex,
+    a::ProgressiveFitting;
+) where {D}
+    return _progressive_pwa(input, a)
 end
 
 # Optimal convex approximation using mixed integer optimization

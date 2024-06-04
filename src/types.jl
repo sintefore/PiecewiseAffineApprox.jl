@@ -8,7 +8,7 @@ abstract type Algorithm end
     Heuristic
 Compute affine approximation using the method proposed by Mangani & Boyd.
 
-Note that this algoritm computes multiple approximations and selects the best. 
+Note that this algoritm computes multiple approximations and selects the best.
 If julia is started with multiple threads, these are computed in parallel. Consider
  how many threads will be beneficial, particularly when using a commercial solver where
  the license may restrict the number of simultanous solver instances.
@@ -42,6 +42,18 @@ solving the optimization problem.
 end
 
 """
+    ProgressiveFitting
+
+Compute affine approximation based on a variation of the method of Kazda and Li (2024)
+specialized to convex approximations.
+"""
+@kwdef struct ProgressiveFitting{T} <: Algorithm
+    tolerance::Float64 = 0.01
+    pen::Symbol = defaultpenalty()
+    optimizer::T
+end
+
+"""
     FunctionEvaluations{D}
 
 A structure holding a set of points and the associated
@@ -52,10 +64,12 @@ struct FunctionEvaluations{D}
     values::Vector{<:Number}
 end
 
+point_vals(f::FunctionEvaluations) = collect(zip(f.points, f.values))
+
 """
     Plane{D}
 
-A D-dimensional hyperplane (αᵀx = β).  
+A D-dimensional hyperplane (αᵀx = β).
 """
 struct Plane{D}
     α::NTuple{D,Number}
@@ -65,7 +79,7 @@ Plane(a::NTuple{N}, b) where {N} = Plane{N}(a, b)
 Plane(a::Vector, b) = Plane(Tuple(a), b)
 Plane(a::Number, b::Number) = Plane{1}(Tuple(a), b)
 evaluate(p::Plane, x, c = Convex) = dot(p.α, x) + p.β # Planes defined for convex functions
-evaluate(p::Plane, x, c::Type{Concave}) = -evaluate(p, x, Convex) # Flip for concave functions 
+evaluate(p::Plane, x, c::Type{Concave}) = -evaluate(p, x, Convex) # Flip for concave functions
 
 """
     PWLFunc{C<:Curvature,D}

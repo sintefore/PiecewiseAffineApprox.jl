@@ -17,6 +17,7 @@ include("interpolation.jl")
 
 export Convex, Concave
 export Optimized, Heuristic, Interpol
+export ProgressiveFitting
 export Plane
 export FunctionEvaluations
 export PWLFunc
