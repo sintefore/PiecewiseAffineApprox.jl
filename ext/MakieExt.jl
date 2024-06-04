@@ -50,7 +50,7 @@ function Makie.plot(input::FunctionEvaluations{2}, pwa::PWAFunc{C,2}) where {C}
     return Makie.plot(x, z, pwa)
 end
 
-function Makie.plot(x, y, pwa::PWLFunc{C,1}) where {C}
+function Makie.plot(x, y, pwa::PWAFunc{C,1}) where {C}
     fig = Figure(size = (600, 400))
     ax = Axis(fig[1, 1])
 
