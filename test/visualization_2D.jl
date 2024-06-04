@@ -18,24 +18,24 @@ planes = 4
 dimensions = 2
 pen = :l2
 
-pwl1 = convex_linearization(𝒫, z, Opt; planes, dimensions, strict = :none, pen)
-pwl2 = convex_linearization(X, z, Opt; planes, dimensions, strict = :above, pen)
-pwl3 = concave_linearization(
+pwa1 = convex_linearization(𝒫, z, Opt; planes, dimensions, strict = :none, pen)
+pwa2 = convex_linearization(X, z, Opt; planes, dimensions, strict = :outer, pen)
+pwa3 = concave_linearization(
     X,
     z_concave,
     Opt;
     planes,
     dimensions,
-    strict = :above,
+    strict = :outer,
     pen,
 )
 
 ϵ = 1e-06
-diff_1 = abs(PWA.evaluate(pwl1, (0.5, 0.5)) - f(0.5, 0.5)) / (f(0.5, 0.5) + ϵ)
-diff_2 = abs(PWA.evaluate(pwl2, (0.5, 0.5)) - f(0.5, 0.5)) / (f(0.5, 0.5) + ϵ)
+diff_1 = abs(PWA.evaluate(pwa1, (0.5, 0.5)) - f(0.5, 0.5)) / (f(0.5, 0.5) + ϵ)
+diff_2 = abs(PWA.evaluate(pwa2, (0.5, 0.5)) - f(0.5, 0.5)) / (f(0.5, 0.5) + ϵ)
 
-sc1 = plotconvND(pwl1, X, z)
-sc2 = plotconvND(pwl2, X, z)
+sc1 = plotconvND(pwa1, X, z)
+sc2 = plotconvND(pwa2, X, z)
 
 display(sc1)
 display(sc2)

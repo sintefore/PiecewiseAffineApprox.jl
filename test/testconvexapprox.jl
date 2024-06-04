@@ -2,25 +2,25 @@
     x = collect(range(-1, 1; length = 10))
     z = x .^ 2
 
-    pwl1 = approx(
+    pwa1 = approx(
         FunctionEvaluations(Tuple.(x), z),
         Convex(),
         Optimized(optimizer = optimizer, pen = :l1, planes = 5),
     )
-    @test length(pwl1.planes) == 5
-    @test issorted((p.α for p ∈ pwl1.planes))
-    @test isapprox(PWA.evaluate(pwl1, 0.4), 0.16, atol = 0.035)
+    @test length(pwa1.planes) == 5
+    @test issorted((p.α for p ∈ pwa1.planes))
+    @test isapprox(PWA.evaluate(pwa1, 0.4), 0.16, atol = 0.035)
 
-    pwl2 = approx(
+    pwa2 = approx(
         x -> x[1]^2,
         [(-1, 1)],
         Convex(),
         Optimized(optimizer = optimizer, pen = :l1, planes = 5),
     )
-    @test length(pwl2.planes) == 5
-    @test isapprox(PWA.evaluate(pwl2, 0.4), 0.1733, atol = 0.015)
+    @test length(pwa2.planes) == 5
+    @test isapprox(PWA.evaluate(pwa2, 0.4), 0.1733, atol = 0.015)
 
-    pwl3 = approx(
+    pwa3 = approx(
         x -> x[1]^2,
         [(-1, 1)],
         Convex(),
@@ -31,18 +31,48 @@
             strict = :strict,
         ),
     )
-    @test length(pwl2.planes) == 5
-    @test isapprox(PWA.evaluate(pwl3, 0.4), 0.16, atol = 0.03)
+    @test length(pwa2.planes) == 5
+    @test isapprox(PWA.evaluate(pwa3, 0.4), 0.16, atol = 0.03)
 
-    # pwl4 = convex_linearization(x -> x^2, -1, 1, optimizer; planes=5, method=:ipol)
-    pwl4 = approx(
+    # pwa4 = convex_linearization(x -> x^2, -1, 1, optimizer; planes=5, method=:ipol)
+    pwa4 = approx(
         x -> x[1]^2,
         [(-1, 1)],
         Convex(),
         Interpol(optimizer = optimizer, planes = 10),
     )
 
-    @test isapprox(PWA.evaluate(pwl4, 0.4), 0.16, atol = 0.015)
+    @test isapprox(PWA.evaluate(pwa4, 0.4), 0.16, atol = 0.015)
+
+    # Test correctness of strictness for :outer and :inner
+    pwa_outer = approx(
+        FunctionEvaluations(Tuple.(x), z),
+        Convex(),
+        Optimized(
+            optimizer = optimizer,
+            pen = :l1,
+            planes = 5,
+            strict = :outer,
+        ),
+    )
+
+    pwa_inner = approx(
+        FunctionEvaluations(Tuple.(x), z),
+        Convex(),
+        Optimized(
+            optimizer = optimizer,
+            pen = :l1,
+            planes = 5,
+            strict = :inner,
+        ),
+    )
+
+    for i in eachindex(x)
+        # Convex, :outer should be below original points
+        @test PWA.evaluate(pwa_outer, x[i]) ≤ z[i] + 1e-6
+        # Convex, :inner should be above original points
+        @test PWA.evaluate(pwa_inner, x[i]) ≥ z[i] - 1e-6
+    end
 
     #Check approximation for flat function with releatively high values:
     I = 10
@@ -50,10 +80,10 @@
     x = [Tuple(xmat[:, i]) for i ∈ 1:size(xmat, 2)]
     z = [10_000 + 0.001 * p[1]^2 + 0.001 * p[2]^2 for p ∈ x]
     vals = FunctionEvaluations(x, z)
-    pwl = approx(
+    pwa = approx(
         vals,
         Convex(),
         Optimized(optimizer = optimizer, planes = 4, pen = :l1),
     )
-    @test PWA.evaluate(pwl, (0, 0)) ≈ 10_000.0 atol = 0.1
+    @test PWA.evaluate(pwa, (0, 0)) ≈ 10_000.0 atol = 0.1
 end

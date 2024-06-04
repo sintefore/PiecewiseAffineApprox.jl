@@ -12,7 +12,7 @@ optimizer = HiGHS.Optimizer
 
 f(x) = x[1]^2 + x[2]^2
 vals = PWA._sample_uniform(f, [(-1, 1), (-1, 1)], 10)
-pwl = approx(
+pwa = approx(
     vals,
     Convex(),
     Heuristic(
@@ -24,14 +24,14 @@ pwl = approx(
 struct Instance
     size::Any
     rnd::Any
-    pwl::Any
+    pwa::Any
 end
 
-function Instance(size, pwl)
+function Instance(size, pwa)
     Random.seed!(42)
     rnd = rand(Float64, size)
 
-    return Instance(size, rnd, pwl)
+    return Instance(size, rnd, pwa)
 end
 
 function linear_model(instance)
@@ -41,7 +41,7 @@ function linear_model(instance)
     @variable(model, y[I])
     z = []
     for i in I
-        zi = PWA.pwlinear(model, [x[i], y[i]], instance.pwl)
+        zi = PWA.pwaffine(model, [x[i], y[i]], instance.pwa)
         @constraint(model, zi >= x[i] + y[i] + 2 + instance.rnd[i])
         push!(z, zi)
     end
@@ -87,7 +87,7 @@ pajarito = optimizer_with_attributes(
 results = NamedTuple[]
 
 for sz in StepRange(5, 5, 20)
-    instance = Instance(sz, pwl)
+    instance = Instance(sz, pwa)
 
     model_lin = linear_model(instance)
     model_nl = nonlin_model(instance)
@@ -99,7 +99,7 @@ for sz in StepRange(5, 5, 20)
         results,
         (
             size = sz,
-            formulation = "pwl",
+            formulation = "pwa",
             solver = "highs",
             time = time_opt.time,
             obj_val = obj_val,

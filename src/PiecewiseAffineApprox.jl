@@ -20,9 +20,9 @@ export Optimized, Heuristic, Interpol
 export ProgressiveFitting
 export Plane
 export FunctionEvaluations
-export PWLFunc
+export PWAFunc
 export approx
-export pwlinear
+export pwaffine
 export evaluate
 
 end # module

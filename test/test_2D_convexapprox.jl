@@ -13,32 +13,32 @@
         return collect(Tuple(x'[:, i]) for i ∈ 1:size(x', 2))
     end
 
-    pwl1 = approx(
+    pwa1 = approx(
         FunctionEvaluations(mat2tuples(X), z),
         Convex(),
         Optimized(
             optimizer = optimizer,
             planes = np,
-            strict = :above,
+            strict = :outer,
             pen = :l1,
         ),
     )
-    pwl2 = approx(
+    pwa2 = approx(
         FunctionEvaluations(mat2tuples(X), z_concave),
         Concave(),
         Optimized(
             optimizer = optimizer,
             planes = np,
-            strict = :above,
+            strict = :outer,
             pen = :l1,
         ),
     )
 
-    # @test length(pwl1.a) == np
-    @test isapprox(PWA.evaluate(pwl1, (0.5, 0.5)), 0.5, atol = 0.1)
+    # @test length(pwa1.a) == np
+    @test isapprox(PWA.evaluate(pwa1, (0.5, 0.5)), 0.5, atol = 0.1)
     @test isapprox(
-        PWA.evaluate(pwl1, (-0.3, 0.4)),
-        -PWA.evaluate(pwl2, (-0.3, 0.4)),
+        PWA.evaluate(pwa1, (-0.3, 0.4)),
+        -PWA.evaluate(pwa2, (-0.3, 0.4)),
         atol = 0.01,
     )
 
@@ -50,7 +50,7 @@
 
     tuple_var = (xvar, yvar)
 
-    y = PWA.pwlinear(
+    y = PWA.pwaffine(
         m,
         tuple_var,
         approx(
@@ -59,7 +59,7 @@
             Optimized(
                 optimizer = optimizer,
                 planes = np,
-                strict = :above,
+                strict = :outer,
                 pen = :l1,
             ),
         );
@@ -85,7 +85,7 @@
 
     tuple_var_conc = (xvar_conc, yvar_conc)
 
-    y_concave = PWA.pwlinear(
+    y_concave = PWA.pwaffine(
         m,
         tuple_var_conc,
         FunctionEvaluations(mat2tuples(X), z_concave),
@@ -93,7 +93,7 @@
         Optimized(
             optimizer = optimizer,
             planes = np,
-            strict = :above,
+            strict = :outer,
             pen = :l1,
         );
         z = f_conc,
