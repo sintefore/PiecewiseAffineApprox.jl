@@ -18,9 +18,9 @@ export Convex, Concave
 export Optimized, Heuristic, Interpol
 export Plane
 export FunctionEvaluations
-export PWLFunc
+export PWAFunc
 export approx
-export pwlinear
+export pwaffine
 export evaluate
 
 end # module

@@ -1,6 +1,17 @@
 PiecewiseLinearApprox release notes
 ===================================
 
+Version 0.5.0 (2024-05-31)
+--------------------------
+- Using affine rather than linear in naming
+- Improve BigM calculation
+- Pass arguments with Algorithm structs in favor of kwargs
+- Add MIT license
+
+Version 0.4.0 (2024-01-05)
+--------------------------
+- Rename package to PiecewiseAffineApprox to avoid name collision in General registry
+
 Version 0.3.4 (2022-04-07)
 --------------------------
 - Fix type of pwlinear parameter for JuMP-variables

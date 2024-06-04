@@ -5,14 +5,14 @@ defaulttimelimit() = 60
 """
     approx(input::FunctionEvaluations{D}, c::Curvature, a::Algorithm)
 
-Return PWLFunc{Convex,D} or PWLFunc{Concave,D} depending on `c`, approximating the `input` points in `D` dimensions
+Return PWAFunc{Convex,D} or PWAFunc{Concave,D} depending on `c`, approximating the `input` points in `D` dimensions
 """
 function approx(input, c::Concave, a::Algorithm)
     cv = approx(FunctionEvaluations(input.points, -input.values), Convex(), a;)
-    return PWLFunc{Concave,dims(cv)}(cv.planes)
+    return PWAFunc{Concave,dims(cv)}(cv.planes)
 end
 
-dims(pwl::PWLFunc{C,D}) where {C,D} = D
+dims(pwa::PWAFunc{C,D}) where {C,D} = D
 
 # Using dispatch for specializing on dimensions. If performance were a concern,
 # maybe just do branching and call specialized function directly
@@ -144,7 +144,7 @@ function approx(
     aᴼᵖᵗ = value.(a)
     bᴼᵖᵗ = value.(b)
 
-    return PWLFunc{Convex,D}([Plane(Tuple(aᴼᵖᵗ.data[:, k]), bᴼᵖᵗ[k]) for k ∈ 𝒦])
+    return PWAFunc{Convex,D}([Plane(Tuple(aᴼᵖᵗ.data[:, k]), bᴼᵖᵗ[k]) for k ∈ 𝒦])
 end
 
 # Sample the function on a uniform grid within the given bounding box using nsamples in each dimension

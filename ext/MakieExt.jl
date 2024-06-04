@@ -3,7 +3,7 @@ module MakieExt
 using Makie
 using PiecewiseAffineApprox
 
-function Makie.plot(x, z, pwl::PWLFunc{C,2}) where {C}
+function Makie.plot(x, z, pwa::PWAFunc{C,2}) where {C}
     xmin = minimum(x[1, :])
     xmax = maximum(x[1, :])
 
@@ -18,23 +18,23 @@ function Makie.plot(x, z, pwl::PWLFunc{C,2}) where {C}
     ax3 = Axis(fig[2, 3])
 
     scatter!(ax1, x[1, :], x[2, :], z, color = :red, markersize = 8)
-    for p ∈ pwl.planes
+    for p ∈ pwa.planes
         f = [
             evaluate(p, [x̄[i], ȳ[j]], C) for i ∈ eachindex(x̄),
             j ∈ eachindex(ȳ)
         ]
         surface!(ax1, x̄, ȳ, f)
     end
-    l1 = PiecewiseAffineApprox._approx_error(x, z, pwl, :l1)
-    l2 = PiecewiseAffineApprox._approx_error(x, z, pwl, :l2)
-    lmax = PiecewiseAffineApprox._approx_error(x, z, pwl, :max)
+    l1 = PiecewiseAffineApprox._approx_error(x, z, pwa, :l1)
+    l2 = PiecewiseAffineApprox._approx_error(x, z, pwa, :l2)
+    lmax = PiecewiseAffineApprox._approx_error(x, z, pwa, :max)
     ax1.title = "l1 = $(round(l1, digits=2)), l2 = $(round(l2, digits=2)), max = $(round(lmax, digits=2))"
-    z̄ = [abs(evaluate(pwl, x[:, i]) - z[i]) for i ∈ eachindex(z)]
+    z̄ = [abs(evaluate(pwa, x[:, i]) - z[i]) for i ∈ eachindex(z)]
     θ = 20 / maximum(z̄)
     ax2.title = "Max error = $(round(maximum(z̄),digits=2))"
     scatter!(ax2, x[1, :], x[2, :]; markersize = θ * z̄)
 
-    𝒫 = PiecewiseAffineApprox._update_partition(x, pwl)
+    𝒫 = PiecewiseAffineApprox._update_partition(x, pwa)
     for j ∈ eachindex(𝒫)
         x̄ = x[:, 𝒫[j]]
         scatter!(ax3, x̄[1, :], x̄[2, :], marker = :xcross)
@@ -43,20 +43,20 @@ function Makie.plot(x, z, pwl::PWLFunc{C,2}) where {C}
     return display(fig)
 end
 
-function Makie.plot(input::FunctionEvaluations{2}, pwl::PWLFunc{C,2}) where {C}
+function Makie.plot(input::FunctionEvaluations{2}, pwa::PWAFunc{C,2}) where {C}
     x = [p[i] for i ∈ 1:2, p ∈ input.points]
     z = input.values
-    return Makie.plot(x, z, pwl)
+    return Makie.plot(x, z, pwa)
 end
 
-function Makie.plot(x, y, pwl::PWLFunc{C,1}) where {C}
+function Makie.plot(x, y, pwa::PWAFunc{C,1}) where {C}
     fig = Figure(size = (1000, 1000))
     ax = Axis(fig[1, 1])
 
     x̄ = LinRange(minimum(x), maximum(x), 100)
 
     scatter!(ax, x, y, color = :red, markersize = 8)
-    for plane ∈ pwl.planes
+    for plane ∈ pwa.planes
         f = [evaluate(plane, i, C) for i ∈ x̄]
         lines!(ax, x̄, f)
     end
