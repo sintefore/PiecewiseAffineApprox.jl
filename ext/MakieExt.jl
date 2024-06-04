@@ -17,14 +17,15 @@ function Makie.plot(x, z, pwa::PWAFunc{C,2}) where {C}
     ax2 = Axis(fig[1, 3])
     ax3 = Axis(fig[2, 3])
 
-    scatter!(ax1, x[1, :], x[2, :], z, color = :red, markersize = 8)
     for p ∈ pwa.planes
         f = [
             evaluate(p, [x̄[i], ȳ[j]], C) for i ∈ eachindex(x̄),
             j ∈ eachindex(ȳ)
-        ]
-        surface!(ax1, x̄, ȳ, f)
-    end
+            ]
+            surface!(ax1, x̄, ȳ, f)
+        end
+        scatter!(ax1, x[1, :], x[2, :], z, color = :red, markersize = 8)
+
     l1 = PiecewiseAffineApprox._approx_error(x, z, pwa, :l1)
     l2 = PiecewiseAffineApprox._approx_error(x, z, pwa, :l2)
     lmax = PiecewiseAffineApprox._approx_error(x, z, pwa, :max)
@@ -49,17 +50,20 @@ function Makie.plot(input::FunctionEvaluations{2}, pwa::PWAFunc{C,2}) where {C}
     return Makie.plot(x, z, pwa)
 end
 
-function Makie.plot(x, y, pwa::PWAFunc{C,1}) where {C}
-    fig = Figure(size = (1000, 1000))
+function Makie.plot(x, y, pwa::PWLFunc{C,1}) where {C}
+    fig = Figure(size = (600, 400))
     ax = Axis(fig[1, 1])
 
     x̄ = LinRange(minimum(x), maximum(x), 100)
 
     scatter!(ax, x, y, color = :red, markersize = 8)
+    en = [-Inf for _ in x̄]
     for plane ∈ pwa.planes
         f = [evaluate(plane, i, C) for i ∈ x̄]
-        lines!(ax, x̄, f)
+        lines!(ax, x̄, f, linestyle=:dash)
+        en = max.(en, f)
     end
+    lines!(ax, x̄, en, color=:black)
 
     return fig
 end
