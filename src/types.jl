@@ -68,7 +68,7 @@ function Base.iterate(feval::FunctionEvaluations, state = 0)
     state == length(feval) && return nothing
     return (feval.points[state+1], feval.values[state+1]), state + 1
 end
-Base.eltype(_::FunctionEvaluations{D,V,P}) where {D,V,P} = Tuple{P, V}
+Base.eltype(_::FunctionEvaluations{D,V,P}) where {D,V,P} = Tuple{P,V}
 
 """
     Plane{D}

@@ -22,23 +22,23 @@ function convexify(f::FunctionEvaluations{D}, optimizer, pen = :l1) where {D}
     @variable(m, s⁺[1:K] ≥ 0)
     @variable(m, s⁻[1:K] ≥ 0)
 
-    for (l, (x, z)) in enumerate(f)
-        for k in 1:K
+    for (l, (x, z)) ∈ enumerate(f)
+        for k ∈ 1:K
             @constraint(m, z + s⁺[l] - s⁻[l] ≥ dot(a[k, :], x) + b[k])
         end
         @constraint(m, z + s⁺[l] - s⁻[l] ≤ dot(a[l, :], x) + b[l])
     end
     obj = AffExpr()
     if pen == :l2 || pen == :rms
-        obj = sum(s⁺[l]^2 + s⁻[l]^2 for l in 1:K)
+        obj = sum(s⁺[l]^2 + s⁻[l]^2 for l ∈ 1:K)
     elseif pen == :max
         @variable(m, smax)
         obj = smax
-        for l in 1:K
+        for l ∈ 1:K
             @constraint(m, smax ≥ s⁺[l] + s⁻[l])
         end
     elseif pen == :l1
-        obj = sum(s⁺[l] + s⁻[l] for l in 1:K)
+        obj = sum(s⁺[l] + s⁻[l] for l ∈ 1:K)
     else
         error("Unrecognized/unsupported penalty type $(penalty)")
     end
@@ -58,20 +58,20 @@ function convexify(f::FunctionEvaluations{D}, optimizer, pen = :l1) where {D}
     end
 
     @info "Data points are not convex, deviation = $obj_val"
-    values = [f.values[l] + value(s⁺[l]) - value(s⁻[l]) for l in 1:K]
+    values = [f.values[l] + value(s⁺[l]) - value(s⁻[l]) for l ∈ 1:K]
     return FunctionEvaluations(f.points, values)
 end
 
 # Create a full order convex approximation for the given data points,
 # i.e. using a separate plane for each data point.
-function _full_order_pwa(f::FunctionEvaluations{D}, optimizer) where D
+function _full_order_pwa(f::FunctionEvaluations{D}, optimizer) where {D}
     K = length(f)
 
     m = Model(optimizer)
     @variable(m, a[1:K, 1:D])
     @variable(m, b[1:K])
-    for (l, (x, z)) in enumerate(f)
-        for k in 1:K
+    for (l, (x, z)) ∈ enumerate(f)
+        for k ∈ 1:K
             @constraint(m, z ≥ dot(a[k, :], x) + b[k])
         end
         @constraint(m, z ≤ dot(a[l, :], x) + b[l])
@@ -87,7 +87,7 @@ function _full_order_pwa(f::FunctionEvaluations{D}, optimizer) where D
 
     aᶠ = value.(a)
     bᶠ = value.(b)
-    pwa = PWAFunc([Plane(aᶠ[k, :], bᶠ[k]) for k in 1:K], Convex())
+    pwa = PWAFunc([Plane(aᶠ[k, :], bᶠ[k]) for k ∈ 1:K], Convex())
     return pwa
 end
 
@@ -107,23 +107,23 @@ function _reduced_order_pwa(
     @variable(m, ared[1:p, 1:D])
     @variable(m, bred[1:p])
     @variable(m, s[1:K] ≥ 0)
-    for (x, z) in f
-        for k in 1:p
+    for (x, z) ∈ f
+        for k ∈ 1:p
             @constraint(m, z ≥ dot(ared[k, :], x) + bred[k])
         end
     end
-    for (l, k) in U
+    for (l, k) ∈ U
         z = f.values[l]
         x = f.points[l]
         @constraint(m, z ≤ dot(ared[k, :], x) + bred[k] + s[l])
     end
-    @objective(m, Min, sum(s[l] for l in 1:K))
+    @objective(m, Min, sum(s[l] for l ∈ 1:K))
     optimize!(m)
     obj = objective_value(m)
 
     aʳ = value.(ared)
     bʳ = value.(bred)
-    pwa_red = PWAFunc([Plane(aʳ[k, :], bʳ[k]) for k in 1:p], Convex())
+    pwa_red = PWAFunc([Plane(aʳ[k, :], bʳ[k]) for k ∈ 1:p], Convex())
 
     return obj, pwa_red
 end
@@ -135,7 +135,7 @@ end
 
 # Map data points to the active plane for the piecewise approximation
 function _update_allocation(f::FunctionEvaluations, pwa_red)
-    U = [(l, _active_plane(pwa_red, f.points[l])) for l in 1:length(f)]
+    U = [(l, _active_plane(pwa_red, f.points[l])) for l ∈ 1:length(f)]
     return U
 end
 
@@ -157,10 +157,10 @@ end
 # further away and use the corresponding plane in the full order pwa
 # to update the allocation of points to planes.
 function _increase_order(f::FunctionEvaluations, pwa_red, pwa, used)
-    s = [z - evaluate(pwa_red, x) for (x, z) in f]
+    s = [z - evaluate(pwa_red, x) for (x, z) ∈ f]
     imax = 0
     smax = -1
-    for i = 1:length(f)
+    for i ∈ 1:length(f)
         if s[i] > smax && !(i in used)
             imax = i
             smax = s[i]
@@ -175,7 +175,7 @@ end
 # affine approximation in different metrics
 function _approx_error(f::FunctionEvaluations, pwa::PWAFunc, penalty = :l1)
     err = 0.0
-    for (x, z) in f
+    for (x, z) ∈ f
         v = evaluate(pwa, x)
         if penalty == :l1
             err += abs(v - z)
@@ -208,7 +208,7 @@ function _progressive_pwa(
 
     # Start with an approximation with one plane and allocate all points to that segment
     p = 1
-    U = [(l, 1) for l in 1:length(f)]
+    U = [(l, 1) for l ∈ 1:length(f)]
 
     # Increase the number of planes until the required tolerance is met
     pwa_red = _allocation_improvement(f, p, U, optimizer)

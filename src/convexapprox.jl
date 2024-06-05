@@ -62,11 +62,7 @@ a specified error tolerance is met.
 This algorithm requires that the data points provided are samples from
 a convex function.
 """
-function approx(
-    input::FunctionEvaluations,
-    c::Convex,
-    a::ProgressiveFitting;
-)
+function approx(input::FunctionEvaluations, c::Convex, a::ProgressiveFitting;)
     return _progressive_pwa(input, a)
 end
 
@@ -161,7 +157,9 @@ function approx(
     aᴼᵖᵗ = value.(a)
     bᴼᵖᵗ = value.(b)
 
-    return PWAFunc{Convex,D}([Plane(Tuple(aᴼᵖᵗ.data[:, k]), bᴼᵖᵗ[k]) for k ∈ 𝒦])
+    return PWAFunc{Convex,D}([
+        Plane(Tuple(aᴼᵖᵗ.data[:, k]), bᴼᵖᵗ[k]) for k ∈ 𝒦
+    ])
 end
 
 # Sample the function on a uniform grid within the given bounding box using nsamples in each dimension
@@ -235,7 +233,7 @@ function _linear_big_M(input::FunctionEvaluations{D}) where {D}
     if D == 1
         # For one dimensional problems calculate a big M by
         # checking all segments not having another data point in the interior
-        x = [p[1] for p in input.points]
+        x = [p[1] for p ∈ input.points]
         z = input.values
         x₊ = collect(zip(x, z))
 
@@ -244,7 +242,7 @@ function _linear_big_M(input::FunctionEvaluations{D}) where {D}
         δ = (maximum(x) - minimum(x)) / (100 * length(x))
 
         segments = collect(combinations(x₊, 2))
-        for s in segments
+        for s ∈ segments
             x1, z1 = s[1]
             x2, z2 = s[2]
             # Avoid points that are too close
@@ -270,12 +268,12 @@ function _linear_big_M(input::FunctionEvaluations{D}) where {D}
         z = input.values
         x₊ = [(x[i]..., z[i]) for i ∈ 1:length(x)]
         triangles = collect(combinations(x₊, 3))
-        for t in triangles
+        for t ∈ triangles
             v1 = t[1][1:2]
             v2 = t[2][1:2]
             v3 = t[3][1:2]
             empty = true
-            for pt in x
+            for pt ∈ x
                 if !(pt in [v1, v2, v3]) && _point_in_triangle(pt, v1, v2, v3)
                     empty = false
                 end
