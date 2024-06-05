@@ -59,12 +59,16 @@ end
 A structure holding a set of points and the associated
 function values for a function f:ℜᴰ → ℜ.
 """
-struct FunctionEvaluations{D}
-    points::Vector{<:NTuple{D,Number}}
-    values::Vector{<:Number}
+struct FunctionEvaluations{D,V<:Number,P<:NTuple{D,Number}}
+    points::Vector{P}
+    values::Vector{V}
 end
-
-point_vals(f::FunctionEvaluations) = collect(zip(f.points, f.values))
+Base.length(feval::FunctionEvaluations) = length(feval.points)
+function Base.iterate(feval::FunctionEvaluations, state = 0)
+    state == length(feval) && return nothing
+    return (feval.points[state+1], feval.values[state+1]), state + 1
+end
+Base.eltype(_::FunctionEvaluations{D,V,P}) where {D,V,P} = Tuple{P, V}
 
 """
     Plane{D}
