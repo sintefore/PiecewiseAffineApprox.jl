@@ -63,10 +63,10 @@ This algorithm requires that the data points provided are samples from
 a convex function.
 """
 function approx(
-    input::FunctionEvaluations{D},
+    input::FunctionEvaluations,
     c::Convex,
     a::ProgressiveFitting;
-) where {D}
+)
     return _progressive_pwa(input, a)
 end
 

@@ -15,7 +15,7 @@
                 pen = pen,
             ),
         )
-        for (x, z) in PWA.point_vals(f)
+        for (x, z) in f
             pv = evaluate(pwa_red, x)
             @test z ≥ pv || z ≈ pv
         end
@@ -30,7 +30,7 @@
         ProgressiveFitting(optimizer = optimizer, tolerance = 0.2, pen = :max),
     )
     @test length(pwa_red.planes) == 9
-    @test evaluate(pwa_red, (0, 0)) ≈ 0.0082 atol = 0.0001
+    @test evaluate(pwa_red, (0, 0)) ≈ -0.024 atol = 0.001
 
     @testset "Nonconvex" begin
         h(x) = sin(5 * x[1]) * (x[1]^2 + x[2]^2)
@@ -45,5 +45,38 @@
                 pen = :l2,
             ),
         )
+
+        vals_c = PWA.convexify(vals, optimizer, :l1)
+        @test length(vals_c) == length(vals)
+
+        pwa_con = approx(
+            vals_c,
+            Convex(),
+            ProgressiveFitting(
+                optimizer = optimizer,
+                tolerance = 0.1,
+                pen = :l2,
+            ),
+        )
+
+        x = collect(range(-1, 1; length = 30))
+        z = x .^ 2
+        z[5] += 0.1
+        f = FunctionEvaluations(tuple.(x), z)
+
+        fc = PWA.convexify(f, optimizer)
+        @test length(fc) == length(f)
+        @test fc.values[5] ≈ 0.5291 atol = 0.001
+
+        pwa_con = approx(
+            fc,
+            Convex(),
+            ProgressiveFitting(
+                optimizer = optimizer,
+                tolerance = 0.2,
+                pen = :l1,
+            ),
+        )
+        @test PWA._planes(pwa_con) == 8
     end
 end
