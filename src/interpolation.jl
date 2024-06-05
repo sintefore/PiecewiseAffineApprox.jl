@@ -90,7 +90,8 @@ function _interpolatepw(x, z, options)
         p = [
             (
                 i < j ?
-                sum((c[i, j] * (x[k] - x[i]) + z[i] - z[k])^2 for k ∈ i:j) : 0
+                sum((c[i, j] * (x[k] - x[i]) + z[i] - z[k])^2 for k ∈ i:j) :
+                0
             ) for i ∈ 𝒩, j ∈ 𝒩
         ]
     elseif options.pen == :max

@@ -66,6 +66,18 @@ function approx(input::FunctionEvaluations, c::Convex, a::ProgressiveFitting;)
     return _progressive_pwa(input, a)
 end
 
+"""
+    approx(input::FunctionEvaluations, c::Convex, a::FullOrderFitting)
+
+Approximate using full order fitting that adds planes for all sample points.
+
+This algorithm requires that the data points provided are samples from
+a convex function.
+"""
+function approx(input::FunctionEvaluations, c::Convex, a::FullOrderFitting;)
+    return _full_order_pwa(input, a.optimizer)
+end
+
 # Optimal convex approximation using mixed integer optimization
 function approx(
     input::FunctionEvaluations{D},
@@ -157,9 +169,7 @@ function approx(
     aᴼᵖᵗ = value.(a)
     bᴼᵖᵗ = value.(b)
 
-    return PWAFunc{Convex,D}([
-        Plane(Tuple(aᴼᵖᵗ.data[:, k]), bᴼᵖᵗ[k]) for k ∈ 𝒦
-    ])
+    return PWAFunc{Convex,D}([Plane(Tuple(aᴼᵖᵗ.data[:, k]), bᴼᵖᵗ[k]) for k ∈ 𝒦])
 end
 
 # Sample the function on a uniform grid within the given bounding box using nsamples in each dimension

@@ -54,6 +54,17 @@ specialized to convex approximations.
 end
 
 """
+    FullOrderFitting
+
+Compute affine approximation based on a variation of the method of Kazda and Li (2024)
+specialized to convex approximations with full order approximation (no reduction of number of planes).
+"""
+@kwdef struct FullOrderFitting{T} <: Algorithm
+    pen::Symbol = defaultpenalty()
+    optimizer::T
+end
+
+"""
     FunctionEvaluations{D}
 
 A structure holding a set of points and the associated
