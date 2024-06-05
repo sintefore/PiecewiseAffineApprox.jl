@@ -171,7 +171,7 @@ function _increase_order(f::FunctionEvaluations, pwa_red, pwa, used)
     return U, vcat(used, imax)
 end
 
-# Calucate the approximation error between input data points and the piecewise
+# Calculate the approximation error between input data points and the piecewise
 # affine approximation in different metrics
 function _approx_error(f::FunctionEvaluations, pwa::PWAFunc, penalty = :l1)
     err = 0.0
