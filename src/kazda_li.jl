@@ -70,12 +70,14 @@ function _full_order_pwa(f::FunctionEvaluations{D}, optimizer) where {D}
     m = Model(optimizer)
     @variable(m, a[1:K, 1:D])
     @variable(m, b[1:K])
+    @variable(m, s[1:K, 1:K] ≥ 0)
     for (l, (x, z)) ∈ enumerate(f)
         for k ∈ 1:K
-            @constraint(m, z ≥ dot(a[k, :], x) + b[k])
+            @constraint(m, z - s[l,k] == dot(a[k, :], x) + b[k])
         end
         @constraint(m, z ≤ dot(a[l, :], x) + b[l])
     end
+    @objective(m, Min, sum(s))
     optimize!(m)
 
     if !is_solved_and_feasible(m)
