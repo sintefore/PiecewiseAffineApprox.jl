@@ -61,7 +61,7 @@ function convexify(f::FunctionEvaluations{D}, optimizer, pen = :l1) where {D}
     optimize!(m)
 
     if !is_solved_and_feasible(m)
-        JuMP.write_to_file(m, "convexify.lp")
+        #JuMP.write_to_file(m, "convexify.lp")
         error("Unable to find a feasible solution")
     end
 
@@ -76,9 +76,15 @@ function convexify(f::FunctionEvaluations{D}, optimizer, pen = :l1) where {D}
     return FunctionEvaluations(f.points, values)
 end
 
+function concavify(f::FunctionEvaluations, optimizer, pen = :l1)
+    fneg = FunctionEvaluations(f.points, -f.values)
+    fconvex = convexify(fneg, optimizer, pen)
+    return FunctionEvaluations(f.points, -fconvex.values)
+end
+
 # Create a full order convex approximation for the given data points,
 # i.e. using a separate plane for each data point.
-function _full_order_pwa(f::FunctionEvaluations{D}, optimizer) where {D}
+function _full_order_pwa(f::FunctionEvaluations{D}, optimizer, pen) where {D}
     K = length(f)
 
     m = Model(optimizer)
@@ -91,7 +97,19 @@ function _full_order_pwa(f::FunctionEvaluations{D}, optimizer) where {D}
         end
         @constraint(m, z ≤ dot(a[l, :], x) + b[l])
     end
-    @objective(m, Min, sum(s))
+    obj = AffExpr()
+    if pen == :l2 || pen == :rms
+        obj = sum(s .^ 2)
+    elseif pen == :max
+        @variable(m, smax)
+        obj = smax
+        @constraint(m, s .≤ smax)
+    elseif pen == :l1
+        obj = sum(s)
+    else
+        error("Unrecognized/unsupported penalty type $(penalty)")
+    end
+    @objective(m, Min, obj)
     optimize!(m)
 
     if !is_solved_and_feasible(m)
@@ -116,6 +134,7 @@ function _reduced_order_pwa(
     p::Int,
     U,
     optimizer,
+    μ = 1e-4,
 ) where {D}
     K = length(f)
 
@@ -123,9 +142,10 @@ function _reduced_order_pwa(
     @variable(m, ared[1:p, 1:D])
     @variable(m, bred[1:p])
     @variable(m, s[1:K] ≥ 0)
-    for (x, z) ∈ f
+    @variable(m, sʳ[1:K, 1:p] ≥ 0)
+    for (l, (x, z)) ∈ enumerate(f)
         for k ∈ 1:p
-            @constraint(m, z ≥ dot(ared[k, :], x) + bred[k])
+            @constraint(m, z - sʳ[l, k] == dot(ared[k, :], x) + bred[k])
         end
     end
     for (l, k) ∈ U
@@ -133,7 +153,7 @@ function _reduced_order_pwa(
         x = f.points[l]
         @constraint(m, z ≤ dot(ared[k, :], x) + bred[k] + s[l])
     end
-    @objective(m, Min, sum(s[l] for l ∈ 1:K))
+    @objective(m, Min, sum(s) + μ / p * sum(sʳ))
     optimize!(m)
     obj = objective_value(m)
 
@@ -216,11 +236,12 @@ function _progressive_pwa(
     optimizer,
     δᵗᵒˡ = 1e-3,
     penalty = :max,
+    full_order_pen = :l1,
 )
 
     # Find the full order convex approximation, will error if the points are
     # not convex
-    pwa = _full_order_pwa(f, optimizer)
+    pwa = _full_order_pwa(f, optimizer, full_order_pen)
 
     # Start with an approximation with one plane and allocate all points to that segment
     p = 1

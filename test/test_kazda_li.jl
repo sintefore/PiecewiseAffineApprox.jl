@@ -29,8 +29,8 @@
         Convex(),
         ProgressiveFitting(optimizer = optimizer, tolerance = 0.2, pen = :max),
     )
-    @test length(pwa_red.planes) == 9
-    @test evaluate(pwa_red, (0, 0)) ≈ -0.024 atol = 0.001
+    @test length(pwa_red.planes) == 10
+    @test evaluate(pwa_red, (0, 0)) ≈ 0.024 atol = 0.001
 
     @testset "Nonconvex" begin
         h(x) = sin(5 * x[1]) * (x[1]^2 + x[2]^2)
@@ -78,6 +78,14 @@
             ),
         )
         @test PWA._planes(pwa_con) == 8
+
+        x = collect(range(-1, 1; length = 30))
+        z = -x .^ 2
+        z[8] -= 0.2
+        z[12] += 0.1
+        f = FunctionEvaluations(tuple.(x), z)
+        fc = PWA.concavify(f, optimizer)
+        @test fc.values[8] ≈ -0.2722 atol = 0.001
     end
 end
 

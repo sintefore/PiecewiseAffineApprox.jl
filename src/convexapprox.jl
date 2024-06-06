@@ -75,7 +75,7 @@ This algorithm requires that the data points provided are samples from
 a convex function.
 """
 function approx(input::FunctionEvaluations, c::Convex, a::FullOrderFitting;)
-    return _full_order_pwa(input, a.optimizer)
+    return _full_order_pwa(input, a.optimizer, a.pen)
 end
 
 # Optimal convex approximation using mixed integer optimization
