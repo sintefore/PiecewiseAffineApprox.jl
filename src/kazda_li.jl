@@ -73,7 +73,7 @@ function _full_order_pwa(f::FunctionEvaluations{D}, optimizer) where {D}
     @variable(m, s[1:K, 1:K] ≥ 0)
     for (l, (x, z)) ∈ enumerate(f)
         for k ∈ 1:K
-            @constraint(m, z - s[l,k] == dot(a[k, :], x) + b[k])
+            @constraint(m, z - s[l, k] == dot(a[k, :], x) + b[k])
         end
         @constraint(m, z ≤ dot(a[l, :], x) + b[l])
     end
