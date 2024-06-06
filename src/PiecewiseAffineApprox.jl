@@ -24,5 +24,6 @@ export PWAFunc
 export approx
 export pwaffine
 export evaluate
+export convexify
 
 end # module
