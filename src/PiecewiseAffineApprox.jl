@@ -24,6 +24,6 @@ export PWAFunc
 export approx
 export pwaffine
 export evaluate
-export convexify
+export enforce_curvature
 
 end # module

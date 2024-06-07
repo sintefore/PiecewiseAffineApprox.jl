@@ -46,7 +46,7 @@
             ),
         )
 
-        vals_c = PWA.convexify(vals, optimizer, :l1)
+        vals_c = enforce_curvature(vals, Convex(), optimizer, :l1)
         @test length(vals_c) == length(vals)
 
         pwa_con = approx(
@@ -64,7 +64,7 @@
         z[5] += 0.1
         f = FunctionEvaluations(tuple.(x), z)
 
-        fc = PWA.convexify(f, optimizer)
+        fc = enforce_curvature(f, Convex(), optimizer)
         @test length(fc) == length(f)
         @test fc.values[5] ≈ 0.5291 atol = 0.001
 
@@ -84,7 +84,7 @@
         z[8] -= 0.2
         z[12] += 0.1
         f = FunctionEvaluations(tuple.(x), z)
-        fc = PWA.concavify(f, optimizer)
+        fc = enforce_curvature(f, Concave(), optimizer)
         @test fc.values[8] ≈ -0.2722 atol = 0.001
     end
 end

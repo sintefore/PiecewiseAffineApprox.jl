@@ -14,20 +14,45 @@ The main algorithm consists of the following steps:
 =#
 
 """
-     convexify(f::FunctionEvaluations, optimizer, pen = :l1)
+    enforce_curvature(f::FunctionEvaluations, curvature::Curvature, optimizer, pen = :l1)
 
 Create a slightly perturbed version of the function values
-to ensure that the data points can be interpolated by a convex
+to ensure that the data points can be interpolated by a convex/concave
 piecewise affine function.
 
-The convexification is performed using a linear optimization problem
+Enforcing the curvature is performed using a linear optimization problem
 that adjust the function values and tries to minimize the total deviation.
 The total deviation can be measured in different metrics specified
 by the `pen` parameter.
 This function can be useful as a pre-step for running the full-order and progressive
-fitting heuristics that require data points that are convex in this sense.
+fitting heuristics that require data points that are convex/concave in this sense.
 """
-function convexify(f::FunctionEvaluations{D}, optimizer, pen = :l1) where {D}
+function enforce_curvature(
+    f::FunctionEvaluations,
+    c::Convex,
+    optimizer,
+    pen = :l1,
+)
+    return convexify(f, optimizer, pen)
+end
+
+function enforce_curvature(
+    f::FunctionEvaluations,
+    c::Concave,
+    optimizer,
+    pen = :l1,
+)
+    fneg = FunctionEvaluations(f.points, -f.values)
+    fconvex = convexify(fneg, optimizer, pen, "concave")
+    return FunctionEvaluations(f.points, -fconvex.values)
+end
+
+function convexify(
+    f::FunctionEvaluations{D},
+    optimizer,
+    pen = :l1,
+    curv_string = "convex",
+) where {D}
     K = length(f)
 
     m = Model(optimizer)
@@ -67,19 +92,15 @@ function convexify(f::FunctionEvaluations{D}, optimizer, pen = :l1) where {D}
 
     obj_val = objective_value(m)
     if obj_val == 0
-        @info "Data points are convex"
+        @info "Data points are $(curv_string)"
         return f
     end
 
-    @info "Data points are not convex, deviation = $obj_val"
+    pts_adj = count(v -> v > 0, value.(s⁺ + s⁻))
+
+    @info "Data are not $(curv_string), dev = $(round(obj_val; digits=3)), $(pts_adj) point(s) adjusted"
     values = [f.values[l] + value(s⁺[l]) - value(s⁻[l]) for l ∈ 1:K]
     return FunctionEvaluations(f.points, values)
-end
-
-function concavify(f::FunctionEvaluations, optimizer, pen = :l1)
-    fneg = FunctionEvaluations(f.points, -f.values)
-    fconvex = convexify(fneg, optimizer, pen)
-    return FunctionEvaluations(f.points, -fconvex.values)
 end
 
 # Create a full order convex approximation for the given data points,
