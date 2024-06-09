@@ -17,7 +17,7 @@ pwa = approx(vals, Convex(), Heuristic(; optimizer = optimizer, planes = 5))
 
 # 2D
 xmat = 2 * rand(2, I) .- 1
-x = [Tuple(xmat[:, i]) for i ∈ 1:size(xmat, 2)]
+x = [Tuple(col) for col ∈ eachcol(xmat)]
 z = [p[1]^2 + p[2]^2 for p ∈ x]
 vals = FunctionEvaluations(x, z)
 pwa = approx(
