@@ -86,11 +86,15 @@ function Base.summary(io::IO, feval::FunctionEvaluations)
     return print(io, "$(typeof(feval)) with $n data points")
 end
 function _write_points(io::IO, datapoints)
-    for p in datapoints
+    for p ∈ datapoints
         println(io, " $(p[1]) ⟶ $(p[2])")
     end
 end
-function Base.show(io::IO, ::MIME"text/plain", feval::FunctionEvaluations{D}) where {D}
+function Base.show(
+    io::IO,
+    ::MIME"text/plain",
+    feval::FunctionEvaluations{D},
+) where {D}
     summary(io, feval)
     println(io, ":")
     fv = collect(feval)
@@ -137,7 +141,7 @@ end
 PWAFunc{C,D}() where {C,D} = PWAFunc{C,D}(Vector{Plane{D}}())
 
 function _write_planes(io::IO, C::Curvature, planes::Vector{Plane{D}}) where {D}
-    for p in planes
+    for p ∈ planes
         println(io, " ", _write_plane(C, p))
     end
 end
@@ -146,7 +150,7 @@ _write_plane(c::Concave, plane) = "z ≤ $(_xepr(plane.α)) $(plane.β)"
 function _xepr(α)
     x = ["x₁", "x₂", "x₃", "x₄", "x₅"]
     expr = ""
-    for i in 1 : min(5, length(α))
+    for i ∈ 1:min(5, length(α))
         expr *= "$(α[i]) $(x[i]) + "
     end
     if length(α) > 5
