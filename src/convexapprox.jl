@@ -35,7 +35,7 @@ function approx(
 end
 
 """
-    approx(input::FunctionEvaluations{D}, c::Convex, a::Heuristic; kwargs...) where D
+    approx(input::FunctionEvaluations, c::Convex, a::Heuristic)
 
 Approximate using a heuristic that works for general dimensions.
 
@@ -51,6 +51,31 @@ function approx(
     x = [p[i] for i ∈ 1:D, p ∈ input.points]
     z = input.values
     return _convex_linearization_mb(x, z, a)
+end
+
+"""
+    approx(input::FunctionEvaluations, c::Convex, a::ProgressiveFitting)
+
+Approximate using a progressive fitting heuristic that adds planes until
+a specified error tolerance is met.
+
+This algorithm requires that the data points provided are samples from
+a convex function.
+"""
+function approx(input::FunctionEvaluations, c::Convex, a::ProgressiveFitting;)
+    return _progressive_pwa(input, a)
+end
+
+"""
+    approx(input::FunctionEvaluations, c::Convex, a::FullOrderFitting)
+
+Approximate using full order fitting that adds planes for all sample points.
+
+This algorithm requires that the data points provided are samples from
+a convex function.
+"""
+function approx(input::FunctionEvaluations, c::Convex, a::FullOrderFitting;)
+    return _full_order_pwa(input, a.optimizer, a.pen)
 end
 
 # Optimal convex approximation using mixed integer optimization
@@ -218,7 +243,7 @@ function _linear_big_M(input::FunctionEvaluations{D}) where {D}
     if D == 1
         # For one dimensional problems calculate a big M by
         # checking all segments not having another data point in the interior
-        x = [p[1] for p in input.points]
+        x = [p[1] for p ∈ input.points]
         z = input.values
         x₊ = collect(zip(x, z))
 
@@ -227,7 +252,7 @@ function _linear_big_M(input::FunctionEvaluations{D}) where {D}
         δ = (maximum(x) - minimum(x)) / (100 * length(x))
 
         segments = collect(combinations(x₊, 2))
-        for s in segments
+        for s ∈ segments
             x1, z1 = s[1]
             x2, z2 = s[2]
             # Avoid points that are too close
@@ -253,12 +278,12 @@ function _linear_big_M(input::FunctionEvaluations{D}) where {D}
         z = input.values
         x₊ = [(x[i]..., z[i]) for i ∈ 1:length(x)]
         triangles = collect(combinations(x₊, 3))
-        for t in triangles
+        for t ∈ triangles
             v1 = t[1][1:2]
             v2 = t[2][1:2]
             v3 = t[3][1:2]
             empty = true
-            for pt in x
+            for pt ∈ x
                 if !(pt in [v1, v2, v3]) && _point_in_triangle(pt, v1, v2, v3)
                     empty = false
                 end

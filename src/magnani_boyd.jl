@@ -3,7 +3,7 @@
 # in the given points. Support for multiple metrics (l1, l2, max).
 function _approx_error(X::Matrix, z::Vector, pwa::PWAFunc, penalty = :l1)
     err = 0.0
-    for (i, x̄) in enumerate(eachcol(X))
+    for (i, x̄) ∈ enumerate(eachcol(X))
         v = evaluate(pwa, x̄)
 
         if penalty == :l1
@@ -87,7 +87,7 @@ function _random_partition(X, K)
     P = rand(n, K)
 
     𝒫 = [[] for j ∈ 1:K]
-    for (i, x) in enumerate(eachcol(X))
+    for (i, x) ∈ enumerate(eachcol(X))
         # Find the nearest point amongst the p's
         jmin = argmin(_dist(x, P[:, j]) for j ∈ 1:K)
         push!(𝒫[jmin], i)
@@ -107,7 +107,7 @@ function _refine_partition(X, z, 𝒫, lᵐᵃˣ, penalty, optimizer, strict)
     pwa = nothing
     for it ∈ 1:lᵐᵃˣ
         pwa = PWAFunc{Convex,D}()
-        for p in 𝒫
+        for p ∈ 𝒫
             if length(p) > 0
                 x̄ = X[:, p]
                 z̄ = z[p]
@@ -201,7 +201,7 @@ end
 # the hyperplane being active for the data point
 function _update_partition(X, pwa)
     𝒫 = [[] for _ ∈ 1:_planes(pwa)]
-    for (i, x) in enumerate(eachcol(X))
+    for (i, x) ∈ enumerate(eachcol(X))
         push!(𝒫[_active(pwa, x)], i)
     end
     return 𝒫

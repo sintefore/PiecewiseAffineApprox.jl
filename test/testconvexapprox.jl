@@ -67,7 +67,7 @@
         ),
     )
 
-    for i in eachindex(x)
+    for i ∈ eachindex(x)
         # Convex, :outer should be below original points
         @test PWA.evaluate(pwa_outer, x[i]) ≤ z[i] + 1e-6
         # Convex, :inner should be above original points

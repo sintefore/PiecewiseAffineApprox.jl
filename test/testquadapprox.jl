@@ -50,7 +50,7 @@
 
     @testset "L2" begin
         # Test with constraints added to existing model
-        for met in [
+        for met ∈ [
             Heuristic(optimizer = qp_optimizer, pen = :l2, planes = 5),
             Optimized(optimizer = qp_optimizer, pen = :l2, planes = 5),
         ]
