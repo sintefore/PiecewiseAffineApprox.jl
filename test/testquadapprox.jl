@@ -14,7 +14,7 @@
                 [i.second for i ∈ points],
             ),
             Convex(),
-            MILP(optimizer = optimizer, pen = :l1, planes = 5),
+            MILP(optimizer = optimizer, metric = :l1, planes = 5),
         )
         @objective(m, Min, y)
         set_optimizer(m, optimizer)
@@ -37,7 +37,7 @@
                 [i.second for i ∈ points],
             ),
             Convex(),
-            MILP(optimizer = optimizer, pen = :l1, planes = 5),
+            MILP(optimizer = optimizer, metric = :l1, planes = 5),
             ;
             z = test_y,
         )
@@ -51,8 +51,8 @@
     @testset "L2" begin
         # Test with constraints added to existing model
         for met ∈ [
-            Cluster(optimizer = qp_optimizer, pen = :l2, planes = 5),
-            MILP(optimizer = qp_optimizer, pen = :l2, planes = 5),
+            Cluster(optimizer = qp_optimizer, metric = :l2, planes = 5),
+            MILP(optimizer = qp_optimizer, metric = :l2, planes = 5),
         ]
             m = Model()
             @variable(m, x)

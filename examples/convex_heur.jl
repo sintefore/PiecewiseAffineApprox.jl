@@ -30,14 +30,14 @@ plot(vals, pwa)
 pwa = approx(
     vals,
     Convex(),
-    FullOrder(; optimizer = optimizer, pen = :max),
+    FullOrder(; optimizer = optimizer, metric = :max),
 )
 plot(vals, pwa)
 
 pwa = approx(
     vals,
     Convex(),
-    Progressive(; optimizer = optimizer, tolerance = 0.5, pen = :l2),
+    Progressive(; optimizer = optimizer, tolerance = 0.5, metric = :l2),
 )
 plot(vals, pwa)
 
@@ -49,7 +49,7 @@ vals = PWA._sample_uniform(f, [(-1, 1), (-1, 1)], 10)
 pwa = approx(
     vals,
     Convex(),
-    Cluster(; optimizer = optimizer, planes = 10, penalty = :l2),
+    Cluster(; optimizer = optimizer, planes = 10, metric = :l2),
 )
 plot(vals, pwa)
 
@@ -59,7 +59,7 @@ vals = PWA._sample_uniform(f, [(-1, 1), (-1, 1)], 10)
 pwa = approx(
     vals,
     Concave(),
-    Cluster(; optimizer = optimizer, planes = 10, penalty = :l1),
+    Cluster(; optimizer = optimizer, planes = 10, metric = :l1),
 )
 
 # Log sum exp
@@ -86,7 +86,7 @@ vals = PWA._sample_uniform(f, [(-1, 1), (-1, 1)], 10)
 pwa = approx(
     vals,
     Convex(),
-    Cluster(; optimizer = optimizer, planes = 8, pen = :l1),
+    Cluster(; optimizer = optimizer, planes = 8, metric = :l1),
 )
 plot(vals, pwa)
 
@@ -96,5 +96,5 @@ vals = PWA._sample_uniform(h, [(-5, 5), (-5, 5), (-5, 5)], 10)
 pwa = approx(
     vals,
     Convex(),
-    Cluster(; optimizer = optimizer, planes = 8, pen = :rms),
+    Cluster(; optimizer = optimizer, planes = 8, metric = :rms),
 )

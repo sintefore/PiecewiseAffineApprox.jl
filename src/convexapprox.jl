@@ -1,4 +1,4 @@
-defaultpenalty() = :l1
+defaultmetric() = :l1
 defaultplanes() = 4
 defaulttimelimit() = 60
 
@@ -71,7 +71,7 @@ This algorithm requires that the data points provided are samples from
 a convex function.
 """
 function approx(input::FunctionEvaluations, c::Convex, a::FullOrder;)
-    return _full_order_pwa(input, a.optimizer, a.pen)
+    return _full_order_pwa(input, a.optimizer, a.metric)
 end
 
 # Optimal convex approximation using mixed integer optimization
@@ -98,16 +98,16 @@ function approx(
 
     @variable(m, 𝑢[𝒫, 𝒦], Bin)
 
-    if options.pen == :l2
+    if options.metric == :l2
         @objective(m, Min, sum((zᵖ[p] - 𝑧̂[p])^2 for p ∈ 𝒫))
-    elseif options.pen == :max
+    elseif options.metric == :max
         𝑡 = @variable(m)
         @objective(m, Min, 𝑡)
         for p ∈ 𝒫
             @constraint(m, 𝑡 ≥ (zᵖ[p] - 𝑧̂[p]))
             @constraint(m, 𝑡 ≥ (𝑧̂[p] - zᵖ[p]))
         end
-    elseif options.pen == :l1
+    elseif options.metric == :l1
         𝑡 = @variable(m, [𝒫])
         @objective(m, Min, sum(𝑡))
         for p ∈ 𝒫
@@ -115,7 +115,7 @@ function approx(
             @constraint(m, 𝑡[p] ≥ (𝑧̂[p] - zᵖ[p]))
         end
     else
-        error("Unrecognized/unsupported penalty type $(options.pen)")
+        error("Unrecognized/unsupported metric type $(options.metric)")
     end
 
     for p ∈ 𝒫, k ∈ 𝒦

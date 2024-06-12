@@ -18,7 +18,7 @@ pwa = approx(
     Cluster(
     optimizer = optimizer,
     planes = 10,
-    penalty = :l2)
+    metric = :l2)
 )
 
 struct Instance

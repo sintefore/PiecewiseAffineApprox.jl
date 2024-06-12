@@ -15,7 +15,7 @@ If julia is started with multiple threads, these are computed in parallel. Consi
 """
 @kwdef struct Cluster{T} <: Algorithm
     planes::Int = defaultplanes()
-    pen::Symbol = defaultpenalty()
+    metric::Symbol = defaultmetric()
     trials::Int = 20
     itlim::Int = 50
     strict::Symbol = :none
@@ -23,7 +23,7 @@ If julia is started with multiple threads, these are computed in parallel. Consi
 end
 @kwdef struct Interpol{T} <: Algorithm
     planes::Int = defaultplanes()
-    pen = defaultpenalty()
+    metric = defaultmetric()
     optimizer::T
 end
 """
@@ -35,7 +35,7 @@ solving the optimization problem.
 """
 @kwdef struct MILP{T} <: Algorithm
     planes::Int = defaultplanes()
-    pen::Symbol = defaultpenalty()
+    metric::Symbol = defaultmetric()
     strict::Symbol = :none
     maxtime::Int = defaulttimelimit()
     optimizer::T
@@ -49,7 +49,7 @@ specialized to convex approximations.
 """
 @kwdef struct Progressive{T} <: Algorithm
     tolerance::Float64 = 0.01
-    pen::Symbol = defaultpenalty()
+    metric::Symbol = defaultmetric()
     optimizer::T
 end
 
@@ -60,7 +60,7 @@ Compute affine approximation based on a variation of the method of Kazda and Li 
 specialized to convex approximations with full order approximation (no reduction of number of planes).
 """
 @kwdef struct FullOrder{T} <: Algorithm
-    pen::Symbol = defaultpenalty()
+    metric::Symbol = defaultmetric()
     optimizer::T
 end
 

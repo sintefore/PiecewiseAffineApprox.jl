@@ -16,7 +16,7 @@ f(u1, u2) = u1^2 + u2^2
 
 planes = 4
 dimensions = 2
-pen = :l2
+metric = :l2
 
 pwa1 = convex_linearization(𝒫, z, Opt; planes, dimensions, strict = :none, pen)
 pwa2 = convex_linearization(X, z, Opt; planes, dimensions, strict = :outer, pen)
