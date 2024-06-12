@@ -16,8 +16,8 @@ include("kazda_li.jl")
 include("interpolation.jl")
 
 export Convex, Concave
-export Optimized, Heuristic, Interpol
-export ProgressiveFitting, FullOrderFitting
+export MILP, Cluster, Interpol
+export Progressive, FullOrder
 export Plane
 export FunctionEvaluations
 export PWAFunc

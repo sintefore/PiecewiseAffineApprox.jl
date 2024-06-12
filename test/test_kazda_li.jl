@@ -9,7 +9,7 @@
         pwa_red = approx(
             f,
             Convex(),
-            ProgressiveFitting(
+            Progressive(
                 optimizer = optimizer,
                 tolerance = tol,
                 pen = pen,
@@ -27,7 +27,7 @@
     pwa_red = approx(
         vals,
         Convex(),
-        ProgressiveFitting(optimizer = optimizer, tolerance = 0.2, pen = :max),
+        Progressive(optimizer = optimizer, tolerance = 0.2, pen = :max),
     )
     @test length(pwa_red.planes) == 10
     @test evaluate(pwa_red, (0, 0)) ≈ 0.024 atol = 0.001
@@ -39,7 +39,7 @@
         @test_throws ErrorException approx(
             vals,
             Convex(),
-            ProgressiveFitting(
+            Progressive(
                 optimizer = optimizer,
                 tolerance = 2.0,
                 pen = :l2,
@@ -52,7 +52,7 @@
         pwa_con = approx(
             vals_c,
             Convex(),
-            ProgressiveFitting(
+            Progressive(
                 optimizer = optimizer,
                 tolerance = 0.1,
                 pen = :l2,
@@ -71,7 +71,7 @@
         pwa_con = approx(
             fc,
             Convex(),
-            ProgressiveFitting(
+            Progressive(
                 optimizer = optimizer,
                 tolerance = 0.2,
                 pen = :l1,
@@ -98,7 +98,7 @@ end
         pwa_red = approx(
             f,
             Convex(),
-            FullOrderFitting(optimizer = optimizer, pen = pen),
+            FullOrder(optimizer = optimizer, pen = pen),
         )
         for (x, z) ∈ f
             pv = evaluate(pwa_red, x)
@@ -112,7 +112,7 @@ end
     pwa_red = approx(
         vals,
         Convex(),
-        FullOrderFitting(optimizer = optimizer, pen = :max),
+        FullOrder(optimizer = optimizer, pen = :max),
     )
     @test length(pwa_red.planes) == 100
     @test evaluate(pwa_red, (0, 0)) ≈ 0.024 atol = 0.001
@@ -124,7 +124,7 @@ end
         @test_throws ErrorException approx(
             vals,
             Convex(),
-            FullOrderFitting(optimizer = optimizer, pen = :l2),
+            FullOrder(optimizer = optimizer, pen = :l2),
         )
 
         vals_c = PWA.convexify(vals, optimizer, :l1)
@@ -133,7 +133,7 @@ end
         pwa_con = approx(
             vals_c,
             Convex(),
-            FullOrderFitting(optimizer = optimizer, pen = :l2),
+            FullOrder(optimizer = optimizer, pen = :l2),
         )
 
         x = collect(range(-1, 1; length = 30))
@@ -148,7 +148,7 @@ end
         pwa_con = approx(
             fc,
             Convex(),
-            FullOrderFitting(optimizer = optimizer, pen = :l1),
+            FullOrder(optimizer = optimizer, pen = :l1),
         )
         @test PWA._planes(pwa_con) == 30
     end

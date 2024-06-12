@@ -281,7 +281,7 @@ function _progressive_pwa(
 end
 
 # Map algorithm structure to correct parameters
-function _progressive_pwa(f::FunctionEvaluations, options::ProgressiveFitting)
+function _progressive_pwa(f::FunctionEvaluations, options::Progressive)
     return _progressive_pwa(
         f,
         options.optimizer,

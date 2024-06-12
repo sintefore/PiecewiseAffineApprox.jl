@@ -44,7 +44,7 @@ end
 # Finds a pwa convex approximation for the provided data
 # X is a matrix with a column for each data point and z is a vector with the 
 # corresponding function values
-function _convex_linearization_mb(X::Matrix, z::Vector, options::Heuristic)
+function _convex_linearization_mb(X::Matrix, z::Vector, options::Cluster)
     @assert(size(X, 2) == length(z))
 
     Nᵗʳ = options.trials    # Number of trials

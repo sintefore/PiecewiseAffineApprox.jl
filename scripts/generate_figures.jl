@@ -8,7 +8,7 @@ pwa = approx(
     f,
     [(0, 1)],
     Convex(),
-    Optimized(optimizer = HiGHS.Optimizer, planes = 3),
+    MILP(optimizer = HiGHS.Optimizer, planes = 3),
 )
 p = plot(x, f.(x), pwa)
 
@@ -32,7 +32,7 @@ end
 
 function add_mplane!(ax, x, f, C, opt, n, linerecords)
     x̄ = LinRange(minimum(x), maximum(x), 100)
-    pwa = approx(f, [(0, 1)], C, Optimized(optimizer = opt, planes = n))
+    pwa = approx(f, [(0, 1)], C, MILP(optimizer = opt, planes = n))
     for ol in linerecords
         delete!(ax, ol)
     end
@@ -77,8 +77,8 @@ function rotated_plot()
     pwa = approx(
         vals,
         Convex(),
-        Heuristic(; optimizer = Xpress.Optimizer, planes = 9, strict = :none),
-        # Heuristic(; optimizer = HiGHS.Optimizer, planes = 9, strict = :none),
+        Cluster(; optimizer = Xpress.Optimizer, planes = 9, strict = :none),
+        # Cluster(; optimizer = HiGHS.Optimizer, planes = 9, strict = :none),
     )
     p = plot(vals, pwa)
     save(joinpath(@__DIR__, "..", "docs", "approx_3D.png"), p)

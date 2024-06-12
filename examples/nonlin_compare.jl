@@ -15,7 +15,7 @@ vals = PWA._sample_uniform(f, [(-1, 1), (-1, 1)], 10)
 pwa = approx(
     vals,
     Convex(),
-    Heuristic(
+    Cluster(
     optimizer = optimizer,
     planes = 10,
     penalty = :l2)

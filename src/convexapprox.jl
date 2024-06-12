@@ -35,7 +35,7 @@ function approx(
 end
 
 """
-    approx(input::FunctionEvaluations, c::Convex, a::Heuristic)
+    approx(input::FunctionEvaluations, c::Convex, a::Cluster)
 
 Approximate using a heuristic that works for general dimensions.
 
@@ -46,7 +46,7 @@ Additional keyword arguments:
 function approx(
     input::FunctionEvaluations{D},
     c::Convex,
-    a::Heuristic;
+    a::Cluster;
 ) where {D}
     x = [p[i] for i ∈ 1:D, p ∈ input.points]
     z = input.values
@@ -54,7 +54,7 @@ function approx(
 end
 
 """
-    approx(input::FunctionEvaluations, c::Convex, a::ProgressiveFitting)
+    approx(input::FunctionEvaluations, c::Convex, a::Progressive)
 
 Approximate using a progressive fitting heuristic that adds planes until
 a specified error tolerance is met.
@@ -62,19 +62,19 @@ a specified error tolerance is met.
 This algorithm requires that the data points provided are samples from
 a convex function.
 """
-function approx(input::FunctionEvaluations, c::Convex, a::ProgressiveFitting;)
+function approx(input::FunctionEvaluations, c::Convex, a::Progressive;)
     return _progressive_pwa(input, a)
 end
 
 """
-    approx(input::FunctionEvaluations, c::Convex, a::FullOrderFitting)
+    approx(input::FunctionEvaluations, c::Convex, a::FullOrder)
 
 Approximate using full order fitting that adds planes for all sample points.
 
 This algorithm requires that the data points provided are samples from
 a convex function.
 """
-function approx(input::FunctionEvaluations, c::Convex, a::FullOrderFitting;)
+function approx(input::FunctionEvaluations, c::Convex, a::FullOrder;)
     return _full_order_pwa(input, a.optimizer, a.pen)
 end
 
@@ -82,7 +82,7 @@ end
 function approx(
     input::FunctionEvaluations{D},
     c::Convex,
-    options::Optimized,
+    options::MILP,
 ) where {D}
     𝒫 = input.points
     z = input.values

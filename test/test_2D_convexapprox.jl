@@ -16,7 +16,7 @@
     pwa1 = approx(
         FunctionEvaluations(mat2tuples(X), z),
         Convex(),
-        Optimized(
+        MILP(
             optimizer = optimizer,
             planes = np,
             strict = :outer,
@@ -26,7 +26,7 @@
     pwa2 = approx(
         FunctionEvaluations(mat2tuples(X), z_concave),
         Concave(),
-        Optimized(
+        MILP(
             optimizer = optimizer,
             planes = np,
             strict = :outer,
@@ -56,7 +56,7 @@
         approx(
             FunctionEvaluations(mat2tuples(X), z),
             Convex(),
-            Optimized(
+            MILP(
                 optimizer = optimizer,
                 planes = np,
                 strict = :outer,
@@ -90,7 +90,7 @@
         tuple_var_conc,
         FunctionEvaluations(mat2tuples(X), z_concave),
         Concave(),
-        Optimized(
+        MILP(
             optimizer = optimizer,
             planes = np,
             strict = :outer,
