@@ -78,6 +78,8 @@ function convexify(
         end
     elseif metric == :l1
         obj = sum(s⁺[l] + s⁻[l] for l ∈ 1:K)
+    elseif metric == :none
+        # No regularization term added
     else
         error("Unrecognized/unsupported metric type $(metric)")
     end
@@ -127,6 +129,8 @@ function _full_order_pwa(f::FunctionEvaluations{D}, optimizer, metric) where {D}
         @constraint(m, s .≤ smax)
     elseif metric == :l1
         obj = sum(s)
+    elseif metric == :none
+        # No regularization added to m
     else
         error("Unrecognized/unsupported metric type $(metric)")
     end
