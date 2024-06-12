@@ -16,22 +16,12 @@
     pwa1 = approx(
         FunctionEvaluations(mat2tuples(X), z),
         Convex(),
-        MILP(
-            optimizer = optimizer,
-            planes = np,
-            strict = :outer,
-            pen = :l1,
-        ),
+        MILP(optimizer = optimizer, planes = np, strict = :outer, pen = :l1),
     )
     pwa2 = approx(
         FunctionEvaluations(mat2tuples(X), z_concave),
         Concave(),
-        MILP(
-            optimizer = optimizer,
-            planes = np,
-            strict = :outer,
-            pen = :l1,
-        ),
+        MILP(optimizer = optimizer, planes = np, strict = :outer, pen = :l1),
     )
 
     # @test length(pwa1.a) == np
@@ -90,12 +80,7 @@
         tuple_var_conc,
         FunctionEvaluations(mat2tuples(X), z_concave),
         Concave(),
-        MILP(
-            optimizer = optimizer,
-            planes = np,
-            strict = :outer,
-            pen = :l1,
-        );
+        MILP(optimizer = optimizer, planes = np, strict = :outer, pen = :l1);
         z = f_conc,
     )
 

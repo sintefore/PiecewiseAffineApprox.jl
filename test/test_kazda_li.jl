@@ -9,11 +9,7 @@
         pwa_red = approx(
             f,
             Convex(),
-            Progressive(
-                optimizer = optimizer,
-                tolerance = tol,
-                pen = pen,
-            ),
+            Progressive(optimizer = optimizer, tolerance = tol, pen = pen),
         )
         for (x, z) ∈ f
             pv = evaluate(pwa_red, x)
@@ -39,11 +35,7 @@
         @test_throws ErrorException approx(
             vals,
             Convex(),
-            Progressive(
-                optimizer = optimizer,
-                tolerance = 2.0,
-                pen = :l2,
-            ),
+            Progressive(optimizer = optimizer, tolerance = 2.0, pen = :l2),
         )
 
         vals_c = enforce_curvature(vals, Convex(), optimizer, :l1)
@@ -52,11 +44,7 @@
         pwa_con = approx(
             vals_c,
             Convex(),
-            Progressive(
-                optimizer = optimizer,
-                tolerance = 0.1,
-                pen = :l2,
-            ),
+            Progressive(optimizer = optimizer, tolerance = 0.1, pen = :l2),
         )
 
         x = collect(range(-1, 1; length = 30))
@@ -71,11 +59,7 @@
         pwa_con = approx(
             fc,
             Convex(),
-            Progressive(
-                optimizer = optimizer,
-                tolerance = 0.2,
-                pen = :l1,
-            ),
+            Progressive(optimizer = optimizer, tolerance = 0.2, pen = :l1),
         )
         @test PWA._planes(pwa_con) == 8
 
@@ -95,11 +79,8 @@ end
     z = x .^ 2
     f = FunctionEvaluations(tuple.(x), z)
     for (tol, pen) ∈ [(0.05, :max), (2.5, :l1), (0.5, :l2)]
-        pwa_red = approx(
-            f,
-            Convex(),
-            FullOrder(optimizer = optimizer, pen = pen),
-        )
+        pwa_red =
+            approx(f, Convex(), FullOrder(optimizer = optimizer, pen = pen))
         for (x, z) ∈ f
             pv = evaluate(pwa_red, x)
             @test z ≥ pv || z ≈ pv
@@ -109,11 +90,8 @@ end
     # 2D
     g(x) = x[1]^2 + x[2]^2
     vals = PiecewiseAffineApprox._sample_uniform(g, [(-1, 1), (-1, 1)], 10)
-    pwa_red = approx(
-        vals,
-        Convex(),
-        FullOrder(optimizer = optimizer, pen = :max),
-    )
+    pwa_red =
+        approx(vals, Convex(), FullOrder(optimizer = optimizer, pen = :max))
     @test length(pwa_red.planes) == 100
     @test evaluate(pwa_red, (0, 0)) ≈ 0.024 atol = 0.001
 
@@ -145,11 +123,8 @@ end
         @test length(fc) == length(f)
         @test fc.values[5] ≈ 0.5291 atol = 0.001
 
-        pwa_con = approx(
-            fc,
-            Convex(),
-            FullOrder(optimizer = optimizer, pen = :l1),
-        )
+        pwa_con =
+            approx(fc, Convex(), FullOrder(optimizer = optimizer, pen = :l1))
         @test PWA._planes(pwa_con) == 30
     end
 end

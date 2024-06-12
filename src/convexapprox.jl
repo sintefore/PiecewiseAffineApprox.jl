@@ -43,11 +43,7 @@ Additional keyword arguments:
 - `trials`: number of restarts (default = 20)
 - `itlim`: max refining iterations in each trial (default = 50),
 """
-function approx(
-    input::FunctionEvaluations{D},
-    c::Convex,
-    a::Cluster;
-) where {D}
+function approx(input::FunctionEvaluations{D}, c::Convex, a::Cluster;) where {D}
     x = [p[i] for i ∈ 1:D, p ∈ input.points]
     z = input.values
     return _convex_linearization_mb(x, z, a)
