@@ -5,7 +5,7 @@
     x = collect(range(-1, 1; length = 30))
     z = x .^ 2
     f = FunctionEvaluations(tuple.(x), z)
-    for (tol, pen) ∈ [(0.05, :max), (2.5, :l1), (0.5, :l2)]
+    for (tol, pen) ∈ [(0.05, :max), (2.5, :l1), (0.5, :l2), (0.5, :none)]
         pwa_red = approx(
             f,
             Convex(),
@@ -78,7 +78,7 @@ end
     x = collect(range(-1, 1; length = 30))
     z = x .^ 2
     f = FunctionEvaluations(tuple.(x), z)
-    for (tol, pen) ∈ [(0.05, :max), (2.5, :l1), (0.5, :l2)]
+    for (tol, pen) ∈ [(0.05, :max), (2.5, :l1), (0.5, :l2), (0.5, :none)]
         pwa_red =
             approx(f, Convex(), FullOrder(optimizer = optimizer, metric = pen))
         for (x, z) ∈ f
