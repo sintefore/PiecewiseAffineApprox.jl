@@ -27,11 +27,7 @@ pwa = approx(
 )
 plot(vals, pwa)
 
-pwa = approx(
-    vals,
-    Convex(),
-    FullOrder(; optimizer = optimizer, metric = :max),
-)
+pwa = approx(vals, Convex(), FullOrder(; optimizer = optimizer, metric = :max))
 plot(vals, pwa)
 
 pwa = approx(
