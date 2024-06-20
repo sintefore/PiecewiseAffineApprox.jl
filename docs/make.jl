@@ -10,13 +10,13 @@ cp(joinpath(docdir, "rotation.mp4"), joinpath(docdir,"src/assets/rotation.mp4"),
 # TODO: Add sections for each algorithms and functions?
 pages = [
     "Introduction" => "index.md",
-    # "Manual" => [
-    #     "Operational time structures" => "manual/basic.md",
-    #     "Multi-horizon" => "manual/multi.md",
-    #     "Time profiles" => "manual/profiles.md",
-    #     "Iteration utilities" => "manual/iteration.md",
-    #     "Discounting" => "manual/discount.md",
-    # ],
+    "How to" => [
+        "Approximate points" => "howto/approximate_points.md",
+        "Approximate a function" => "howto/approximate_function.md",
+        "Add constraints to a model" => "howto/add_to_model.md",
+        "Plot approximations" => "howto/plot_approximation.md",
+    ],
+    "Background" => "background/background.md",
     "API reference" => "reference/api.md",
 ]
 
