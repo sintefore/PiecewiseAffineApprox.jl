@@ -17,7 +17,7 @@ pages = [
     #     "Iteration utilities" => "manual/iteration.md",
     #     "Discounting" => "manual/discount.md",
     # ],
-    # "API reference" => "reference/api.md",
+    "API reference" => "reference/api.md",
 ]
 
 # TODO: Enable modules

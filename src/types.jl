@@ -6,6 +6,7 @@ struct Convex <: Curvature end
 abstract type Algorithm end
 """
     Heuristic
+
 Compute affine approximation using the method proposed by Mangani & Boyd.
 
 Note that this algoritm computes multiple approximations and selects the best.
@@ -21,13 +22,21 @@ If julia is started with multiple threads, these are computed in parallel. Consi
     strict::Symbol = :none
     optimizer::T
 end
+
+"""
+    Interpol
+
+Compute affine approximation by method proposed by Flatberg. Only available for 1D.
+"""
 @kwdef struct Interpol{T} <: Algorithm
     planes::Int = defaultplanes()
     pen = defaultpenalty()
     optimizer::T
 end
+
 """
     Optimized
+    
 Compute affine approximation using a variation of the method proposed by Toriello & Vielma.
 
 Note that the resulting approximation is sensitive to the selection of the Big-M value used when
