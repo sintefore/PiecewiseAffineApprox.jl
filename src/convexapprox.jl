@@ -1,4 +1,4 @@
-defaultpenalty() = :l1
+defaultmetric() = :l1
 defaultplanes() = 4
 defaulttimelimit() = 60
 
@@ -35,7 +35,7 @@ function approx(
 end
 
 """
-    approx(input::FunctionEvaluations, c::Convex, a::Heuristic)
+    approx(input::FunctionEvaluations, c::Convex, a::Cluster)
 
 Approximate using a heuristic that works for general dimensions.
 
@@ -43,18 +43,14 @@ Additional keyword arguments:
 - `trials`: number of restarts (default = 20)
 - `itlim`: max refining iterations in each trial (default = 50),
 """
-function approx(
-    input::FunctionEvaluations{D},
-    c::Convex,
-    a::Heuristic;
-) where {D}
+function approx(input::FunctionEvaluations{D}, c::Convex, a::Cluster;) where {D}
     x = [p[i] for i ∈ 1:D, p ∈ input.points]
     z = input.values
     return _convex_linearization_mb(x, z, a)
 end
 
 """
-    approx(input::FunctionEvaluations, c::Convex, a::ProgressiveFitting)
+    approx(input::FunctionEvaluations, c::Convex, a::Progressive)
 
 Approximate using a progressive fitting heuristic that adds planes until
 a specified error tolerance is met.
@@ -62,27 +58,27 @@ a specified error tolerance is met.
 This algorithm requires that the data points provided are samples from
 a convex function.
 """
-function approx(input::FunctionEvaluations, c::Convex, a::ProgressiveFitting;)
+function approx(input::FunctionEvaluations, c::Convex, a::Progressive;)
     return _progressive_pwa(input, a)
 end
 
 """
-    approx(input::FunctionEvaluations, c::Convex, a::FullOrderFitting)
+    approx(input::FunctionEvaluations, c::Convex, a::FullOrder)
 
 Approximate using full order fitting that adds planes for all sample points.
 
 This algorithm requires that the data points provided are samples from
 a convex function.
 """
-function approx(input::FunctionEvaluations, c::Convex, a::FullOrderFitting;)
-    return _full_order_pwa(input, a.optimizer, a.pen)
+function approx(input::FunctionEvaluations, c::Convex, a::FullOrder;)
+    return _full_order_pwa(input, a.optimizer, a.metric)
 end
 
 # Optimal convex approximation using mixed integer optimization
 function approx(
     input::FunctionEvaluations{D},
     c::Convex,
-    options::Optimized,
+    options::MILP,
 ) where {D}
     𝒫 = input.points
     z = input.values
@@ -102,16 +98,16 @@ function approx(
 
     @variable(m, 𝑢[𝒫, 𝒦], Bin)
 
-    if options.pen == :l2
+    if options.metric == :l2
         @objective(m, Min, sum((zᵖ[p] - 𝑧̂[p])^2 for p ∈ 𝒫))
-    elseif options.pen == :max
+    elseif options.metric == :max
         𝑡 = @variable(m)
         @objective(m, Min, 𝑡)
         for p ∈ 𝒫
             @constraint(m, 𝑡 ≥ (zᵖ[p] - 𝑧̂[p]))
             @constraint(m, 𝑡 ≥ (𝑧̂[p] - zᵖ[p]))
         end
-    elseif options.pen == :l1
+    elseif options.metric == :l1
         𝑡 = @variable(m, [𝒫])
         @objective(m, Min, sum(𝑡))
         for p ∈ 𝒫
@@ -119,7 +115,7 @@ function approx(
             @constraint(m, 𝑡[p] ≥ (𝑧̂[p] - zᵖ[p]))
         end
     else
-        error("Unrecognized/unsupported penalty type $(options.pen)")
+        error("Unrecognized/unsupported metric type $(options.metric)")
     end
 
     for p ∈ 𝒫, k ∈ 𝒦

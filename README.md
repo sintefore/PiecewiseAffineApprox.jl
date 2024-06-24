@@ -17,7 +17,7 @@ using JuMP, PiecewiseAffineApprox, HiGHS
 m = Model(HiGHS.Optimizer)
 @variable(m, x)
 # Create a piecewise linear approximation to x^2 on the interval [-1, 1]
-pwa = approx(x -> x[1]^2, [(-1, 1)], Convex(), Optimized(optimizer = HiGHS.Optimizer, planes=5))
+pwa = approx(x -> x[1]^2, [(-1, 1)], Convex(), MILP(optimizer = HiGHS.Optimizer, planes=5))
 # Add the pwa function to the model
 z = pwaffine(m, x, pwa)
 # Minimize
@@ -38,7 +38,7 @@ using PiecewiseAffineApprox, GLMakie, HiGHS
 
 x = LinRange(0, 1, 20)
 f(x) = first(x)^2
-pwa = approx(f, [(0, 1)], Convex(), Optimized(optimizer = HiGHS.Optimizer, planes = 3))
+pwa = approx(f, [(0, 1)], Convex(), MILP(optimizer = HiGHS.Optimizer, planes = 3))
 p = plot(x, f.(x), pwa)
 
 using CairoMakie
@@ -68,7 +68,7 @@ end
 
 function add_mplane!(ax, x, f, C, opt, n, linerecords)
     x̄ = LinRange(minimum(x), maximum(x), 100)
-    pwa = approx(f, [(0, 1)], C, Optimized(optimizer = opt, planes = n))
+    pwa = approx(f, [(0, 1)], C, MILP(optimizer = opt, planes = n))
     for ol in linerecords
         delete!(ax, ol)
     end
@@ -115,7 +115,7 @@ vals = FunctionEvaluations(x, z)
 pwa = approx(
     vals,
     Convex(),
-    Heuristic(; optimizer = HiGHS.Optimizer, planes = 9, strict = :none),
+    Cluster(; optimizer = HiGHS.Optimizer, planes = 9, strict = :none),
 )
 p = plot(vals, pwa)
 save(joinpath(@__DIR__,"..","docs","approx_3D.png"), p)

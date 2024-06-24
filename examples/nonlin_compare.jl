@@ -15,10 +15,7 @@ vals = PWA._sample_uniform(f, [(-1, 1), (-1, 1)], 10)
 pwa = approx(
     vals,
     Convex(),
-    Heuristic(
-    optimizer = optimizer,
-    planes = 10,
-    penalty = :l2)
+    Cluster(optimizer = optimizer, planes = 10, metric = :l2),
 )
 
 struct Instance
@@ -40,7 +37,7 @@ function linear_model(instance)
     @variable(model, x[I], Int)
     @variable(model, y[I])
     z = []
-    for i in I
+    for i ∈ I
         zi = PWA.pwaffine(model, [x[i], y[i]], instance.pwa)
         @constraint(model, zi >= x[i] + y[i] + 2 + instance.rnd[i])
         push!(z, zi)
@@ -86,7 +83,7 @@ pajarito = optimizer_with_attributes(
 
 results = NamedTuple[]
 
-for sz in StepRange(5, 5, 20)
+for sz ∈ StepRange(5, 5, 20)
     instance = Instance(sz, pwa)
 
     model_lin = linear_model(instance)

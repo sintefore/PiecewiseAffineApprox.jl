@@ -13,7 +13,7 @@ I = 100
 x = 2 * rand(I) .- 1
 z = x .^ 2
 vals = FunctionEvaluations(Tuple.(x), z)
-pwa = approx(vals, Convex(), Heuristic(; optimizer = optimizer, planes = 5))
+pwa = approx(vals, Convex(), Cluster(; optimizer = optimizer, planes = 5))
 
 # 2D
 xmat = 2 * rand(2, I) .- 1
@@ -23,21 +23,17 @@ vals = FunctionEvaluations(x, z)
 pwa = approx(
     vals,
     Convex(),
-    Heuristic(; optimizer = optimizer, planes = 9, strict = :none),
+    Cluster(; optimizer = optimizer, planes = 9, strict = :none),
 )
+plot(vals, pwa)
+
+pwa = approx(vals, Convex(), FullOrder(; optimizer = optimizer, metric = :max))
 plot(vals, pwa)
 
 pwa = approx(
     vals,
     Convex(),
-    FullOrderFitting(; optimizer = optimizer, pen = :max),
-)
-plot(vals, pwa)
-
-pwa = approx(
-    vals,
-    Convex(),
-    ProgressiveFitting(; optimizer = optimizer, tolerance = 0.5, pen = :l2),
+    Progressive(; optimizer = optimizer, tolerance = 0.5, metric = :l2),
 )
 plot(vals, pwa)
 
@@ -49,7 +45,7 @@ vals = PWA._sample_uniform(f, [(-1, 1), (-1, 1)], 10)
 pwa = approx(
     vals,
     Convex(),
-    Heuristic(; optimizer = optimizer, planes = 10, penalty = :l2),
+    Cluster(; optimizer = optimizer, planes = 10, metric = :l2),
 )
 plot(vals, pwa)
 
@@ -59,25 +55,25 @@ vals = PWA._sample_uniform(f, [(-1, 1), (-1, 1)], 10)
 pwa = approx(
     vals,
     Concave(),
-    Heuristic(; optimizer = optimizer, planes = 10, penalty = :l1),
+    Cluster(; optimizer = optimizer, planes = 10, metric = :l1),
 )
 
 # Log sum exp
 h(x) = log(exp(x[1]) + exp(x[2]))
 vals = PWA._sample_uniform(h, [(-1, 1), (-1, 1)], 10)
-pwa = approx(vals, Convex(), Heuristic(), optimizer = optimizer, planes = 5)
+pwa = approx(vals, Convex(), Cluster(), optimizer = optimizer, planes = 5)
 plot(vals, pwa)
 
 # Quadratic over linear
 g(x) = x[1]^2 / x[2]
 vals = PWA._sample_uniform(g, [(-1, 1), (0.1, 1)], 10)
-pwa = approx(vals, Convex(), Heuristic(), optimizer = optimizer, planes = 10)
+pwa = approx(vals, Convex(), Cluster(), optimizer = optimizer, planes = 10)
 plot(vals, pwa)
 
 # Geometric mean
 f(x) = -sqrt(x[1] * x[2])
 vals = PWA._sample_uniform(f, [(0.1, 1), (0.1, 1)], 10)
-pwa = approx(vals, Convex(), Heuristic(), optimizer = optimizer, planes = 10)
+pwa = approx(vals, Convex(), Cluster(), optimizer = optimizer, planes = 10)
 plot(vals, pwa)
 
 # Non differentiable
@@ -86,7 +82,7 @@ vals = PWA._sample_uniform(f, [(-1, 1), (-1, 1)], 10)
 pwa = approx(
     vals,
     Convex(),
-    Heuristic(; optimizer = optimizer, planes = 8, pen = :l1),
+    Cluster(; optimizer = optimizer, planes = 8, metric = :l1),
 )
 plot(vals, pwa)
 
@@ -96,5 +92,5 @@ vals = PWA._sample_uniform(h, [(-5, 5), (-5, 5), (-5, 5)], 10)
 pwa = approx(
     vals,
     Convex(),
-    Heuristic(; optimizer = optimizer, planes = 8, pen = :rms),
+    Cluster(; optimizer = optimizer, planes = 8, metric = :rms),
 )

@@ -14,7 +14,7 @@ The main algorithm consists of the following steps:
 =#
 
 """
-    enforce_curvature(f::FunctionEvaluations, curvature::Curvature, optimizer, pen = :l1)
+    enforce_curvature(f::FunctionEvaluations, curvature::Curvature, optimizer, metric = :l1)
 
 Create a slightly perturbed version of the function values
 to ensure that the data points can be interpolated by a convex/concave
@@ -23,7 +23,7 @@ piecewise affine function.
 Enforcing the curvature is performed using a linear optimization problem
 that adjust the function values and tries to minimize the total deviation.
 The total deviation can be measured in different metrics specified
-by the `pen` parameter.
+by the `metric` parameter.
 This function can be useful as a pre-step for running the full-order and progressive
 fitting heuristics that require data points that are convex/concave in this sense.
 """
@@ -31,26 +31,26 @@ function enforce_curvature(
     f::FunctionEvaluations,
     c::Convex,
     optimizer,
-    pen = :l1,
+    metric = :l1,
 )
-    return convexify(f, optimizer, pen)
+    return convexify(f, optimizer, metric)
 end
 
 function enforce_curvature(
     f::FunctionEvaluations,
     c::Concave,
     optimizer,
-    pen = :l1,
+    metric = :l1,
 )
     fneg = FunctionEvaluations(f.points, -f.values)
-    fconvex = convexify(fneg, optimizer, pen, "concave")
+    fconvex = convexify(fneg, optimizer, metric, "concave")
     return FunctionEvaluations(f.points, -fconvex.values)
 end
 
 function convexify(
     f::FunctionEvaluations{D},
     optimizer,
-    pen = :l1,
+    metric = :l1,
     curv_string = "convex",
 ) where {D}
     K = length(f)
@@ -68,18 +68,20 @@ function convexify(
         @constraint(m, z + s⁺[l] - s⁻[l] ≤ dot(a[l, :], x) + b[l])
     end
     obj = AffExpr()
-    if pen == :l2 || pen == :rms
+    if metric == :l2 || metric == :rms
         obj = sum(s⁺[l]^2 + s⁻[l]^2 for l ∈ 1:K)
-    elseif pen == :max
+    elseif metric == :max
         @variable(m, smax)
         obj = smax
         for l ∈ 1:K
             @constraint(m, smax ≥ s⁺[l] + s⁻[l])
         end
-    elseif pen == :l1
+    elseif metric == :l1
         obj = sum(s⁺[l] + s⁻[l] for l ∈ 1:K)
+    elseif metric == :none
+        # No regularization term added
     else
-        error("Unrecognized/unsupported penalty type $(penalty)")
+        error("Unrecognized/unsupported metric type $(metric)")
     end
     @objective(m, Min, obj)
 
@@ -105,7 +107,7 @@ end
 
 # Create a full order convex approximation for the given data points,
 # i.e. using a separate plane for each data point.
-function _full_order_pwa(f::FunctionEvaluations{D}, optimizer, pen) where {D}
+function _full_order_pwa(f::FunctionEvaluations{D}, optimizer, metric) where {D}
     K = length(f)
 
     m = Model(optimizer)
@@ -119,16 +121,18 @@ function _full_order_pwa(f::FunctionEvaluations{D}, optimizer, pen) where {D}
         @constraint(m, z ≤ dot(a[l, :], x) + b[l])
     end
     obj = AffExpr()
-    if pen == :l2 || pen == :rms
+    if metric == :l2 || metric == :rms
         obj = sum(s .^ 2)
-    elseif pen == :max
+    elseif metric == :max
         @variable(m, smax)
         obj = smax
         @constraint(m, s .≤ smax)
-    elseif pen == :l1
+    elseif metric == :l1
         obj = sum(s)
+    elseif metric == :none
+        # No regularization added to m
     else
-        error("Unrecognized/unsupported penalty type $(penalty)")
+        error("Unrecognized/unsupported metric type $(metric)")
     end
     @objective(m, Min, obj)
     optimize!(m)
@@ -149,7 +153,7 @@ end
 # Create a pwa approximation using `p` planes where `U` provides a mapping from
 # data points indices to the indices of planes. The planes are required to lie below
 # all data points. Points are allowed to lie above their associated plane with
-# a penalty that is minimized in the optimization.
+# a metric that is minimized in the optimization.
 function _reduced_order_pwa(
     f::FunctionEvaluations{D},
     p::Int,
@@ -230,22 +234,22 @@ end
 
 # Calculate the approximation error between input data points and the piecewise
 # affine approximation in different metrics
-function _approx_error(f::FunctionEvaluations, pwa::PWAFunc, penalty = :l1)
+function _approx_error(f::FunctionEvaluations, pwa::PWAFunc, metric = :l1)
     err = 0.0
     for (x, z) ∈ f
         v = evaluate(pwa, x)
-        if penalty == :l1
+        if metric == :l1
             err += abs(v - z)
-        elseif penalty == :l2 || penalty == :rms
+        elseif metric == :l2 || metric == :rms
             err += (v - z)^2
-        elseif penalty == :max
+        elseif metric == :max
             err = max(err, abs(v - z))
         end
     end
-    if penalty == :rms
+    if metric == :rms
         err = err / length(f.points)
     end
-    if penalty == :l2 || penalty == :rms
+    if metric == :l2 || metric == :rms
         err = sqrt(err)
     end
     return err
@@ -256,13 +260,13 @@ function _progressive_pwa(
     f::FunctionEvaluations,
     optimizer,
     δᵗᵒˡ = 1e-3,
-    penalty = :max,
-    full_order_pen = :l1,
+    metric = :max,
+    full_order_metric = :l1,
 )
 
     # Find the full order convex approximation, will error if the points are
     # not convex
-    pwa = _full_order_pwa(f, optimizer, full_order_pen)
+    pwa = _full_order_pwa(f, optimizer, full_order_metric)
 
     # Start with an approximation with one plane and allocate all points to that segment
     p = 1
@@ -271,21 +275,21 @@ function _progressive_pwa(
     # Increase the number of planes until the required tolerance is met
     pwa_red = _allocation_improvement(f, p, U, optimizer)
     used = []
-    while _approx_error(f, pwa_red, penalty) > δᵗᵒˡ && p < length(f.points)
+    while _approx_error(f, pwa_red, metric) > δᵗᵒˡ && p < length(f.points)
         U, used = _increase_order(f, pwa_red, pwa, used)
         p += 1
         pwa_red = _allocation_improvement(f, p, U, optimizer)
     end
-    @info "Fitting finished, error = $(round(_approx_error(f, pwa_red, penalty); digits = 3)), p = $p"
+    @info "Fitting finished, error = $(round(_approx_error(f, pwa_red, metric); digits = 3)), p = $p"
     return pwa_red
 end
 
 # Map algorithm structure to correct parameters
-function _progressive_pwa(f::FunctionEvaluations, options::ProgressiveFitting)
+function _progressive_pwa(f::FunctionEvaluations, options::Progressive)
     return _progressive_pwa(
         f,
         options.optimizer,
         options.tolerance,
-        options.pen,
+        options.metric,
     )
 end

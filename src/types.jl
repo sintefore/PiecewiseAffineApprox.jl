@@ -5,7 +5,7 @@ struct Convex <: Curvature end
 
 abstract type Algorithm end
 """
-    Heuristic
+    Cluster
 Compute affine approximation using the method proposed by Mangani & Boyd.
 
 Note that this algoritm computes multiple approximations and selects the best.
@@ -13,9 +13,9 @@ If julia is started with multiple threads, these are computed in parallel. Consi
  how many threads will be beneficial, particularly when using a commercial solver where
  the license may restrict the number of simultanous solver instances.
 """
-@kwdef struct Heuristic{T} <: Algorithm
+@kwdef struct Cluster{T} <: Algorithm
     planes::Int = defaultplanes()
-    pen::Symbol = defaultpenalty()
+    metric::Symbol = defaultmetric()
     trials::Int = 20
     itlim::Int = 50
     strict::Symbol = :none
@@ -23,44 +23,44 @@ If julia is started with multiple threads, these are computed in parallel. Consi
 end
 @kwdef struct Interpol{T} <: Algorithm
     planes::Int = defaultplanes()
-    pen = defaultpenalty()
+    metric = defaultmetric()
     optimizer::T
 end
 """
-    Optimized
+    MILP
 Compute affine approximation using a variation of the method proposed by Toriello & Vielma.
 
 Note that the resulting approximation is sensitive to the selection of the Big-M value used when
 solving the optimization problem.
 """
-@kwdef struct Optimized{T} <: Algorithm
+@kwdef struct MILP{T} <: Algorithm
     planes::Int = defaultplanes()
-    pen::Symbol = defaultpenalty()
+    metric::Symbol = defaultmetric()
     strict::Symbol = :none
     maxtime::Int = defaulttimelimit()
     optimizer::T
 end
 
 """
-    ProgressiveFitting
+    Progressive
 
 Compute affine approximation based on a variation of the method of Kazda and Li (2024)
 specialized to convex approximations.
 """
-@kwdef struct ProgressiveFitting{T} <: Algorithm
+@kwdef struct Progressive{T} <: Algorithm
     tolerance::Float64 = 0.01
-    pen::Symbol = defaultpenalty()
+    metric::Symbol = defaultmetric()
     optimizer::T
 end
 
 """
-    FullOrderFitting
+    FullOrder
 
 Compute affine approximation based on a variation of the method of Kazda and Li (2024)
 specialized to convex approximations with full order approximation (no reduction of number of planes).
 """
-@kwdef struct FullOrderFitting{T} <: Algorithm
-    pen::Symbol = defaultpenalty()
+@kwdef struct FullOrder{T} <: Algorithm
+    metric::Symbol = defaultmetric()
     optimizer::T
 end
 

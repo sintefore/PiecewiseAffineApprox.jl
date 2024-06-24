@@ -1,25 +1,25 @@
 
 # Approximation error using the value of the pwa function
 # in the given points. Support for multiple metrics (l1, l2, max).
-function _approx_error(X::Matrix, z::Vector, pwa::PWAFunc, penalty = :l1)
+function _approx_error(X::Matrix, z::Vector, pwa::PWAFunc, metric = :l1)
     err = 0.0
     for (i, x̄) ∈ enumerate(eachcol(X))
         v = evaluate(pwa, x̄)
 
-        if penalty == :l1
+        if metric == :l1
             err += abs(v - z[i])
-        elseif penalty == :l2 || penalty == :rms
+        elseif metric == :l2 || metric == :rms
             err += (v - z[i])^2
-        elseif penalty == :max
+        elseif metric == :max
             err = max(err, abs(v - z[i]))
         end
     end
 
-    if penalty == :rms
+    if metric == :rms
         err = err / size(X, 2)
     end
 
-    if penalty == :l2 || penalty == :rms
+    if metric == :l2 || metric == :rms
         err = sqrt(err)
     end
 
@@ -31,26 +31,26 @@ function _convex_linearization_mb_single(
     z::Vector,
     K,
     lᵐᵃˣ,
-    penalty,
+    metric,
     optimizer,
     strict,
 )
     𝒫 = _random_partition(X, K)
-    pwa = _refine_partition(X, z, 𝒫, lᵐᵃˣ, penalty, optimizer, strict)
-    e = _approx_error(X, z, pwa, penalty)
+    pwa = _refine_partition(X, z, 𝒫, lᵐᵃˣ, metric, optimizer, strict)
+    e = _approx_error(X, z, pwa, metric)
     return e => pwa
 end
 
 # Finds a pwa convex approximation for the provided data
 # X is a matrix with a column for each data point and z is a vector with the 
 # corresponding function values
-function _convex_linearization_mb(X::Matrix, z::Vector, options::Heuristic)
+function _convex_linearization_mb(X::Matrix, z::Vector, options::Cluster)
     @assert(size(X, 2) == length(z))
 
     Nᵗʳ = options.trials    # Number of trials
     lᵐᵃˣ = options.itlim    # Iteration limit
     K = options.planes
-    penalty = options.pen
+    metric = options.metric
     strict = options.strict
     optimizer = options.optimizer
 
@@ -62,7 +62,7 @@ function _convex_linearization_mb(X::Matrix, z::Vector, options::Heuristic)
                 z,
                 K,
                 lᵐᵃˣ,
-                penalty,
+                metric,
                 optimizer,
                 strict,
             ) for i ∈ 1:Nᵗʳ
@@ -70,7 +70,7 @@ function _convex_linearization_mb(X::Matrix, z::Vector, options::Heuristic)
     )
     min_error, pwa_best = argmin(first, approxes)
 
-    @info "Terminating search - best approximation error = $(min_error) ($penalty)"
+    @info "Terminating search - best approximation error = $(min_error) ($metric)"
     return pwa_best
 end
 
@@ -102,7 +102,7 @@ end
 #
 # The process terminates after a given number of iterations returning
 # the pwa function corresponding to the final partition.
-function _refine_partition(X, z, 𝒫, lᵐᵃˣ, penalty, optimizer, strict)
+function _refine_partition(X, z, 𝒫, lᵐᵃˣ, metric, optimizer, strict)
     D = size(X, 1)
     pwa = nothing
     for it ∈ 1:lᵐᵃˣ
@@ -111,7 +111,7 @@ function _refine_partition(X, z, 𝒫, lᵐᵃˣ, penalty, optimizer, strict)
             if length(p) > 0
                 x̄ = X[:, p]
                 z̄ = z[p]
-                a, b = _local_fit(x̄, z̄, penalty, optimizer, strict)
+                a, b = _local_fit(x̄, z̄, metric, optimizer, strict)
                 _addplane!(pwa, a, b)
             end
         end
@@ -126,9 +126,9 @@ function _refine_partition(X, z, 𝒫, lᵐᵃˣ, penalty, optimizer, strict)
 end
 
 # Finds the hypeplane best fitting the given subset of points 
-# using the given penalty and possible restrictions on whether
+# using the given metric and possible restrictions on whether
 # the plane should be strictly above or below the points
-function _local_fit(X̄, z̄, penalty, optimizer, strict)
+function _local_fit(X̄, z̄, metric, optimizer, strict)
     M, N = size(X̄)
 
     # Create an optimization model to find the best a and b such that  ax + b ≈ z
@@ -154,16 +154,16 @@ function _local_fit(X̄, z̄, penalty, optimizer, strict)
     end
 
     obj = AffExpr()
-    if penalty == :l2 || penalty == :rms
+    if metric == :l2 || metric == :rms
         obj = sum((z̄[i] - ẑ[i])^2 for i ∈ 1:N)
-    elseif penalty == :max
+    elseif metric == :max
         @variable(m, t)
         obj = t
         for i ∈ 1:N
             @constraint(m, t ≥ (z̄[i] - ẑ[i]))
             @constraint(m, t ≥ (ẑ[i] - z̄[i]))
         end
-    elseif penalty == :l1
+    elseif metric == :l1
         @variable(m, t[1:N])
         obj = sum(t[i] for i ∈ 1:N)
         for i ∈ 1:N
@@ -171,7 +171,7 @@ function _local_fit(X̄, z̄, penalty, optimizer, strict)
             @constraint(m, t[i] ≥ (ẑ[i] - z̄[i]))
         end
     else
-        error("Unrecognized/unsupported penalty type $(penalty)")
+        error("Unrecognized/unsupported metric type $(metric)")
     end
 
     # TODO: consider adding regularization term

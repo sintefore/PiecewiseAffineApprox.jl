@@ -79,14 +79,14 @@ function _interpolatepw(x, z, options)
     c = [(z[j] - z[i]) / (x[j] - x[i]) for i ∈ 𝒩, j ∈ 𝒩]
 
     # Calculate penalties
-    if options.pen == :l1
+    if options.metric == :l1
         p = [
             (
                 i < j ?
                 sum(abs(c[i, j] * (x[k] - x[i]) + z[i] - z[k]) for k ∈ i:j) : 0
             ) for i ∈ 𝒩, j ∈ 𝒩
         ]
-    elseif options.pen == :l2
+    elseif options.metric == :l2
         p = [
             (
                 i < j ?
@@ -94,7 +94,7 @@ function _interpolatepw(x, z, options)
                 0
             ) for i ∈ 𝒩, j ∈ 𝒩
         ]
-    elseif options.pen == :max
+    elseif options.metric == :max
         p = [
             (
                 i < j ?
@@ -104,13 +104,13 @@ function _interpolatepw(x, z, options)
             ) for i ∈ 𝒩, j ∈ 𝒩
         ]
     else
-        error("Unrecognized/unsupported penalty $(options.pen)")
+        error("Unrecognized/unsupported metric $(options.metric)")
     end
 
     m = Model()
     @variable(m, 𝑢[𝒩, 𝒩], Bin)
 
-    # Minimize total penalty
+    # Minimize total metric
     @objective(m, Min, sum(p[i, j] * 𝑢[i, j] for i ∈ 𝒩, j ∈ 𝒩))
 
     # Number of line segments in interpolant
