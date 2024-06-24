@@ -7,7 +7,7 @@ cp(joinpath(docdir,"approx_3D.png"), joinpath(docdir,"src/assets/approx_3D.png")
 cp(joinpath(docdir,"approxanim.mp4"), joinpath(docdir,"src/assets/approxanim.mp4"), force=true)
 cp(joinpath(docdir, "rotation.mp4"), joinpath(docdir,"src/assets/rotation.mp4"), force=true)
 
-# TODO: Add sections for each algorithms and functions?
+
 pages = [
     "Introduction" => "index.md",
     "How to" => [
