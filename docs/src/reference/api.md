@@ -5,11 +5,11 @@ CurrentModule = PiecewiseAffineApprox
 ## Algorithms
 
 ```@docs
-FullOrderFitting
-Heuristic
-Interpol
-Optimized
-ProgressiveFitting
+#FullOrderFitting
+#Heuristic
+#Interpol
+#Optimized
+#ProgressiveFitting
 ```
 
 ## Other types
