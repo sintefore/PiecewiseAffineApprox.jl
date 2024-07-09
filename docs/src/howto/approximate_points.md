@@ -1,9 +1,7 @@
 # Approximate points
-Piecewise affine approximations can be obtained either for a given function 𝒻(x) or for a set of sampled points 𝒳 with their corresponding function values 𝒵 = {f(x): ∀x ∈ 𝒳}. Both methods have their applicability depending on the context and the specific application requirements. For example, the method that approximates a function based on a collection of points may be useful for applications that provide a dataset for off-line construction of functions of interest prior to optimization.
+For piecewise-affine approximations obtained from a dataset, the function FunctionEvaluations(𝒳, 𝒵) can be used to create a structure that contains a tuple with the points in the domain 𝒳 and their corresponding function values 𝒵. The function approx will receive this struct as input to calculate the approximations that best fit the dataset.
 
-Once the datataset is available, the function FunctionEvaluations(𝒳, 𝒵) can be used to create a structure that contains a tuple with the points in the domain 𝒳 and their corresponding function values 𝒵. The function approx will receive this struct as input to calculate the approximations that best fit the dataset.
-
-## 2D 
+## Unidimensional funcions (1D)
 
 The following code creates a 2D full-order piecewise affine approximation for a tuple (x,z) where x is a collection of points with their corresponding function values stores in z. The selected approximation is convex, uses 5 planes (linear segments), and applies l₁-norm regulazation as the error measure.
 
@@ -20,7 +18,7 @@ pwa1 = approx(
 )
 ```
 
-# 3D
+# Bi-variate functions (3D)
 A dataset can also be used as input for 3D piecewise affine approximations. The following code creates a uniformly sampled domain X within (-1,1) and calculates the corresponding function values for a concave function z_concave.
 
 ```julia

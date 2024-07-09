@@ -11,8 +11,8 @@ cp(joinpath(docdir, "rotation.mp4"), joinpath(docdir,"src/assets/rotation.mp4"),
 pages = [
     "Introduction" => "index.md",
     "How to" => [
-        "Approximate points" => "howto/approximate_points.md",
-        "Approximate a function" => "howto/approximate_function.md",
+        "Approximate a function" => "howto/approximate_function.md",    
+        "Approximate points" => "howto/approximate_points.md",        
         "Add constraints to a model" => "howto/add_to_model.md",
         "Plot approximations" => "howto/plot_approximation.md",
     ],
