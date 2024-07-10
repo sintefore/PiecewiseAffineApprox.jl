@@ -5,7 +5,7 @@
     pwa1 = approx(
         FunctionEvaluations(Tuple.(x), z),
         Convex(),
-        Optimized(optimizer = optimizer, pen = :l1, planes = 5),
+        MILP(optimizer = optimizer, metric = :l1, planes = 5),
     )
     @test length(pwa1.planes) == 5
     @test issorted((p.α for p ∈ pwa1.planes))
@@ -15,7 +15,7 @@
         x -> x[1]^2,
         [(-1, 1)],
         Convex(),
-        Optimized(optimizer = optimizer, pen = :l1, planes = 5),
+        MILP(optimizer = optimizer, metric = :l1, planes = 5),
     )
     @test length(pwa2.planes) == 5
     @test isapprox(PWA.evaluate(pwa2, 0.4), 0.1733, atol = 0.015)
@@ -24,12 +24,7 @@
         x -> x[1]^2,
         [(-1, 1)],
         Convex(),
-        Optimized(
-            optimizer = optimizer,
-            pen = :l1,
-            planes = 5,
-            strict = :strict,
-        ),
+        MILP(optimizer = optimizer, metric = :l1, planes = 5, strict = :strict),
     )
     @test length(pwa2.planes) == 5
     @test isapprox(PWA.evaluate(pwa3, 0.4), 0.16, atol = 0.03)
@@ -48,23 +43,13 @@
     pwa_outer = approx(
         FunctionEvaluations(Tuple.(x), z),
         Convex(),
-        Optimized(
-            optimizer = optimizer,
-            pen = :l1,
-            planes = 5,
-            strict = :outer,
-        ),
+        MILP(optimizer = optimizer, metric = :l1, planes = 5, strict = :outer),
     )
 
     pwa_inner = approx(
         FunctionEvaluations(Tuple.(x), z),
         Convex(),
-        Optimized(
-            optimizer = optimizer,
-            pen = :l1,
-            planes = 5,
-            strict = :inner,
-        ),
+        MILP(optimizer = optimizer, metric = :l1, planes = 5, strict = :inner),
     )
 
     for i ∈ eachindex(x)
@@ -83,7 +68,7 @@
     pwa = approx(
         vals,
         Convex(),
-        Optimized(optimizer = optimizer, planes = 4, pen = :l1),
+        MILP(optimizer = optimizer, planes = 4, metric = :l1),
     )
     @test PWA.evaluate(pwa, (0, 0)) ≈ 10_000.0 atol = 0.1
 end

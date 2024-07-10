@@ -1,8 +1,9 @@
 using COSMO
-using PiecewiseAffineApprox
-using JuMP
 using HiGHS
+using JuMP
+using Logging
 using Pajarito
+using PiecewiseAffineApprox
 using StableRNGs
 using Test
 rng = StableRNG(123)
@@ -23,9 +24,14 @@ const qp_optimizer = optimizer_with_attributes(
     MOI.Silent() => true,
 )
 
-include("testquadapprox.jl")
-include("convex_interpolation.jl")
-include("testconvexapprox.jl")
-include("test_2D_convexapprox.jl")
-include("test_big_M.jl")
-include("test_kazda_li.jl")
+@testset "PiecewiseAffineApprox" begin
+    nologger = ConsoleLogger(devnull, Logging.Debug)
+    with_logger(nologger) do
+        include("testquadapprox.jl")
+        include("convex_interpolation.jl")
+        include("testconvexapprox.jl")
+        include("test_2D_convexapprox.jl")
+        include("test_big_M.jl")
+        return include("test_kazda_li.jl")
+    end
+end
