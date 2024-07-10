@@ -21,11 +21,18 @@ If julia is started with multiple threads, these are computed in parallel. Consi
     strict::Symbol = :none
     optimizer::T
 end
+
+"""
+    Interpol
+
+Compute affine approximation by method proposed by Flatberg. Only available for 1D.
+"""
 @kwdef struct Interpol{T} <: Algorithm
     planes::Int = defaultplanes()
     metric = defaultmetric()
     optimizer::T
 end
+
 """
     MILP
 Compute affine approximation using a variation of the method proposed by Toriello & Vielma.
