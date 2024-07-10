@@ -1,11 +1,18 @@
 # PiecewiseAffineApprox
 
+[![Build Status](https://github.com/sintefore/PiecewiseAffineApprox.jl/workflows/CI/badge.svg?branch=main)](https://github.com/sintefore/PiecewiseAffineApprox.jl/actions?query=workflow%3ACI)
+[![codecov](https://codecov.io/gh/sintefore/PiecewiseAffineApprox.jl/branch/main/graph/badge.svg?token=2LXGVU04YS)](https://codecov.io/gh/sintefore/PiecewiseAffineApprox.jl)
+[![In Development](https://img.shields.io/badge/docs-dev-blue.svg)](https://sintefore.github.io/PiecewiseAffineApprox.jl/dev/)
+
+
+
 Add convex (or concave) piecewise linear approximations of functions or a set of points to optimization models modelled in [JuMP](https://jump.dev/). 
 
-This package provides two main methods to fit a set of points: 
+This package provides three main methods to fit a set of points: 
 
 1. creates and solves a MILP to fit a set of points, and adds the resulting linear constraints to the optimization model. This method is partially based on [Toriello & Vielma, 2012](https://doi.org/10.1016/j.ejor.2011.12.030). 
-2. uses a herusitic to fit the set of points. This method is based on [Magnani & Boyd, 2009](https://doi.org/10.1007/s11081-008-9045-3).
+2. uses a heuristic to fit the set of points. This method is based on [Magnani & Boyd, 2009](https://doi.org/10.1007/s11081-008-9045-3).
+3. a progressive heuristic to add planes until a certain accuracy is met. This method is based on [Kazda & Li, 2024](https://doi.org/10.1016/j.ejor.2023.07.026)
 
 For non-convex functions, consider using [PiecewiseLinearOpt.jl](https://github.com/joehuchette/PiecewiseLinearOpt.jl).
 
@@ -47,78 +54,8 @@ save("approx.svg", p; backend=CairoMakie)
 ![](docs/approx.svg)
 
 Animation showing the accuracy when adding more cuts:
-<details>
-  <summary>Show me the code</summary>
-
-```julia
-function pwademo(x, f, Ns = 1:5; opt = HiGHS.Optimizer, C = Convex())
-    fig = Figure(size = (600, 400))
-    ax = Axis(fig[1, 1])
-
-    scatter!(ax, x, f.(x), color = :red, markersize = 8)
-
-    linerecords = []
-    for n in Ns
-        add_mplane!(ax, x, f, C, opt, n, linerecords)
-        sleep(1)
-    end
-
-    return (; fig, ax, linerecords)
-end
-
-function add_mplane!(ax, x, f, C, opt, n, linerecords)
-    x̄ = LinRange(minimum(x), maximum(x), 100)
-    pwa = approx(f, [(0, 1)], C, MILP(optimizer = opt, planes = n))
-    for ol in linerecords
-        delete!(ax, ol)
-    end
-    empty!(linerecords)
-
-    en = [-Inf for _ in x̄]
-    # Plot each cutting plane
-    for plane ∈ pwa.planes
-        l = [evaluate(plane, i, C) for i ∈ x̄]
-        nl = lines!(ax, x̄, l, linestyle = :dash)
-        push!(linerecords, nl)
-        en = max.(en, l)
-    end
-    # Plot effective envelope
-    e = lines!(ax, x̄, en, color = :black)
-    return push!(linerecords, e)
-end
-
-# Create animation
-record(p.fig, "docs/approxanim.mp4") do io
-    for n = 1:5
-        add_mplane!(p.ax, x, f, Convex(), HiGHS.Optimizer, n, p.linerecords)
-        for _ = 1:30
-            recordframe!(io)
-        end
-    end
-end
-```
-</details>
-
-<video loop src="docs/approxanim.mp4">video </video>
-
 Approximation of 3D function
 
  <video loop src="docs/rotation.mp4">  video </video> 
 
-
-```julia
-I = 100
-xmat = 2 * rand(2, I) .- 1
-x = [Tuple(xmat[:, i]) for i = 1:size(xmat, 2)]
-z = [p[1]^2 + p[2]^2 for p in x]
-vals = FunctionEvaluations(x, z)
-pwa = approx(
-    vals,
-    Convex(),
-    Cluster(; optimizer = HiGHS.Optimizer, planes = 9, strict = :none),
-)
-p = plot(vals, pwa)
-save(joinpath(@__DIR__,"..","docs","approx_3D.png"), p)
-
-```
 ![](docs/approx_3D.png)
