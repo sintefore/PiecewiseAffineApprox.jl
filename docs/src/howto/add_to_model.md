@@ -4,28 +4,34 @@
  
 The code below creates a piecewise affine approximate to 𝓍² on the interval [-1,1] using the JuMP variable 𝓍. The piecewise affine approximation is linked the other variable in the model 𝓏. The objective is set as the minimization of this variable suject to 𝓍 being greater or equal than 0.5. After the optimization of the constrained problem, the optimal value of 𝓏 is 0.2653.
 
-```julia
+```jldoctest; output = false
 using JuMP, PiecewiseAffineApprox, HiGHS
 
-m = Model(HiGHS.Optimizer)
+
+optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
+m = Model(optimizer)
 @variable(m, x)
 # Create a piecewise linear approximation to x^2 on the interval [-1, 1]
-pwa = approx(x -> x[1]^2, [(-1, 1)], Convex(), Optimized(optimizer = HiGHS.Optimizer, planes=5))
+pwa = approx(x -> x[1]^2, [(-1, 1)], Convex(), MILP(optimizer = optimizer, planes=5))
 # Add the pwa function to the model
 z = pwaffine(m, x, pwa)
 # Minimize
 @objective(m, Min, z)
 # Check approximation/solution at x = 0.5
 @constraint(m, x >= 0.5)
-optimize!(m)
-value(z) # 0.2653
+optimize!(m);
+round(value(z); digits=4)
+
+# output
+0.2653
 ```
 
 A piecewise affine approximation can be also be linked to existing variables in an existing JuMP model. In the following code, a 3D piecewise affine approximation is obtained for existing variables of a model (xvar and yvar). The approximation is constructed for a given dataset (X,z) and then linked to a JuMP model, which is optimized in the sequence.
 
 
-```julia
+```jldoctest; output=false
 using JuMP, PiecewiseAffineApprox, HiGHS
+optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
 
 xg = [i for i ∈ -1:0.5:1]
 yg = [j for j ∈ -1:0.5:1]
@@ -45,13 +51,13 @@ y = pwaffine(
     m,
     tuple_var,
     approx(
-        FunctionEvaluations(mat2tuples(X), z),
+        FunctionEvaluations(tuple.(eachcol(X)...), z),
         Convex(),
-        Optimized(
+        MILP(
             optimizer = optimizer,
             planes = np,
             strict = :outer,
-            pen = :l1,
+            metric = :l1,
         ),
     );
     z = approx_f,
@@ -62,4 +68,7 @@ set_optimizer(m, optimizer)
 @constraint(m, xvar == √0.5)
 @constraint(m, yvar == √0.5)
 optimize!(m)
+round(value.(y))
+# output
+1.0
 ```

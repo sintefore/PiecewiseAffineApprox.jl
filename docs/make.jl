@@ -29,7 +29,7 @@ Documenter.makedocs(
         edit_link = "main",
         assets = String[],
     ),
-    doctest = false,
+    doctest = true,
     # modules = [PiecewiseAffineApprox],
     pages = pages,
     remotes = nothing,
