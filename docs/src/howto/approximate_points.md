@@ -5,24 +5,31 @@ For piecewise-affine approximations obtained from a dataset, the function Functi
 
 The following code creates a 2D full-order piecewise affine approximation for a tuple (x,z) where x is a collection of points with their corresponding function values stores in z. The selected approximation is convex, uses 5 planes (linear segments), and applies l₁-norm regulazation as the error measure.
 
-```julia
-using PiecewiseAffineApprox, HiGHS
+```jldoctest
+using PiecewiseAffineApprox, JuMP, HiGHS
+optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
 
 x = collect(range(-1, 1; length = 10))
 z = x .^ 2
 
-pwa1 = approx(
+pwa = approx(
     FunctionEvaluations(Tuple.(x), z),
     Convex(),
-    Optimized(optimizer = HiGHS.Optimizer, pen = :l1, planes = 5),
+    MILP(;optimizer, metric = :l1, planes = 5),
 )
+
+length(pwa.planes)
+
+# output
+5
 ```
 
 # Bi-variate functions (3D)
 A dataset can also be used as input for 3D piecewise affine approximations. The following code creates a uniformly sampled domain X within (-1,1) and calculates the corresponding function values for a concave function z_concave.
 
-```julia
-using PiecewiseAffineApprox, HiGHS
+```jldoctest
+using PiecewiseAffineApprox, JuMP, HiGHS
+optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
 
 xg = [i for i ∈ -1:0.5:1]
 yg = [j for j ∈ -1:0.5:1]
@@ -34,18 +41,18 @@ z_concave = z .* -1
 
 np = 17
 
-function mat2tuples(x::Matrix)
-    return collect(Tuple(x'[:, i]) for i ∈ 1:size(x', 2))
-end
-
-pwa1 = approx(
-    FunctionEvaluations(mat2tuples(X), z),
+pwa = approx(
+    FunctionEvaluations(tuple.(eachcol(X)...), z),
     Convex(),
-    Optimized(
-        optimizer = HiGHS.Optimizer,
+    MILP(
+        ;optimizer,
         planes = np,
         strict = :outer,
-        pen = :l1,
+        metric = :l1,
     ),
 )
+length(pwa.planes)
+
+# output
+17
 ```

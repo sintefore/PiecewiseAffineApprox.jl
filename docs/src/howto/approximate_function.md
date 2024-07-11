@@ -4,12 +4,18 @@ Piecewise affine approximations can be obtained either for a given function 𝒻
 
 For piecewise-affine approximations obtained from a pre-defined function, PWA provides a function called approx() which receives as the first arguments the sampling function and the region in the domain for the sampling. The following code creates a convex piecewise affine approximation to 𝓍² on the interval [-1,1] with 5 planes, or segments for this unidimensional case. Notice that the domain [-1,1] will be sampled uniformly thereby splitting the feasible region into 5 segments with corresponding 6 points.
  
-```julia
+```jldoctest
 
 using JuMP, PiecewiseAffineApprox, HiGHS
+optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
 
-m = Model(HiGHS.Optimizer)
+m = Model(optimizer)
 @variable(m, x)
-pwa = approx(x -> x^2, [(-1, 1)], Convex(), Optimized(optimizer = HiGHS.Optimizer, planes=5))
+pwa = approx(x -> sum(x.^2), [(-1, 1)], Convex(), MILP(optimizer = optimizer, planes=5))
 z = pwaffine(m, x, pwa)
+
+typeof(z)
+
+# output
+VariableRef (alias for GenericVariableRef{Float64})
 ```

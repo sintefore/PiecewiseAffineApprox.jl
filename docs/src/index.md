@@ -12,13 +12,14 @@ For non-convex functions, consider using [PiecewiseLinearOpt.jl](https://github.
 
 ## Usage
 
-```julia
+```jldoctest
 using JuMP, PiecewiseAffineApprox, HiGHS
+optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
 
-m = Model(HiGHS.Optimizer)
+m = Model(optimizer)
 @variable(m, x)
 # Create a piecewise linear approximation to x^2 on the interval [-1, 1]
-pwa = approx(x -> x[1]^2, [(-1, 1)], Convex(), Optimized(optimizer = HiGHS.Optimizer, planes=5))
+pwa = approx(x -> x[1]^2, [(-1, 1)], Convex(), MILP(;optimizer, planes=5))
 # Add the pwa function to the model
 z = pwaffine(m, x, pwa)
 # Minimize
@@ -26,7 +27,10 @@ z = pwaffine(m, x, pwa)
 # Check approximation/solution at x = 0.5
 @constraint(m, x >= 0.5)
 optimize!(m)
-value(z) # 0.2653
+round(value(z), digits=4)
+
+# output
+0.2653
 ```
 
 ## Visualization
@@ -38,16 +42,18 @@ The following demonstrates the use of the plotting functions with Makie:
 
 ### 2D
 
-```julia
-using PiecewiseAffineApprox, GLMakie, HiGHS
-
+```jldoctest
+using PiecewiseAffineApprox, CairoMakie, HiGHS, JuMP
+optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
 x = LinRange(0, 1, 20)
 f(x) = first(x)^2
-pwa = approx(f, [(0, 1)], Convex(), Optimized(optimizer = HiGHS.Optimizer, planes = 3))
+pwa = approx(f, [(0, 1)], Convex(), MILP(;optimizer, planes = 3))
 p = plot(x, f.(x), pwa)
 
-using CairoMakie
-save("approx.svg", p; backend=CairoMakie)
+save("approx.svg", p)
+
+# output
+CairoMakie.Screen{SVG}
 ```
 ![](assets/approx.svg)
 
