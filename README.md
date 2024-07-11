@@ -41,15 +41,14 @@ before using the module, some simple plotting routines will be available
 The following demonstrates how this can be achieved:
 
 ```julia
-using PiecewiseAffineApprox, GLMakie, HiGHS
+using PiecewiseAffineApprox, CairoMakie, HiGHS
 
 x = LinRange(0, 1, 20)
 f(x) = first(x)^2
 pwa = approx(f, [(0, 1)], Convex(), MILP(optimizer = HiGHS.Optimizer, planes = 3))
 p = plot(x, f.(x), pwa)
 
-using CairoMakie
-save("approx.svg", p; backend=CairoMakie)
+save("approx.svg", p)
 ```
 ![](docs/approx.svg)
 

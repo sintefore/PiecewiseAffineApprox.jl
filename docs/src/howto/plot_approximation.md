@@ -7,7 +7,7 @@ Some plotting functons are available for visualization of piecewise affine appro
 The following code shows how to the use of a plotting function with Makie:
 
 ```jldoctest
-using PiecewiseAffineApprox, GLMakie, HiGHS, JuMP
+using PiecewiseAffineApprox, CairoMakie, HiGHS, JuMP
 optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
 
 x = LinRange(0, 1, 20)
@@ -15,8 +15,7 @@ f(x) = first(x)^2
 pwa = approx(f, [(0, 1)], Convex(), MILP(;optimizer, planes = 3))
 p = plot(x, f.(x), pwa)
 
-using CairoMakie
-save("approx.svg", p; backend=CairoMakie)
+save("approx.svg", p)
 # output
 CairoMakie.Screen{SVG}
 ```
@@ -26,9 +25,8 @@ CairoMakie.Screen{SVG}
 Default plot with 3D plot and error distribution for all points as well as allocation to planes for each plot (for `Heuristic`)
 
 ```jldoctest
-using PiecewiseAffineApprox, GLMakie, HiGHS, JuMP
+using PiecewiseAffineApprox, CairoMakie, HiGHS, JuMP
 using Logging
-using CairoMakie
 
 with_logger(NullLogger()) do
 optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
@@ -47,7 +45,7 @@ pwa = approx(
 )
 p = plot(vals, pwa)
 
-save("approx_3D.png", p; backend=CairoMakie)
+save("approx_3D.png", p)
 end
 
 # output

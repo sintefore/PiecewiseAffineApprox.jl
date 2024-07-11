@@ -43,15 +43,14 @@ The following demonstrates the use of the plotting functions with Makie:
 ### 2D
 
 ```jldoctest
-using PiecewiseAffineApprox, GLMakie, HiGHS, JuMP
+using PiecewiseAffineApprox, CairoMakie, HiGHS, JuMP
 optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
 x = LinRange(0, 1, 20)
 f(x) = first(x)^2
 pwa = approx(f, [(0, 1)], Convex(), MILP(;optimizer, planes = 3))
 p = plot(x, f.(x), pwa)
 
-using CairoMakie
-save("approx.svg", p; backend=CairoMakie)
+save("approx.svg", p)
 
 # output
 CairoMakie.Screen{SVG}
