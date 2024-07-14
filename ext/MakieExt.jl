@@ -21,10 +21,10 @@ function Makie.plot(x, z, pwa::PWAFunc{C,2}) where {C}
         f = [
             evaluate(p, [x̄[i], ȳ[j]], C) for i ∈ eachindex(x̄),
             j ∈ eachindex(ȳ)
-            ]
-            surface!(ax1, x̄, ȳ, f)
-        end
-        scatter!(ax1, x[1, :], x[2, :], z, color = :red, markersize = 8)
+        ]
+        surface!(ax1, x̄, ȳ, f)
+    end
+    scatter!(ax1, x[1, :], x[2, :], z, color = :red, markersize = 8)
 
     l1 = PiecewiseAffineApprox._approx_error(x, z, pwa, :l1)
     l2 = PiecewiseAffineApprox._approx_error(x, z, pwa, :l2)
@@ -51,21 +51,33 @@ function Makie.plot(input::FunctionEvaluations{2}, pwa::PWAFunc{C,2}) where {C}
 end
 
 function Makie.plot(x, y, pwa::PWAFunc{C,1}) where {C}
+    active = getactive(C)
+    inactive = getinactive(C)
     fig = Figure(size = (600, 400))
-    ax = Axis(fig[1, 1])
+    ax = Axis(fig[1, 1], limits = (nothing, ylims(y)))
 
     x̄ = LinRange(minimum(x), maximum(x), 100)
 
     scatter!(ax, x, y, color = :red, markersize = 8)
-    en = [-Inf for _ in x̄]
+    en = [inactive(Inf, -Inf) for _ ∈ x̄]
     for plane ∈ pwa.planes
         f = [evaluate(plane, i, C) for i ∈ x̄]
-        lines!(ax, x̄, f, linestyle=:dash)
-        en = max.(en, f)
+        lines!(ax, x̄, f, linestyle = :dash)
+        en = active.(en, f)
     end
-    lines!(ax, x̄, en, color=:black)
+    lines!(ax, x̄, en, color = :black)
 
     return fig
+end
+
+getactive(::Type{Convex}) = max
+getactive(::Type{Concave}) = min
+getinactive(::Type{Convex}) = min
+getinactive(::Type{Concave}) = max
+function ylims(y)
+    L, U = extrema(y)
+    diff = (U - L) * 0.1
+    return (L - diff, U + diff)
 end
 
 end
