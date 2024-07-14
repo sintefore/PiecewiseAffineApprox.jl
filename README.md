@@ -2,6 +2,7 @@
 
 [![Build Status](https://github.com/sintefore/PiecewiseAffineApprox.jl/workflows/CI/badge.svg?branch=main)](https://github.com/sintefore/PiecewiseAffineApprox.jl/actions?query=workflow%3ACI)
 [![codecov](https://codecov.io/gh/sintefore/PiecewiseAffineApprox.jl/branch/main/graph/badge.svg?token=2LXGVU04YS)](https://codecov.io/gh/sintefore/PiecewiseAffineApprox.jl)
+[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://sintefore.github.io/PiecewiseAffineApprox.jl/stable/)
 [![In Development](https://img.shields.io/badge/docs-dev-blue.svg)](https://sintefore.github.io/PiecewiseAffineApprox.jl/dev/)
 
 
