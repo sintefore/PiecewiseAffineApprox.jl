@@ -161,8 +161,8 @@ function _reduced_order_pwa(
     optimizer,
     μ = 1e-4,
 ) where {D}
+    yield()
     K = length(f)
-
     m = Model(optimizer)
     @variable(m, ared[1:p, 1:D])
     @variable(m, bred[1:p])
