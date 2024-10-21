@@ -54,7 +54,7 @@ function _convex_linearization_mb(X::Matrix, z::Vector, options::Cluster)
     strict = options.strict
     optimizer = options.optimizer
 
-    @info "Starting heuristic search "
+    @debug "Starting heuristic search "
     approxes = collect(
         fetch.(
             @spawn _convex_linearization_mb_single(
@@ -70,7 +70,7 @@ function _convex_linearization_mb(X::Matrix, z::Vector, options::Cluster)
     )
     min_error, pwa_best = argmin(first, approxes)
 
-    @info "Terminating search - best approximation error = $(min_error) ($metric)"
+    @debug "Terminating search - best approximation error = $(min_error) ($metric)"
     return pwa_best
 end
 

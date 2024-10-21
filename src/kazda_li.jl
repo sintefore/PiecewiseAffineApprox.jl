@@ -94,13 +94,13 @@ function convexify(
 
     obj_val = objective_value(m)
     if obj_val == 0
-        @info "Data points are $(curv_string)"
+        @debug "Data points are $(curv_string)"
         return f
     end
 
     pts_adj = count(v -> v > 0, value.(s⁺ + s⁻))
 
-    @info "Data are not $(curv_string), dev = $(round(obj_val; digits=3)), $(pts_adj) point(s) adjusted"
+    @debug "Data are not $(curv_string), dev = $(round(obj_val; digits=3)), $(pts_adj) point(s) adjusted"
     values = [f.values[l] + value(s⁺[l]) - value(s⁻[l]) for l ∈ 1:K]
     return FunctionEvaluations(f.points, values)
 end
@@ -280,7 +280,7 @@ function _progressive_pwa(
         p += 1
         pwa_red = _allocation_improvement(f, p, U, optimizer)
     end
-    @info "Fitting finished, error = $(round(_approx_error(f, pwa_red, metric); digits = 3)), p = $p"
+    @debug "Fitting finished, error = $(round(_approx_error(f, pwa_red, metric); digits = 3)), p = $p"
     return pwa_red
 end
 
