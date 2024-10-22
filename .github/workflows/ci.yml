@@ -13,21 +13,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Since PiecewiseAffineApprox doesn't have binary dependencies, only test on a subset
-        # of possible platforms.
-        include:
-          - version: '1'  # The latest point-release (Linux)
-            os: ubuntu-latest
-            arch: x64
-          - version: '1'  # The latest point-release (Windows)
-            os: windows-latest
-            arch: x64
-          - version: '1.9'  # 1.9, not 1.6 LTS (64-bit Linux)
-            os: ubuntu-latest
-            arch: x64
+        version: ['lts', '1']
+        os: [ubuntu-latest, windows-latest]
+        arch: [x64]
     steps:
-      - uses: actions/checkout@v2
-      - uses: julia-actions/setup-julia@v1
+      - uses: actions/checkout@v3
+      - uses: julia-actions/setup-julia@v2
         with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
