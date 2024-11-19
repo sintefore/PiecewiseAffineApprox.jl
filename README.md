@@ -25,7 +25,7 @@ using JuMP, PiecewiseAffineApprox, HiGHS
 m = Model(HiGHS.Optimizer)
 @variable(m, x)
 # Create a piecewise linear approximation to x^2 on the interval [-1, 1]
-pwa = approx(x -> x[1]^2, [(-1, 1)], Convex(), MILP(optimizer = HiGHS.Optimizer, planes=5))
+pwa = approx(x -> x^2, [(-1, 1)], Convex(), MILP(optimizer = HiGHS.Optimizer, planes=5))
 # Add the pwa function to the model
 z = pwaffine(m, x, pwa)
 # Minimize
@@ -45,9 +45,9 @@ The following demonstrates how this can be achieved:
 using PiecewiseAffineApprox, CairoMakie, HiGHS
 
 x = LinRange(0, 1, 20)
-f(x) = first(x)^2
+f(x) = x^2
 pwa = approx(f, [(0, 1)], Convex(), MILP(optimizer = HiGHS.Optimizer, planes = 3))
-p = plot(x, f.(x), pwa)
+p = Makie.plot(x, f.(x), pwa)
 
 save("approx.svg", p)
 ```
