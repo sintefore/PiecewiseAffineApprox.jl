@@ -180,7 +180,7 @@ function _sample_uniform(f::Function, bbox::Vector{<:Tuple}, nsamples)
         )
         x = vec(collect(it))
     end
-    y = [f(xx) for xx ∈ x]
+    y = [f(xx...) for xx ∈ x]
     return FunctionEvaluations(x, y)
 end
 
