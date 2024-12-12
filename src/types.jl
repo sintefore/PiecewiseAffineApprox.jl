@@ -152,8 +152,8 @@ function _write_planes(io::IO, C::Curvature, planes::Vector{Plane{D}}) where {D}
         println(io, " ", _write_plane(C, p))
     end
 end
-_write_plane(c::Convex, plane) = "z ≥ $(_xepr(plane.α)) $(plane.β)"
-_write_plane(c::Concave, plane) = "z ≤ $(_xepr(plane.α)) $(plane.β)"
+_write_plane(c::Convex, plane) = "z ≥ $(_xepr(plane.α))$(plane.β)"
+_write_plane(c::Concave, plane) = "z ≤ $(_xepr(-1 .* plane.α))$(-plane.β)"
 function _xepr(α)
     x = ["x₁", "x₂", "x₃", "x₄", "x₅"]
     expr = ""
