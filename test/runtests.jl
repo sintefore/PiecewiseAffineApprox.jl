@@ -27,6 +27,7 @@ const qp_optimizer = optimizer_with_attributes(
 @testset "PiecewiseAffineApprox" begin
     nologger = ConsoleLogger(devnull, Logging.Debug)
     with_logger(nologger) do
+        include("test_types.jl")
         include("testquadapprox.jl")
         include("convex_interpolation.jl")
         include("testconvexapprox.jl")
