@@ -6,7 +6,7 @@ using JuMP
 using LinearAlgebra
 using Printf
 using Statistics
-using StructTypes 
+using StructTypes
 using JSON3 # TODO: move to extension
 using Base.Threads: @spawn
 

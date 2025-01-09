@@ -36,9 +36,5 @@ const qp_optimizer = optimizer_with_attributes(
     end
 end
 
-
 @testset "StructTypes" begin
-    
-
-    
 end
