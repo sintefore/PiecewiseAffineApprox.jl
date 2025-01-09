@@ -35,3 +35,10 @@ const qp_optimizer = optimizer_with_attributes(
         return include("test_kazda_li.jl")
     end
 end
+
+
+@testset "StructTypes" begin
+    
+
+    
+end
