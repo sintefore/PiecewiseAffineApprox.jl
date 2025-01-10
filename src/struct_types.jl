@@ -32,8 +32,3 @@ function PWAFunc(stf::STFunc)
 end
 
 Plane(fp::STPlane) = Plane(fp.α, fp.β)
-
-# Overload read/write of JSON3 to use ST-compatible intermediate representation
-# (TODO: move to extension)
-JSON3.write(fn::String, pwaf::PWAFunc) = JSON3.write(fn, STFunc(pwaf))
-JSON3.read(s::AbstractString, ::Type{PWAFunc}) = PWAFunc(JSON3.read(s, STFunc))

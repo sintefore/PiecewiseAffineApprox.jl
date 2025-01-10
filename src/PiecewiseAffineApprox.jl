@@ -7,7 +7,6 @@ using LinearAlgebra
 using Printf
 using Statistics
 using StructTypes
-using JSON3 # TODO: move to extension
 using Base.Threads: @spawn
 
 include("types.jl")
