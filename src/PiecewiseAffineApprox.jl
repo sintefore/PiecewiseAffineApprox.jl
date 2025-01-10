@@ -6,6 +6,7 @@ using JuMP
 using LinearAlgebra
 using Printf
 using Statistics
+using StructTypes
 using Base.Threads: @spawn
 
 include("types.jl")
@@ -14,6 +15,7 @@ include("linopt.jl")
 include("magnani_boyd.jl")
 include("kazda_li.jl")
 include("interpolation.jl")
+include("struct_types.jl")
 
 export Convex, Concave
 export MILP, Cluster, Interpol

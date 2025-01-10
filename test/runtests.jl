@@ -1,6 +1,7 @@
 using COSMO
 using HiGHS
 using JuMP
+using JSON3
 using Logging
 using Pajarito
 using PiecewiseAffineApprox
@@ -33,6 +34,7 @@ const qp_optimizer = optimizer_with_attributes(
         include("testconvexapprox.jl")
         include("test_2D_convexapprox.jl")
         include("test_big_M.jl")
+        include("test_structtype.jl")
         return include("test_kazda_li.jl")
     end
 end
