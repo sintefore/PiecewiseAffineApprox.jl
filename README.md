@@ -26,6 +26,13 @@ m = Model(HiGHS.Optimizer)
 @variable(m, x)
 # Create a piecewise linear approximation to x^2 on the interval [-1, 1]
 pwa = approx(x -> x^2, [(-1, 1)], Convex(), MILP(optimizer = HiGHS.Optimizer, planes=5))
+
+# Alternative formulation with defined evaluation points 
+pwa_alt = approx(x -> x^2, -1:0.1:1, Convex(), Cluster(optimizer = HiGHS.Optimizer, planes=5))
+# 2 dimensional variant
+pwa_2d = approx((x, y) -> x^2 + y^2, -1:0.1:1, -1:0.1:1, Convex(), Cluster(optimizer = HiGHS.Optimizer, planes=5))
+
+
 # Add the pwa function to the model
 z = pwaffine(m, x, pwa)
 # Minimize

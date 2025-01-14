@@ -198,6 +198,18 @@ function approx(f::Function, bbox::Vector{<:Tuple}, c::Curvature, a::Algorithm;)
     return approx(_sample_uniform(f, bbox, samples), c, a)
 end
 
+function approx(f::Function, xvals, c::Curvature, a::Algorithm;)
+    pts = [(x,) for x in xvals]
+    yvals = [f(x) for x ∈ xvals]
+    return approx(FunctionEvaluations(pts, yvals), c, a)
+end
+
+function approx(f::Function, xvals, yvals, c::Curvature, a::Algorithm;)
+    pts = [(x, y) for (x, y) in zip(xvals, yvals)]
+    yvals = [f(x, y) for (x, y) ∈ pts]
+    return approx(FunctionEvaluations(pts, yvals), c, a)
+end
+
 # Utility function to find the value of a hyperplane at the point x
 function _plane_f(x, normal, d)
     return abs(normal[3]) > 1e-4 ?
