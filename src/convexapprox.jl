@@ -210,6 +210,20 @@ function approx(f::Function, xvals, yvals, c::Curvature, a::Algorithm;)
     return approx(FunctionEvaluations(pts, yvals), c, a)
 end
 
+function approx(xvals, fvals, c::Curvature, a::Algorithm;)
+    pts = [(x,) for x in xvals]
+    return approx(FunctionEvaluations(pts, collect(fvals)), c, a)
+end
+
+function approx(fv::Matrix, c::Curvature, a::Algorithm;) where {T}
+
+    m = size(fv, 1)
+    xvals = fv[1:m-1, :]
+    fvals = fv[m, :]
+    pts = [Tuple(xi for xi in x) for x in eachcol(xvals)]
+    return approx(FunctionEvaluations(pts, fvals), c, a)
+end
+
 # Utility function to find the value of a hyperplane at the point x
 function _plane_f(x, normal, d)
     return abs(normal[3]) > 1e-4 ?

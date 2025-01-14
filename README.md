@@ -27,10 +27,26 @@ m = Model(HiGHS.Optimizer)
 # Create a piecewise linear approximation to x^2 on the interval [-1, 1]
 pwa = approx(x -> x^2, [(-1, 1)], Convex(), MILP(optimizer = HiGHS.Optimizer, planes=5))
 
+cluster = Cluster(optimizer = HiGHS.Optimizer, planes=5)
+
 # Alternative formulation with defined evaluation points 
-pwa_alt = approx(x -> x^2, -1:0.1:1, Convex(), Cluster(optimizer = HiGHS.Optimizer, planes=5))
+pwa_alt = approx(x -> x^2, -1:0.1:1, Convex(), cluster)
 # 2 dimensional variant
-pwa_2d = approx((x, y) -> x^2 + y^2, -1:0.1:1, -1:0.1:1, Convex(), Cluster(optimizer = HiGHS.Optimizer, planes=5))
+pwa_2d = approx((x, y) -> x^2 + y^2, -1:0.1:1, -1:0.1:1, Convex(), cluster)
+
+# Another variant with explicit points
+pwa_pts = approx(LinRange(0, 1, 10), [1 + i^2 for i in 1:10], Convex(), cluster)
+
+# Input as a matrix
+fv = [1 2 3 4 5 6
+      1 4 9 16 25 36]
+pwa_mat = approx(fv, Convex(), cluster)
+fv_2d = [1 1 1 1 2 2 2 2 3 3 3 3 4 4 4 4 
+         1 2 3 4 1 2 3 4 1 2 3 4 1 2 3 4
+         2 5 10 17 5 8 13 20 10 13 18 25 17 20 25 32]
+pwa_mat = approx(fv_2d, Convex(), cluster)
+
+
 
 
 # Add the pwa function to the model
