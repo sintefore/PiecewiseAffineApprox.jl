@@ -46,8 +46,10 @@ fv_2d = [1 1 1 1 2 2 2 2 3 3 3 3 4 4 4 4
          2 5 10 17 5 8 13 20 10 13 18 25 17 20 25 32]
 pwa_mat = approx(fv_2d, Convex(), cluster)
 
-
-
+# Input from a csv-file with row-based observed values
+using DataFrames
+data = DataFrame(CSV.File("test/observations.csv"))
+pwa_data = approx(Matrix(data), Convex(), cluster)
 
 # Add the pwa function to the model
 z = pwaffine(m, x, pwa)

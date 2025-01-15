@@ -215,9 +215,16 @@ function approx(xvals, fvals, c::Curvature, a::Algorithm;)
     return approx(FunctionEvaluations(pts, collect(fvals)), c, a)
 end
 
-function approx(fv::Matrix, c::Curvature, a::Algorithm;) where {T}
+function approx(fv::AbstractMatrix, c::Curvature, a::Algorithm;) where {T}
+    m, n = size(fv)
 
-    m = size(fv, 1)
+    # Transpose if necessary, assuming that there are more points than values
+    if m > n
+        @warn("Transposing input matrix assuming row-based format")
+        fv = fv'
+        m, n = size(fv)
+    end
+
     xvals = fv[1:m-1, :]
     fvals = fv[m, :]
     pts = [Tuple(xi for xi in x) for x in eachcol(xvals)]
