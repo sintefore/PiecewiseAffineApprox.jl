@@ -15,7 +15,7 @@ function STFunc(pwaf::PWAFunc{Convex,N}) where {N}
     return STFunc(:convex, STPlane.(pwaf.planes))
 end
 function STFunc(pwaf::PWAFunc{Concave,N}) where {N}
-    return STFunc(:concave, STPlane, (pwaf.planes))
+    return STFunc(:concave, STPlane.(pwaf.planes))
 end
 StructTypes.StructType(::Type{STFunc}) = StructTypes.Struct()
 

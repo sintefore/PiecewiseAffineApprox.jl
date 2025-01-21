@@ -8,8 +8,15 @@
         Convex(),
         MILP(; optimizer = HiGHS.Optimizer, planes = 5),
     )
-    JSON3.write(fn, pwa)
-    read_back = JSON3.read(fn, PWAFunc)
-    @test isa(read_back, PWAFunc)
-    @test length(read_back.planes) == 5
+    pwa_concave = PiecewiseAffineApprox.approx(
+        FunctionEvaluations(Tuple.(x), -y),
+        Concave(),
+        MILP(; optimizer = HiGHS.Optimizer, planes = 5),
+    )
+    for p ∈ (pwa, pwa_concave)
+        JSON3.write(fn, p)
+        read_back = JSON3.read(fn, PWAFunc)
+        @test isa(read_back, PWAFunc)
+        @test length(read_back.planes) == 5
+    end
 end
