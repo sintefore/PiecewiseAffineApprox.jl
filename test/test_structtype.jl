@@ -12,7 +12,7 @@
         Concave(),
         MILP(; optimizer = HiGHS.Optimizer, planes = 5),
     )
-    for (i,p) ∈ enumerate((pwa, pwa_concave))
+    for (i, p) ∈ enumerate((pwa, pwa_concave))
         fn = joinpath(tmp, "test_$i.json")
         JSON3.write(fn, p)
         read_back = JSON3.read(fn, PWAFunc)
