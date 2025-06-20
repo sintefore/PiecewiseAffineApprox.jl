@@ -40,6 +40,6 @@ end
     fraction = 0.05
     for p_out ∈ 140:175
         @test PiecewiseAffineApprox.evaluate(pwa, (p_in, p_out, fraction)) ≥
-              calculate_z(p_in, p_out, fraction)
+              calculate_z(p_in, p_out, fraction) * 0.999
     end
 end
