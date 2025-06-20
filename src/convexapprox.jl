@@ -11,7 +11,7 @@ function approx(input, c::Concave, a::Algorithm)
     cv = approx(
         FunctionEvaluations(input.points, -input.values),
         Convex(),
-        _flip_strictness(a);
+        a;
     )
     return PWAFunc{Concave,dims(cv)}(cv.planes)
 end
