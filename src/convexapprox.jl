@@ -8,7 +8,11 @@ defaulttimelimit() = 60
 Return PWAFunc{Convex,D} or PWAFunc{Concave,D} depending on `c`, approximating the `input` points in `D` dimensions
 """
 function approx(input, c::Concave, a::Algorithm)
-    cv = approx(FunctionEvaluations(input.points, -input.values), Convex(), a;)
+    cv = approx(
+        FunctionEvaluations(input.points, -input.values),
+        Convex(),
+        _flip_strictness(a);
+    )
     return PWAFunc{Concave,dims(cv)}(cv.planes)
 end
 

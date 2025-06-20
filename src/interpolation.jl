@@ -43,7 +43,7 @@ function _convexify1D(pwa::PWAFunction1D, options)
     δ⁻ = @variable(m, [𝒩], lower_bound = 0)
 
     @objective(m, Min, sum(δ⁺[i] + δ⁻[i] for i ∈ 𝒩))
-    for i ∈ 2:N-1
+    for i ∈ 2:(N-1)
         @constraint(
             m,
             (z[i] + δ⁺[i] - δ⁻[i] - z[i-1] - δ⁺[i-1] + δ⁻[i-1]) /

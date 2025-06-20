@@ -204,3 +204,16 @@ _planes(pwa) = length(pwa.planes)
 
 _addplane!(pwa::PWAFunc{C,D}, p::Plane{D}) where {C,D} = push!(pwa.planes, p)
 _addplane!(pwa::PWAFunc, α, β) = push!(pwa.planes, Plane(α, β))
+
+_flip_strictness(a::Algorithm) = a
+# _flip_strictness(a::MILP) = _flip_strictness_generic(a)
+_flip_strictness(a::Cluster) = _flip_strictness_generic(a)
+
+function _flip_strictness_generic(a)
+    if a.strict == :outer
+        @reset a.strict = :inner
+    elseif a.strict == :inner
+        @reset a.strict = :outer
+    end
+    return a
+end

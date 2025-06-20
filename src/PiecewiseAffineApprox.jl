@@ -1,5 +1,6 @@
 module PiecewiseAffineApprox
 
+import Accessors: @reset
 using Combinatorics
 using Distributions
 using JuMP
