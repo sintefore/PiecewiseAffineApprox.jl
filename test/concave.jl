@@ -34,7 +34,7 @@ function compute_concave(strict = :outer)
     return (; X, z, pwa)
 end
 
-@testset "Test outer approx for concave functions" begin
+@testset "Outer approx for concave functions" begin
     _, _, pwa = compute_concave(:outer)
     p_in = 175
     fraction = 0.05

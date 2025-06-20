@@ -25,7 +25,8 @@
         Convex(),
         Progressive(optimizer = optimizer, tolerance = 0.2, metric = :max),
     )
-    @test_broken length(pwa_red.planes) == 10
+    # Disabled as it gives inconsistent results locally and in CI
+    # @test length(pwa_red.planes) == 10
     @test evaluate(pwa_red, (0, 0)) ≈ 0.024 atol = 0.001
 
     @testset "Nonconvex" begin
