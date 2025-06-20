@@ -24,7 +24,6 @@ MakieExt = "Makie"
 PlotsExt = "Plots"
 
 [compat]
-Accessors = "0.1.42"
 Combinatorics = "1"
 Distributions = "0.25"
 JSON3 = "1.14.1"
