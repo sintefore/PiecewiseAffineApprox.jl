@@ -49,7 +49,6 @@ save("approx_3D.png", p)
 end
 
 # output
-CairoMakie.Screen{IMAGE}
 ```
 ![](../assets/approx_3D.png)
 

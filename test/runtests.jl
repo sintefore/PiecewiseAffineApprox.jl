@@ -29,6 +29,7 @@ const qp_optimizer = optimizer_with_attributes(
     nologger = ConsoleLogger(devnull, Logging.Debug)
     with_logger(nologger) do
         include("test_types.jl")
+        include("concave.jl")
         include("testquadapprox.jl")
         include("convex_interpolation.jl")
         include("testconvexapprox.jl")

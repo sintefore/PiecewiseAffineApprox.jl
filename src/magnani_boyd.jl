@@ -147,9 +147,9 @@ function _local_fit(X̄, z̄, metric, optimizer, strict)
         @constraint(m, ẑ[i] == sum(a[j] * X̄[j, i] for j ∈ 1:M) + b)
     end
 
-    if strict == :outer
+    if strict == :inner
         @constraint(m, ẑ .≥ z̄)
-    elseif strict == :inner
+    elseif strict == :outer
         @constraint(m, ẑ .≤ z̄)
     end
 
