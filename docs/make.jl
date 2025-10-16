@@ -45,7 +45,7 @@ Documenter.makedocs(
         assets = String[],
     ),
     doctest = true,
-    # modules = [PiecewiseAffineApprox],
+    modules = [PiecewiseAffineApprox],
     pages = pages,
     remotes = nothing,
 )

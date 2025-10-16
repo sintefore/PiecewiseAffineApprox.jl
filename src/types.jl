@@ -1,6 +1,20 @@
-# Input types
+"""
+    Curvature
+
+Type parameter for PWAFunc to indicate curvature
+"""
 abstract type Curvature end
+"""
+    Concave
+
+Type parameter for PWAFunc when curvature is concave.
+"""
 struct Concave <: Curvature end
+"""
+    Convex
+
+Type parameter for PWAFunc when curvature is convex.
+"""
 struct Convex <: Curvature end
 
 abstract type Algorithm end
@@ -12,6 +26,15 @@ Note that this algoritm computes multiple approximations and selects the best.
 If julia is started with multiple threads, these are computed in parallel. Consider
  how many threads will be beneficial, particularly when using a commercial solver where
  the license may restrict the number of simultanous solver instances.
+
+ ## Arguments
+- planes::Int Number of planes to use in approximation
+- metric::Symbol Allowed values are :l1, :l2, and :max
+- trials::Int Number of randomized starts
+- itlim::Int Number of iterations to try improving approximation
+- strict::Symbol Allowed values are :none, :outer, and :inner
+- maxtime::Int Time limit in seconds
+- optimizer::T Optimizer to use to calculate approximation
 """
 @kwdef struct Cluster{T} <: Algorithm
     planes::Int = defaultplanes()
@@ -26,6 +49,11 @@ end
     Interpol
 
 Compute affine approximation by method proposed by Flatberg. Only available for 1D.
+
+## Arguments
+- planes::Int Number of planes to use in approximation
+- metric::Symbol Allowed values are :l1, :l2, and :max
+- optimizer::T Optimizer to use to calculate approximation
 """
 @kwdef struct Interpol{T} <: Algorithm
     planes::Int = defaultplanes()
@@ -39,6 +67,13 @@ Compute affine approximation using a variation of the method proposed by Toriell
 
 Note that the resulting approximation is sensitive to the selection of the Big-M value used when
 solving the optimization problem.
+
+## Arguments
+- planes::Int Number of planes to use in approximation
+- metric::Symbol Allowed values are :l1, :l2, and :max
+- strict::Symbol Allowed values are :none, :outer, and :inner
+- maxtime::Int Time limit in seconds
+- optimizer::T Optimizer to use to calculate approximation
 """
 @kwdef struct MILP{T} <: Algorithm
     planes::Int = defaultplanes()
@@ -53,6 +88,11 @@ end
 
 Compute affine approximation based on a variation of the method of Kazda and Li (2024)
 specialized to convex approximations.
+
+## Arguments
+- tolerance::Float64 TODO: Check if relative gap
+- metric::Symbol Allowed values are :l1, :l2, and :max
+- optimizer::T Optimizer to use to calculate approximation
 """
 @kwdef struct Progressive{T} <: Algorithm
     tolerance::Float64 = 0.01
@@ -65,6 +105,11 @@ end
 
 Compute affine approximation based on a variation of the method of Kazda and Li (2024)
 specialized to convex approximations with full order approximation (no reduction of number of planes).
+
+## Arguments
+- metric::Symbol Allowed values are :l1, :l2, and :max
+- optimizer::T Optimizer to use to calculate approximation
+
 """
 @kwdef struct FullOrder{T} <: Algorithm
     metric::Symbol = defaultmetric()
