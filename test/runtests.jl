@@ -1,6 +1,7 @@
 using COSMO
 using HiGHS
 using JuMP
+using JSON3
 using Logging
 using Pajarito
 using PiecewiseAffineApprox
@@ -27,11 +28,14 @@ const qp_optimizer = optimizer_with_attributes(
 @testset "PiecewiseAffineApprox" begin
     nologger = ConsoleLogger(devnull, Logging.Debug)
     with_logger(nologger) do
+        include("test_types.jl")
+        include("concave.jl")
         include("testquadapprox.jl")
         include("convex_interpolation.jl")
         include("testconvexapprox.jl")
         include("test_2D_convexapprox.jl")
         include("test_big_M.jl")
+        include("test_structtype.jl")
         return include("test_kazda_li.jl")
     end
 end

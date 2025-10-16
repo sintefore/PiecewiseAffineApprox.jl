@@ -162,7 +162,7 @@ function _reduced_order_pwa(
     μ = 1e-4,
 ) where {D}
     yield() # Avoid blocking of main thread causing hangs in some cases, see
-            # https://github.com/sintefore/PiecewiseAffineApprox.jl/issues/11
+    # https://github.com/sintefore/PiecewiseAffineApprox.jl/issues/11
     K = length(f)
     m = Model(optimizer)
     @variable(m, ared[1:p, 1:D])
