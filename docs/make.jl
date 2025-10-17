@@ -36,7 +36,6 @@ pages = [
 ]
 
 # TODO: Enable modules
-# TODO: Enable doctests
 Documenter.makedocs(
     sitename = "PiecewiseAffineApprox",
     format = Documenter.HTML(;
@@ -45,7 +44,7 @@ Documenter.makedocs(
         assets = String[],
     ),
     doctest = true,
-    modules = [PiecewiseAffineApprox],
+    # modules = [PiecewiseAffineApprox],
     pages = pages,
     remotes = nothing,
 )
