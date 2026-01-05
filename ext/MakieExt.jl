@@ -30,10 +30,11 @@ function Makie.plot(x, z, pwa::PWAFunc{C,2}) where {C}
     l2 = PiecewiseAffineApprox._approx_error(x, z, pwa, :l2)
     lmax = PiecewiseAffineApprox._approx_error(x, z, pwa, :max)
     ax1.title = "l1 = $(round(l1, digits=2)), l2 = $(round(l2, digits=2)), max = $(round(lmax, digits=2))"
-    z̄ = [abs(evaluate(pwa, x[:, i]) - z[i]) for i ∈ eachindex(z)]
-    θ = 20 / maximum(z̄)
-    ax2.title = "Max error = $(round(maximum(z̄),digits=2))"
-    scatter!(ax2, x[1, :], x[2, :]; markersize = θ * z̄)
+    z̄ = [evaluate(pwa, x[:, i]) - z[i] for i ∈ eachindex(z)]
+    max_error = maximum(abs.(z̄))
+    θ = 20 / max_error
+    ax2.title = "Max error = $(round(max_error,digits=2))"
+    scatter!(ax2, x[1, :], x[2, :]; markersize = θ * abs.(z̄), color=[(v < 0 ? 1 : 2) for v ∈ z̄])
 
     𝒫 = PiecewiseAffineApprox._update_partition(x, pwa)
     for j ∈ eachindex(𝒫)
