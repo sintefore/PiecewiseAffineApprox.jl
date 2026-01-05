@@ -42,7 +42,7 @@ function _convex_linearization_mb_single(
 end
 
 # Finds a pwa convex approximation for the provided data
-# X is a matrix with a column for each data point and z is a vector with the 
+# X is a matrix with a column for each data point and z is a vector with the
 # corresponding function values
 function _convex_linearization_mb(X::Matrix, z::Vector, options::Cluster)
     @assert(size(X, 2) == length(z))
@@ -95,10 +95,10 @@ function _random_partition(X, K)
     return 𝒫
 end
 
-# Improve a partition by fitting a hyperplane for all points 
-# belonging to each subset of the partition and then 
+# Improve a partition by fitting a hyperplane for all points
+# belonging to each subset of the partition and then
 # updating the partition such that each point is associated with the
-# plane being active at the point. 
+# plane being active at the point.
 #
 # The process terminates after a given number of iterations returning
 # the pwa function corresponding to the final partition.
@@ -125,7 +125,7 @@ function _refine_partition(X, z, 𝒫, lᵐᵃˣ, metric, optimizer, strict)
     return pwa
 end
 
-# Finds the hypeplane best fitting the given subset of points 
+# Finds the hypeplane best fitting the given subset of points
 # using the given metric and possible restrictions on whether
 # the plane should be strictly above or below the points
 function _local_fit(X̄, z̄, metric, optimizer, strict)
@@ -183,6 +183,7 @@ function _local_fit(X̄, z̄, metric, optimizer, strict)
     optimize!(m)
 
     if termination_status(m) != MOI.OPTIMAL
+        # write_to_file(m, "failed_model.lp")
         error("Optimization failed")
     end
 
@@ -192,9 +193,13 @@ function _local_fit(X̄, z̄, metric, optimizer, strict)
     return ā, b̄
 end
 
-# The hyperplane being active at the point x for a convex pwa function 
+# The hyperplane being active at the point x for a convex pwa function
 function _active(pwa::PWAFunc{Convex,D}, x) where {D}
     return argmax(collect(evaluate(p, x) for p ∈ pwa.planes))
+end
+
+function _active(pwa::PWAFunc{Concave,D}, x) where {D}
+    return argmax(collect(-evaluate(p, x) for p ∈ pwa.planes))
 end
 
 # Creating an updated partition by associating each data point to
