@@ -50,6 +50,13 @@ function Makie.plot(input::FunctionEvaluations{2}, pwa::PWAFunc{C,2}) where {C}
     return Makie.plot(x, z, pwa)
 end
 
+function Makie.plot(pwa::PWAFunc{C,2}) where {C}
+    verts = PiecewiseAffineApprox.vertices_by_subsets(pwa)
+    x = [v[1][i] for i in 1:2, v in verts]
+    z = [v[2] for v in verts]
+    return Makie.plot(x, z, pwa)
+end
+
 function Makie.plot(x, y, pwa::PWAFunc{C,1}) where {C}
     active = getactive(C)
     inactive = getinactive(C)
