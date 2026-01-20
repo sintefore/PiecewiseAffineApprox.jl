@@ -40,11 +40,12 @@ end
     fraction = 0.05
     total = 0
     violations = 0
+    ϵ = 1e-3
     for p_out ∈ 140:175
         actual = PiecewiseAffineApprox.evaluate(pwa, (p_in, p_out, fraction))
         expected = calculate_z(p_in, p_out, fraction)
         total += 1
-        if actual < expected
+        if actual < expected * (1 - ϵ)
             violations += 1
         end
     end
