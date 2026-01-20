@@ -26,6 +26,7 @@ export FunctionEvaluations
 export PWAFunc
 export approx
 export pwaffine
+export λ_Formulation, Ψ_Formulation, Δ_Formulation, Φ_Formulation
 export evaluate
 export enforce_curvature
 
