@@ -1,4 +1,3 @@
-
 @testset "PWA vertex enumeration 1D" begin
     # Test 1: Simple convex 1D function with 3 planes
     # f(x) = max(x + 1, -3x - 2, -2x - 1)
@@ -40,7 +39,7 @@ end
     verts = PiecewiseAffineApprox.vertices_by_subsets(pwa)
 
     # Verify we found vertices
-    @test length(verts) == 2  # A 2D convex function needs at least 3 vertices
+    @test length(verts) == 2
 
     # Verify each vertex lies on the epigraph boundary
     for (x, z) in verts
@@ -65,9 +64,8 @@ end
     @test all(abs.(verts_pyramid[1][1]) .< 1e-8)  # x ≈ [0, 0]
     @test abs(verts_pyramid[1][2]) < 1e-8         # z ≈ 0
 
-    # Test 3: Quadratic approximation test (if HiGHS is available)
-    pwa_quad = approx(x -> x[1]^2 + x[2]^2, [(-1, 1), (-1, 1)], Convex(),
-                          Cluster(; optimizer = HiGHS.Optimizer, planes = 12))
+    # Test 3: Quadratic approximation test
+    pwa_quad = JSON.parsefile(joinpath(@__DIR__, "pwa_ex", "pwa_quad_2d.json"), PWAFunc)
     vertices = PiecewiseAffineApprox.vertices_by_subsets(pwa_quad)
 
     # Should find multiple vertices around the domain boundary
