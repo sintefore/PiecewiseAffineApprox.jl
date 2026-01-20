@@ -72,3 +72,45 @@ round(value.(y))
 # output
 1.0
 ```
+
+## Formulations
+
+PiecewiseAffineApprox.jl provides four different linear programming formulations for adding convex (or concave) piecewise affine functions to optimization models. All formulations are pure linear programs (no binary variables required) and produce mathematically equivalent results but differ in their computational structure and preprocessing requirements. For more details see [Coffrin et al. (2021)](https://doi.org/10.1016/j.epsr.2021.107191).
+
+**Ψ-Formulation (default):** Uses the plane representation directly without requiring vertex enumeration. The formulation directly models the piecewise affine function as a pointwise maximum of the planes. This formulation works for any dimension and can be more efficient when vertex enumeration is expensive (large number of planes).
+
+**λ-Formulation:** Represents the piecewise affine function as a convex combination of its vertices. This formulation works for any dimension and is the default choice. It requires vertex enumeration as a preprocessing step, which computes all vertices of the piecewise affine function's epigraph (for convex functions) or hypograph (for concave functions).
+
+**Δ-Formulation:** A specialized formulation that exploits the ordered structure of breakpoints in one-dimensional piecewise affine functions. It requires breakpoint enumeration as a preprocessing step. This formulation only works for 1D problems and will error for higher dimensions.
+
+**Φ-Formulation:** An alternative specialized formulation for one-dimensional problems. Like the Δ-formulation, it requires breakpoint enumeration and only works for 1D problems.
+
+```jldoctest; output = false
+using JuMP, PiecewiseAffineApprox, HiGHS
+
+optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
+m = Model(optimizer)
+@variable(m, x)
+
+pwa = approx(x -> x[1]^2, [(-1, 1)], Convex(), MILP(optimizer = optimizer, planes=5))
+
+z1 = pwaffine(m, x, pwa; formulation = λ_Formulation())
+z2 = pwaffine(m, x, pwa; formulation = Ψ_Formulation())
+z3 = pwaffine(m, x, pwa; formulation = Δ_Formulation())
+z4 = pwaffine(m, x, pwa; formulation = Φ_Formulation())
+
+@objective(m, Min, z1)
+@constraint(m, x >= 0.5)
+optimize!(m)
+round(value(z1); digits=4)
+
+# output
+0.2653
+```
+
+**Choosing a formulation:**
+- For **1D problems**: All four formulations are available. The Δ and Φ formulations may offer computational advantages for problems with many breakpoints.
+- For **2D and higher**: Only λ-Formulation and Ψ-Formulation are available (Δ and Φ will error).
+- **Preprocessing considerations**: λ, Δ, and Φ formulations require enumeration of vertices or breakpoints, which may be computationally expensive for complex approximations. The Ψ-formulation works directly with planes and avoids this preprocessing step.
+- **Default**: λ-Formulation is used when no formulation is specified and works well in most cases.
+
