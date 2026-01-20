@@ -1,4 +1,3 @@
-
 mutable struct PWLData
     counter::Int
     PWLData() = new(0)
@@ -25,7 +24,35 @@ const VarOrAff = Union{JuMP.VariableRef,JuMP.AffExpr}
     pwaffine(m::JuMP.Model, x, pwa::PWAFunc{C,D}; z, formulation::PWAFormulation) where {C,D}
 
 Add constraints to JuMP-model `m` for JuMP-variable `z` as a
-piecewise linear function/approximation `pwa` of JuMP-variables `x`
+piecewise linear function/approximation `pwa` of JuMP-variables `x`.
+
+# Arguments
+- `m::JuMP.Model`: The JuMP model to add constraints to
+- `x`: JuMP variable(s) representing the input to the piecewise affine function
+- `pwa::PWAFunc{C,D}`: The piecewise affine function to model
+
+# Keyword Arguments
+- `z::Union{Nothing, VarOrAff}`: JuMP variable representing the output. If `nothing`, a new variable is created
+- `formulation::PWAFormulation`: The formulation to use. Options are:
+  - `Ψ_Formulation()` (default): Direct plane representation. Works for any dimension. No preprocessing required.
+  - `λ_Formulation()`: Convex combination of vertices. Works for any dimension. Requires vertex enumeration.
+  - `Δ_Formulation()`: Specialized for 1D. Uses ordered breakpoint structure. Requires breakpoint enumeration.
+  - `Φ_Formulation()`: Alternative 1D formulation. Requires breakpoint enumeration.
+
+# Returns
+- The JuMP variable `z` representing the piecewise affine function value
+
+# Note
+All formulations are pure linear programs (no binary variables). The Δ and Φ formulations
+only work for 1D problems and will error for higher dimensions.
+
+# Example
+```julia
+m = Model(HiGHS.Optimizer)
+@variable(m, x)
+pwa = approx(x -> x[1]^2, [(-1, 1)], Convex(), MILP(optimizer = optimizer, planes=5))
+z = pwaffine(m, x, pwa; formulation = λ_Formulation())
+```
 """
 function pwaffine(
     m::JuMP.Model,
@@ -52,8 +79,9 @@ function pwaffine(
     curvature::Curvature,
     a::Algorithm;
     z = nothing,
+    formulation = Ψ_Formulation()
 )
-    return pwaffine(m, x, approx(fevals, curvature, a); z = z)
+    return pwaffine(m, x, approx(fevals, curvature, a); z = z, formulation = formulation)
 end
 
 # Model the piecewise affine function as a convex combination of its vertices
