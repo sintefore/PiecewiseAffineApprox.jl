@@ -117,7 +117,6 @@ function pwaffine_formulation(m, x, z, counter, pwa::PWAFunc{C,1}, _::Φ_Formula
     Φ = @variable(m, [v in Ṽ], lower_bound = 0, upper_bound = last(xp) - xp[v-1], base_name = "_Φ_$(counter)")
     @constraint(m, [v in Ṽ], Φ[v] ≥ x - xp[v-1])
     base = zp[1] + slope[2] * (x - xp[1])
-    println("base = $base")
     @constraint(m, z ==  base + sum(Δ_slope[v] * Φ[v] for v in Ṽ))
 
     return
