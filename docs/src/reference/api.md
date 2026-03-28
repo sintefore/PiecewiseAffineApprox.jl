@@ -5,19 +5,18 @@ CurrentModule = PiecewiseAffineApprox
 ## Algorithms
 
 ```@docs
-#FullOrderFitting
-#Heuristic
-#Interpol
-#Optimized
-#ProgressiveFitting
+Cluster
+Interpol
+MILP
+Progressive
+FullOrder
 ```
 
 ## Other types
 
 ```@docs
-
-#Convex     # Missing docstring
-#Concave    # Missing docstring
+# Convex # Not found when building docs
+# Concave # Not found when building docs
 Plane
 FunctionEvaluations
 PWAFunc

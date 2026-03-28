@@ -18,19 +18,18 @@
     end
 
     # 2D
-    g(x) = x[1]^2 + x[2]^2
+    g(x, y) = x^2 + y^2
     vals = PiecewiseAffineApprox._sample_uniform(g, [(-1, 1), (-1, 1)], 10)
     pwa_red = approx(
         vals,
         Convex(),
         Progressive(optimizer = optimizer, tolerance = 0.2, metric = :max),
     )
-    # Disabled as it gives inconsistent results locally and in CI
-    # @test length(pwa_red.planes) == 10
+    @test length(pwa_red.planes) == 10
     @test evaluate(pwa_red, (0, 0)) ≈ 0.024 atol = 0.001
 
     @testset "Nonconvex" begin
-        h(x) = sin(5 * x[1]) * (x[1]^2 + x[2]^2)
+        h(x, y) = sin(5 * x) * (x^2 + y^2)
         vals = PiecewiseAffineApprox._sample_uniform(h, [(-1, 1), (-1, 1)], 10)
 
         @test_throws ErrorException approx(
@@ -89,7 +88,7 @@ end
     end
 
     # 2D
-    g(x) = x[1]^2 + x[2]^2
+    g(x, y) = x^2 + y^2
     vals = PiecewiseAffineApprox._sample_uniform(g, [(-1, 1), (-1, 1)], 10)
     pwa_red =
         approx(vals, Convex(), FullOrder(optimizer = optimizer, metric = :max))
@@ -97,7 +96,7 @@ end
     @test evaluate(pwa_red, (0, 0)) ≈ 0.024 atol = 0.001
 
     @testset "Nonconvex" begin
-        h(x) = sin(5 * x[1]) * (x[1]^2 + x[2]^2)
+        h(x, y) = sin(5 * x) * (x^2 + y^2)
         vals = PiecewiseAffineApprox._sample_uniform(h, [(-1, 1), (-1, 1)], 10)
 
         @test_throws ErrorException approx(

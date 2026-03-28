@@ -5,12 +5,46 @@ defaulttimelimit() = 60
 """
     approx(input::FunctionEvaluations{D}, c::Curvature, a::Algorithm)
 
-Return PWAFunc{Convex,D} or PWAFunc{Concave,D} depending on `c`, approximating the `input` points in `D` dimensions
+Return PWAFunc{Convex,D} or PWAFunc{Concave,D} depending on curvature `c`, approximating the `input` points in `D` dimensions
+
+## Arguments
+- input
+- c::Curvature `Convex` or `Concave`
+- a::Algorithm `MILP`, `Cluster`, `Interpol`, `Progressive` or `FullOrder`
 """
 function approx(input, c::Concave, a::Algorithm)
     cv = approx(FunctionEvaluations(input.points, -input.values), Convex(), a;)
     return PWAFunc{Concave,dims(cv)}(cv.planes)
 end
+
+
+"""
+    approx(fv::AbstractMatrix, c::Curvature, a::Algorithm;)
+
+Return approximation calculated by point estimates `fv` in Matrix.
+
+## Arguments
+- fv::AbstractMatrix dimensions 1:m-1 are coordinats, dimension m is function values
+- c::Curvature `Convex` or `Concave`
+- a::Algorithm `MILP`, `Cluster`, `Interpol`, `Progressive` or `FullOrder`
+"""
+function approx(fv::AbstractMatrix, c::Curvature, a::Algorithm;) 
+    m, n = size(fv)
+
+    # Transpose if necessary, assuming that there are more points than values
+    if m > n
+        @warn("Transposing input matrix assuming row-based format")
+        fv = fv'
+        m, n = size(fv)
+    end
+
+    xvals = fv[1:m-1, :]
+    fvals = fv[m, :]
+    pts = [Tuple(xi for xi in x) for x in eachcol(xvals)]
+    return approx(FunctionEvaluations(pts, fvals), c, a)
+end
+
+
 
 dims(pwa::PWAFunc{C,D}) where {C,D} = D
 
@@ -74,7 +108,14 @@ function approx(input::FunctionEvaluations, c::Convex, a::FullOrder;)
     return _full_order_pwa(input, a.optimizer, a.metric)
 end
 
-# Optimal convex approximation using mixed integer optimization
+"""
+    approx()input::FunctionEvaluations{D},
+    c::Convex,
+    options::MILP,
+) where {D}
+
+Approximate using MILP and data points sampled from a Convex function.
+"""
 function approx(
     input::FunctionEvaluations{D},
     c::Convex,
@@ -180,7 +221,7 @@ function _sample_uniform(f::Function, bbox::Vector{<:Tuple}, nsamples)
         )
         x = vec(collect(it))
     end
-    y = [f(xx) for xx ∈ x]
+    y = [f(xx...) for xx ∈ x]
     return FunctionEvaluations(x, y)
 end
 
@@ -197,6 +238,24 @@ function approx(f::Function, bbox::Vector{<:Tuple}, c::Curvature, a::Algorithm;)
 
     return approx(_sample_uniform(f, bbox, samples), c, a)
 end
+
+function approx(f::Function, xvals, c::Curvature, a::Algorithm;)
+    pts = [(x,) for x in xvals]
+    yvals = [f(x) for x ∈ xvals]
+    return approx(FunctionEvaluations(pts, yvals), c, a)
+end
+
+function approx(f::Function, xvals, yvals, c::Curvature, a::Algorithm;)
+    pts = [(x, y) for (x, y) in zip(xvals, yvals)]
+    yvals = [f(x, y) for (x, y) ∈ pts]
+    return approx(FunctionEvaluations(pts, yvals), c, a)
+end
+
+function approx(xvals, fvals, c::Curvature, a::Algorithm;)
+    pts = [(x,) for x in xvals]
+    return approx(FunctionEvaluations(pts, collect(fvals)), c, a)
+end
+
 
 # Utility function to find the value of a hyperplane at the point x
 function _plane_f(x, normal, d)

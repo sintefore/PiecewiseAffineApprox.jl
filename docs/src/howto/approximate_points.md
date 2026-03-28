@@ -24,6 +24,27 @@ length(pwa.planes)
 5
 ```
 
+You may find it more convenient to use Matrix input for the data points rather than wrapping the data in the FunctionEvaluations, consider the alternative version of the example above:
+
+```jldoctest
+using PiecewiseAffineApprox, JuMP, HiGHS
+optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
+
+x = collect(range(-1, 1; length = 10))
+z = x .^ 2
+m = hcat(x, z)' # Collect data in a single Matrix
+
+pwa = approx(
+    m,
+    Convex(),
+    MILP(;optimizer, metric = :l1, planes = 5),
+)
+
+length(pwa.planes)
+# output
+5
+```
+
 # Bi-variate functions (3D)
 A dataset can also be used as input for 3D piecewise affine approximations. The following code creates a uniformly sampled domain X within (-1,1) and calculates the corresponding function values for a concave function z_concave.
 
@@ -56,3 +77,40 @@ length(pwa.planes)
 # output
 17
 ```
+
+Similarly, the data can be passed as a Matrix if that is more convenient:
+
+```jldoctest
+using PiecewiseAffineApprox, JuMP, HiGHS
+optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
+
+xg = [i for i ∈ -1:0.5:1]
+yg = [j for j ∈ -1:0.5:1]
+
+X = [repeat(xg, inner = [size(yg, 1)]) repeat(yg, outer = [size(xg, 1)])]
+
+z = X[:, 1] .^ 2 + X[:, 2] .^ 2
+
+m = hcat(X, z)'
+
+np = 17
+
+pwa = approx(
+    m,
+    Convex(),
+    MILP(
+        ;optimizer,
+        planes = np,
+        strict = :outer,
+        metric = :l1,
+    ),
+)
+length(pwa.planes)
+
+# output
+17
+```
+
+
+
+
