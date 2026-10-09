@@ -83,14 +83,21 @@ end
 # Euclidean distance between two points
 _dist(x, y) = sqrt(sum((x - y) .^ 2))
 
+# Draw K samples from a normal distribution with the same mean and covariance
+# as the columns of X. The covariance is factored with an eigendecomposition
+# rather than Cholesky so that singular covariances (e.g. collinear points) work.
+function _sample_normal(rng::AbstractRNG, X, K)
+    μ = vec(mean(X, dims = 2))
+    λ, V = eigen(Symmetric(cov(X, dims = 2)))
+    L = V * Diagonal(sqrt.(max.(λ, 0)))
+    return μ .+ L * randn(rng, length(μ), K)
+end
+
 # Create a random partition of the points into K sets
 # by generating K random points and group each data point to the
 # closest of these random points.
 function _random_partition(rng::AbstractRNG, X, K)
-    μ = vec(mean(X, dims = 2))
-    σ² = cov(X, dims = 2)
-    n = MvNormal(μ, σ²)
-    P = rand(rng, n, K)
+    P = _sample_normal(rng, X, K)
 
     𝒫 = [[] for j ∈ 1:K]
     for (i, x) ∈ enumerate(eachcol(X))

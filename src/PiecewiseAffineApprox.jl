@@ -1,7 +1,6 @@
 module PiecewiseAffineApprox
 
 using Combinatorics
-using Distributions
 using JuMP
 using LinearAlgebra
 using Printf
