@@ -34,8 +34,9 @@ function _convex_linearization_mb_single(
     metric,
     optimizer,
     strict,
+    rng,
 )
-    𝒫 = _random_partition(X, K)
+    𝒫 = _random_partition(rng, X, K)
     pwa = _refine_partition(X, z, 𝒫, lᵐᵃˣ, metric, optimizer, strict)
     e = _approx_error(X, z, pwa, metric)
     return e => pwa
@@ -54,6 +55,10 @@ function _convex_linearization_mb(X::Matrix, z::Vector, options::Cluster)
     strict = options.strict
     optimizer = options.optimizer
 
+    # Draw one seed per trial up front so that the result does not depend on
+    # how the trials are scheduled across threads
+    seeds = rand(options.rng, UInt64, Nᵗʳ)
+
     @debug "Starting heuristic search "
     approxes = collect(
         fetch.(
@@ -65,6 +70,7 @@ function _convex_linearization_mb(X::Matrix, z::Vector, options::Cluster)
                 metric,
                 optimizer,
                 strict,
+                StableRNG(seeds[i]),
             ) for i ∈ 1:Nᵗʳ
         ),
     )
@@ -80,11 +86,11 @@ _dist(x, y) = sqrt(sum((x - y) .^ 2))
 # Create a random partition of the points into K sets
 # by generating K random points and group each data point to the
 # closest of these random points.
-function _random_partition(X, K)
+function _random_partition(rng::AbstractRNG, X, K)
     μ = vec(mean(X, dims = 2))
     σ² = cov(X, dims = 2)
     n = MvNormal(μ, σ²)
-    P = rand(n, K)
+    P = rand(rng, n, K)
 
     𝒫 = [[] for j ∈ 1:K]
     for (i, x) ∈ enumerate(eachcol(X))

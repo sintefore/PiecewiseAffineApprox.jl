@@ -6,20 +6,27 @@ struct Convex <: Curvature end
 abstract type Algorithm end
 """
     Cluster
-Compute affine approximation using the method proposed by Mangani & Boyd.
+Compute affine approximation using the method proposed by Magnani & Boyd.
 
 Note that this algoritm computes multiple approximations and selects the best.
 If julia is started with multiple threads, these are computed in parallel. Consider
  how many threads will be beneficial, particularly when using a commercial solver where
  the license may restrict the number of simultanous solver instances.
+
+The random initial partitions are generated from `rng`. Pass a seeded generator,
+e.g. `rng = StableRNG(123)` from StableRNGs.jl, to get reproducible results that are
+independent of the number of threads. Note that `rng` is advanced by each call to
+`approx`, so reusing the same `Cluster` object gives a different (but still
+reproducible) sequence of results.
 """
-@kwdef struct Cluster{T} <: Algorithm
+@kwdef struct Cluster{T,R<:AbstractRNG} <: Algorithm
     planes::Int = defaultplanes()
     metric::Symbol = defaultmetric()
     trials::Int = 20
     itlim::Int = 50
     strict::Symbol = :none
     optimizer::T
+    rng::R = Random.default_rng()
 end
 
 """
