@@ -55,6 +55,13 @@ function _convex_linearization_mb(X::Matrix, z::Vector, options::Cluster)
     strict = options.strict
     optimizer = options.optimizer
 
+    if isnothing(optimizer) && !(strict == :none && metric ∈ (:l2, :rms))
+        error(
+            "Cluster with metric = :$metric and strict = :$strict requires an optimizer. " *
+            "Only metric = :l2 with strict = :none can be used without one.",
+        )
+    end
+
     # Work on normalized data to make the heuristic invariant to affine
     # transformations of the input (Magnani & Boyd, Sect. 1.3)
     μ, T = _normalization(X)
@@ -130,7 +137,7 @@ end
 function _random_partition(rng::AbstractRNG, X, K)
     P = _sample_normal(rng, X, K)
 
-    𝒫 = [[] for j ∈ 1:K]
+    𝒫 = [Int[] for j ∈ 1:K]
     for (i, x) ∈ enumerate(eachcol(X))
         # Find the nearest point amongst the p's
         jmin = argmin(_dist(x, P[:, j]) for j ∈ 1:K)
@@ -173,6 +180,10 @@ end
 # using the given metric and possible restrictions on whether
 # the plane should be strictly above or below the points
 function _local_fit(X̄, z̄, metric, optimizer, strict)
+    if strict == :none && (metric == :l2 || metric == :rms)
+        return _least_squares_fit(X̄, z̄)
+    end
+
     M, N = size(X̄)
 
     # Create an optimization model to find the best a and b such that  ax + b ≈ z
@@ -236,7 +247,22 @@ function _local_fit(X̄, z̄, metric, optimizer, strict)
     return ā, b̄
 end
 
-# The hyperplane being active at the point x for a convex pwa function 
+# Closed form least squares fit of the plane aᵀx + b to the points (Magnani & Boyd, eq. 9).
+# Solved via the centered normal equations, with a small ridge term on a to handle
+# subsets that do not span all directions (e.g. fewer than D+1 points). This gives
+# zero slope along directions with no variation in the data.
+function _least_squares_fit(X̄, z̄)
+    x̄ = vec(mean(X̄, dims = 2))
+    Xc = X̄ .- x̄
+    zc = z̄ .- mean(z̄)
+    C = Xc * Xc'
+    λ = 1e-8 * tr(C) / size(C, 1)
+    a = λ > 0 ? (C + λ * I) \ (Xc * zc) : zeros(size(C, 1))
+    b = mean(z̄) - dot(a, x̄)
+    return a, b
+end
+
+# The hyperplane being active at the point x for a convex pwa function
 function _active(pwa::PWAFunc{Convex,D}, x) where {D}
     return argmax(collect(evaluate(p, x) for p ∈ pwa.planes))
 end
@@ -244,7 +270,7 @@ end
 # Creating an updated partition by associating each data point to
 # the hyperplane being active for the data point
 function _update_partition(X, pwa)
-    𝒫 = [[] for _ ∈ 1:_planes(pwa)]
+    𝒫 = [Int[] for _ ∈ 1:_planes(pwa)]
     for (i, x) ∈ enumerate(eachcol(X))
         push!(𝒫[_active(pwa, x)], i)
     end

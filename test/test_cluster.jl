@@ -65,3 +65,38 @@ end
     @test length(pwaₛ.planes) == 5
     @test rms(scaled, pwaₛ) ≤ 1.25 * rms(pts, pwa)
 end
+
+@testset "Cluster least squares" begin
+    X = [1.0 2.0 4.0 7.0 3.0 -1.0; 0.5 -1.0 2.0 1.0 0.0 0.3]
+    z = [2.0, 1.0, 5.0, 9.0, 2.5, 0.7]
+
+    # Closed form agrees with solving the least squares problem with a QP
+    m = Model(optimizer)
+    @variable(m, a[1:2])
+    @variable(m, b)
+    @objective(m, Min, sum((z[i] - a' * X[:, i] - b)^2 for i ∈ 1:6))
+    optimize!(m)
+    â, b̂ = PWA._least_squares_fit(X, z)
+    @test â ≈ value.(a) atol = 1e-6
+    @test b̂ ≈ value(b) atol = 1e-6
+
+    # Underdetermined subsets give zero slope where the data has no variation
+    â, b̂ = PWA._least_squares_fit(X[:, 1:1], z[1:1])
+    @test â == zeros(2)
+    @test b̂ == z[1]
+    â, b̂ = PWA._least_squares_fit([1.0 3.0; 2.0 2.0], [1.0, 5.0])
+    @test â ≈ [2.0, 0.0] atol = 1e-6
+    @test b̂ ≈ -1.0 atol = 1e-6
+
+    # No optimizer needed for :l2, but required for the other metrics
+    pts = [(a, b) for a ∈ range(-1, 1, length = 6) for b ∈ range(-1, 1, length = 6)]
+    fe = FunctionEvaluations(pts, [a^2 + b^2 for (a, b) ∈ pts])
+    pwa = approx(fe, Convex(), Cluster(; metric = :l2, planes = 4, rng = StableRNG(1)))
+    @test length(pwa.planes) == 4
+    @test_throws ErrorException approx(fe, Convex(), Cluster(; metric = :l1))
+    @test_throws ErrorException approx(
+        fe,
+        Convex(),
+        Cluster(; metric = :l2, strict = :outer),
+    )
+end

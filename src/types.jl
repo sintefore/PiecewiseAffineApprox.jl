@@ -18,6 +18,11 @@ e.g. `rng = StableRNG(123)` from StableRNGs.jl, to get reproducible results that
 independent of the number of threads. Note that `rng` is advanced by each call to
 `approx`, so reusing the same `Cluster` object gives a different (but still
 reproducible) sequence of results.
+
+With `metric = :l2` (or `:rms`) and `strict = :none`, each plane is fitted with
+closed form least squares as in the original method. This is much faster and does
+not require an `optimizer`. Other metrics, and `strict = :inner`/`:outer`, solve
+an optimization problem for each fit and require an `optimizer`.
 """
 @kwdef struct Cluster{T,R<:AbstractRNG} <: Algorithm
     planes::Int = defaultplanes()
@@ -25,7 +30,7 @@ reproducible) sequence of results.
     trials::Int = 20
     itlim::Int = 50
     strict::Symbol = :none
-    optimizer::T
+    optimizer::T = nothing
     rng::R = Random.default_rng()
 end
 
