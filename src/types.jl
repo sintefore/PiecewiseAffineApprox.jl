@@ -127,39 +127,60 @@ function Base.show(
 end
 
 """
-    Plane{D}
+    Plane{D,T<:Real}
 
-A D-dimensional hyperplane (αᵀx = β).
+A D-dimensional affine function z = αᵀx + β, with coefficients of type `T`.
 """
-struct Plane{D}
-    α::NTuple{D,Number}
-    β::Number
+struct Plane{D,T<:Real}
+    α::NTuple{D,T}
+    β::T
 end
-Plane(a::NTuple{D}, b) where {D} = Plane{D}(a, b)
-Plane(a::Vector, b) = Plane(Tuple(a), b)
-Plane(a::Number, b::Number) = Plane{1}(Tuple(a), b)
+function Plane(a::Tuple{Vararg{Real,D}}, b::Real) where {D}
+    T = promote_type(typeof(b), map(typeof, a)...)
+    return Plane{D,T}(a, b)
+end
+Plane{D}(a::Tuple{Vararg{Real,D}}, b::Real) where {D} = Plane(a, b)
+Plane(a::AbstractVector{<:Real}, b::Real) = Plane(Tuple(a), b)
+Plane(a::Real, b::Real) = Plane((a,), b)
+
+Base.convert(::Type{Plane{D,T}}, p::Plane{D}) where {D,T} = Plane{D,T}(p.α, p.β)
+function Base.promote_rule(::Type{Plane{D,S}}, ::Type{Plane{D,T}}) where {D,S,T}
+    return Plane{D,promote_type(S, T)}
+end
+
 evaluate(p::Plane, x, c = Convex) = dot(p.α, x) + p.β # Planes defined for convex functions
 evaluate(p::Plane, x, c::Type{Concave}) = -evaluate(p, x, Convex) # Flip for concave functions
 
 """
-    PWAFunc{C<:Curvature,D}
+    PWAFunc{C<:Curvature,D,T<:Real}
 
 A piecewise linear function that can be either convex and concave
-represented by a set of (hyper)planes.
+represented by a set of (hyper)planes with coefficients of type `T`.
 
 If the curvature of the function is convex, the piecewise linear Function
 is defined as the pointwise maximum over the planes. A concave pwa function
 is handled by storing its negative and negating when evaluting.
+
+`PWAFunc{C,D}(planes)` infers `T` from the planes, and `PWAFunc{C,D}()` creates
+an empty function with `T = Float64`.
 """
-struct PWAFunc{C<:Curvature,D}
-    planes::Vector{Plane{D}}
+struct PWAFunc{C<:Curvature,D,T<:Real}
+    planes::Vector{Plane{D,T}}
 end
-function PWAFunc(planes::Vector{Plane{D}}, C::Curvature) where {D}
+function PWAFunc{C,D}(planes::AbstractVector{<:Plane{D}}) where {C<:Curvature,D}
+    T = isempty(planes) ? _numtype(eltype(planes)) :
+        mapreduce(p -> typeof(p.β), promote_type, planes)
+    return PWAFunc{C,D,T}(convert(Vector{Plane{D,T}}, planes))
+end
+PWAFunc{C,D}() where {C<:Curvature,D} = PWAFunc{C,D,Float64}(Plane{D,Float64}[])
+function PWAFunc(planes::AbstractVector{<:Plane{D}}, C::Curvature) where {D}
     return PWAFunc{typeof(C),D}(planes)
 end
-PWAFunc{C,D}() where {C,D} = PWAFunc{C,D}(Vector{Plane{D}}())
 
-function _write_planes(io::IO, C::Curvature, planes::Vector{Plane{D}}) where {D}
+_numtype(::Type{Plane{D,T}}) where {D,T} = T
+_numtype(::Type) = Float64
+
+function _write_planes(io::IO, C::Curvature, planes::AbstractVector{<:Plane})
     for p ∈ planes
         println(io, " ", _write_plane(C, p))
     end
@@ -181,12 +202,13 @@ function Base.summary(io::IO, pwa::PWAFunc)
     n = _planes(pwa)
     return print(io, "$(typeof(pwa)) with $n planes")
 end
-function Base.show(io::IO, ::MIME"text/plain", pwa::PWAFunc{C,D}) where {C,D}
+function Base.show(io::IO, ::MIME"text/plain", pwa::PWAFunc{C}) where {C}
     summary(io, pwa)
     println(io, ":")
     if length(pwa.planes) > 10
         _write_planes(io, C(), first(pwa.planes, 5))
-        print(io, " ⋮\n")
+        print(io, " ⋮
+")
         _write_planes(io, C(), last(pwa.planes, 5))
     else
         _write_planes(io, C(), pwa.planes)
@@ -208,7 +230,7 @@ end
 Evaluate the concave piecewise linear function at the point x.
 """
 function evaluate(pwa::PWAFunc{Concave,D}, x) where {D}
-    return -evaluate(PWAFunc{Convex,D}(pwa.planes), x)
+    return -maximum(dot(p.α, x) + p.β for p ∈ pwa.planes)
 end
 
 # The number of planes defining the piecewise linar function
