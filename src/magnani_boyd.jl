@@ -55,6 +55,11 @@ function _convex_linearization_mb(X::Matrix, z::Vector, options::Cluster)
     strict = options.strict
     optimizer = options.optimizer
 
+    # Work on normalized data to make the heuristic invariant to affine
+    # transformations of the input (Magnani & Boyd, Sect. 1.3)
+    μ, T = _normalization(X)
+    X̃ = T * (X .- μ)
+
     # Draw one seed per trial up front so that the result does not depend on
     # how the trials are scheduled across threads
     seeds = rand(options.rng, UInt64, Nᵗʳ)
@@ -63,7 +68,7 @@ function _convex_linearization_mb(X::Matrix, z::Vector, options::Cluster)
     approxes = collect(
         fetch.(
             @spawn _convex_linearization_mb_single(
-                X,
+                X̃,
                 z,
                 K,
                 lᵐᵃˣ,
@@ -77,7 +82,33 @@ function _convex_linearization_mb(X::Matrix, z::Vector, options::Cluster)
     min_error, pwa_best = argmin(first, approxes)
 
     @debug "Terminating search - best approximation error = $(min_error) ($metric)"
-    return pwa_best
+    return _denormalize(pwa_best, μ, T)
+end
+
+# Affine transformation x̃ = T(x - μ) giving data with zero mean and identity
+# covariance. T = Σ^(-1/2) (ZCA whitening) is used since it is unique and leaves
+# data that is only scaled along the axes in identical normalized coordinates.
+# Directions with (near) zero variance are mapped to zero.
+function _normalization(X)
+    μ = vec(mean(X, dims = 2))
+    λ, V = eigen(Symmetric(cov(X, dims = 2)))
+    keep = λ .> 1e-10 * max(maximum(λ), 0)
+    if !any(keep)
+        # All points coincide, nothing to normalize
+        return μ, Matrix{Float64}(I, length(μ), length(μ))
+    end
+    Vᵣ = V[:, keep]
+    return μ, Vᵣ * Diagonal(1 ./ sqrt.(λ[keep])) * Vᵣ'
+end
+
+# Transform a pwa function fitted to normalized data x̃ = T(x - μ) back to the
+# original coordinates: ãᵀx̃ + b̃ = (Tᵀã)ᵀx + (b̃ - ãᵀTμ)
+function _denormalize(pwa::PWAFunc{Convex,D}, μ, T) where {D}
+    planes = map(pwa.planes) do p
+        ã = collect(p.α)
+        return Plane(T' * ã, p.β - dot(ã, T * μ))
+    end
+    return PWAFunc{Convex,D}(planes)
 end
 
 # Euclidean distance between two points

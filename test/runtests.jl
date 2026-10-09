@@ -3,6 +3,7 @@ using HiGHS
 using JuMP
 using JSON
 using JSON3
+using LinearAlgebra
 using Logging
 using Pajarito
 using PiecewiseAffineApprox

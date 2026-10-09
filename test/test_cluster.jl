@@ -38,3 +38,30 @@ end
     pwa = approx(fe, Convex(), Cluster(; optimizer, planes = 3, rng = StableRNG(3)))
     @test maximum(abs(evaluate(pwa, p) - v) for (p, v) ∈ fe) < 0.25
 end
+
+@testset "Cluster normalization" begin
+    # Normalized data has zero mean and identity covariance
+    X = [1.0 2.0 4.0 7.0 3.0; 0.5 -1.0 2.0 1.0 0.0]
+    μ, T = PWA._normalization(X)
+    X̃ = T * (X .- μ)
+    @test vec(PWA.mean(X̃, dims = 2)) ≈ zeros(2) atol = 1e-12
+    @test PWA.cov(X̃, dims = 2) ≈ I
+
+    # Back transformation gives the same function values
+    pwa = PWAFunc{Convex,2}([Plane([1.0, -2.0], 0.5), Plane([-0.5, 3.0], 1.0)])
+    pwaₒ = PWA._denormalize(pwa, μ, T)
+    @test all(evaluate(pwaₒ, x) ≈ evaluate(pwa, x̃) for (x, x̃) ∈ zip(eachcol(X), eachcol(X̃)))
+
+    # Result is (close to) invariant to scaling and shifting the input
+    pts = [(a, b) for a ∈ range(-2, 2, length = 8) for b ∈ range(-2, 2, length = 8)]
+    vals = [log(exp(a) + exp(b) + 1) for (a, b) ∈ pts]
+    alg = Cluster(; optimizer, planes = 5, trials = 5, metric = :l2, rng = StableRNG(1))
+    rms(pts, pwa) = sqrt(PWA.mean((evaluate(pwa, p) - v)^2 for (p, v) ∈ zip(pts, vals)))
+
+    pwa = approx(FunctionEvaluations(pts, vals), Convex(), alg)
+    scaled = [(1000a + 50, b) for (a, b) ∈ pts]
+    alg = Cluster(; optimizer, planes = 5, trials = 5, metric = :l2, rng = StableRNG(1))
+    pwaₛ = approx(FunctionEvaluations(scaled, vals), Convex(), alg)
+    @test length(pwaₛ.planes) == 5
+    @test rms(scaled, pwaₛ) ≤ 1.25 * rms(pts, pwa)
+end
