@@ -56,3 +56,44 @@ end
     fe2 = FunctionEvaluations(pts, [a^2 + b^2 for (a, b) ∈ pts])
     @test_throws ArgumentError approx(fe2, Convex(), alg)
 end
+
+@testset "Interpolation dynamic programming" begin
+    rng = StableRNG(7)
+
+    # Squared deviations by prefix sums equal direct computation, also with
+    # large offsets in the data
+    x = sort(rand(rng, 30)) .+ 1e3
+    z = (x .- 1e3) .^ 2 .+ 0.1 .* randn(rng, 30) .+ 1e4
+    p = PWA._segment_penalties(x, z, :l2)
+    for i ∈ 1:29, j ∈ i+1:30
+        c = (z[j] - z[i]) / (x[j] - x[i])
+        direct = sum((z[i] + c * (x[k] - x[i]) - z[k])^2 for k ∈ i:j)
+        @test p[i, j] ≈ direct atol = 1e-8
+    end
+
+    # The dynamic program finds the optimal knots for any number of segments,
+    # compared with enumerating all choices of interior knots
+    N = 9
+    x = sort(rand(rng, N))
+    z = sin.(4 .* x) .+ 0.2 .* randn(rng, N)
+    for metric ∈ (:l1, :l2, :max)
+        p = PWA._segment_penalties(x, z, metric)
+        K = 5
+        path, costs = PWA._shortest_path_segments(p, K)
+        pathcost(q) = sum(p[q[k], q[k+1]] for k ∈ 1:length(q)-1)
+        for k ∈ 1:K
+            best = minimum(
+                pathcost([1; collect(c); N]) for
+                c ∈ PWA.combinations(2:N-1, k - 1)
+            )
+            @test costs[k] ≈ best
+        end
+        @test length(path) == K + 1
+        @test path[1] == 1 && path[end] == N && issorted(path)
+        @test pathcost(path) ≈ costs[K]
+    end
+
+    # No optimization solver is used for selecting the knots
+    pwa = PWA._interpolatepw(x, z, Interpol(; optimizer = nothing, planes = 3))
+    @test length(pwa.x) == 4
+end

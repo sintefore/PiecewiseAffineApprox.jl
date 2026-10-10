@@ -70,87 +70,90 @@ end
 
 _convexify1D(x, z, options) = _convexify1D(PWAFunction1D(x, z), options)
 
-# Create a pwa interpolant to the given points with a maximum number of 
-# segments 
+# Create a pwa interpolant to the given points (sorted by x) using exactly
+# options.planes segments with end points at data points. The segments are
+# chosen to minimize the sum of the segment penalties in options.metric.
 function _interpolatepw(x, z, options)
-    @assert(length(x) == length(z))
+    @assert length(x) == length(z)
+    p = _segment_penalties(x, z, options.metric)
+    knots, _ = _shortest_path_segments(p, options.planes)
+    return PWAFunction1D(x[knots], z[knots])
+end
 
-    N = length(x)
-    𝒩 = 1:N
-
-    # Find slopes
-    c = [(z[j] - z[i]) / (x[j] - x[i]) for i ∈ 𝒩, j ∈ 𝒩]
-
-    # Calculate penalties
-    if options.metric == :l1
-        p = [
-            (
-                i < j ?
-                sum(abs(c[i, j] * (x[k] - x[i]) + z[i] - z[k]) for k ∈ i:j) : 0
-            ) for i ∈ 𝒩, j ∈ 𝒩
-        ]
-    elseif options.metric == :l2
-        p = [
-            (
-                i < j ?
-                sum((c[i, j] * (x[k] - x[i]) + z[i] - z[k])^2 for k ∈ i:j) :
-                0
-            ) for i ∈ 𝒩, j ∈ 𝒩
-        ]
-    elseif options.metric == :max
-        p = [
-            (
-                i < j ?
-                maximum(
-                    abs(c[i, j] * (x[k] - x[i]) + z[i] - z[k]) for k ∈ i:j
-                ) : 0
-            ) for i ∈ 𝒩, j ∈ 𝒩
-        ]
-    else
-        error("Unrecognized/unsupported metric $(options.metric)")
+# Penalty p[i, j] (i < j) for approximating the points i, ..., j by the line
+# segment between points i and j: the sum of absolute deviations (:l1), the sum
+# of squared deviations (:l2) or the maximum absolute deviation (:max).
+function _segment_penalties(x, z, metric)
+    if metric == :l2
+        return _segment_penalties_l2(x, z)
+    elseif metric ∉ (:l1, :max)
+        error("Unrecognized/unsupported metric $(metric)")
     end
+    N = length(x)
+    p = zeros(N, N)
+    for i ∈ 1:N-1, j ∈ i+1:N
+        c = (z[j] - z[i]) / (x[j] - x[i])
+        acc = 0.0
+        for k ∈ i+1:j-1
+            r = abs(z[i] + c * (x[k] - x[i]) - z[k])
+            acc = metric == :l1 ? acc + r : max(acc, r)
+        end
+        p[i, j] = acc
+    end
+    return p
+end
 
-    m = Model()
-    @variable(m, 𝑢[𝒩, 𝒩], Bin)
+# Sum of squared deviations for all segments in O(N²) using prefix sums.
+# The data is centered first to reduce cancellation errors.
+function _segment_penalties_l2(x, z)
+    N = length(x)
+    x = x .- mean(x)
+    z = z .- mean(z)
+    Sx = [0.0; cumsum(x)]
+    Sz = [0.0; cumsum(z)]
+    Sxx = [0.0; cumsum(x .^ 2)]
+    Szz = [0.0; cumsum(z .^ 2)]
+    Sxz = [0.0; cumsum(x .* z)]
+    p = zeros(N, N)
+    for i ∈ 1:N-1, j ∈ i+1:N
+        # Deviations at points k = i, ..., j are α + c xₖ - zₖ
+        c = (z[j] - z[i]) / (x[j] - x[i])
+        α = z[i] - c * x[i]
+        n = j - i + 1
+        sx, sz = Sx[j+1] - Sx[i], Sz[j+1] - Sz[i]
+        sxx, szz, sxz = Sxx[j+1] - Sxx[i], Szz[j+1] - Szz[i], Sxz[j+1] - Sxz[i]
+        r² =
+            n * α^2 + c^2 * sxx + szz + 2α * c * sx - 2α * sz - 2c * sxz
+        p[i, j] = max(r², 0.0)
+    end
+    return p
+end
 
-    # Minimize total metric
-    @objective(m, Min, sum(p[i, j] * 𝑢[i, j] for i ∈ 𝒩, j ∈ 𝒩))
-
-    # Number of line segments in interpolant
-    @constraint(m, sum(𝑢[i, j] for i ∈ 𝒩, j ∈ 𝒩) == options.planes)
-
-    # Only forward segments allowed
-    for i ∈ 𝒩, j ∈ 𝒩
-        if i >= j
-            @constraint(m, 𝑢[i, j] == 0)
+# Find the path 1 → N through increasing indices with exactly K edges that
+# minimizes the sum of edge costs p[i, j], by dynamic programming in O(KN²).
+# Returns the indices on the path and the minimal cost of reaching N using
+# 1, ..., K edges. Ties are broken towards smaller indices.
+function _shortest_path_segments(p, K)
+    N = size(p, 1)
+    @assert 1 ≤ K ≤ N - 1
+    # cost[s+1, j]: minimal cost of reaching j using s edges
+    cost = fill(Inf, K + 1, N)
+    pred = zeros(Int, K + 1, N)
+    cost[1, 1] = 0.0
+    for s ∈ 1:K, j ∈ s+1:N
+        for i ∈ s:j-1
+            v = cost[s, i] + p[i, j]
+            if v < cost[s+1, j]
+                cost[s+1, j] = v
+                pred[s+1, j] = i
+            end
         end
     end
-
-    # Path modelling
-    for j ∈ 𝒩
-        @constraint(
-            m,
-            (j > 1 ? sum(𝑢[i, j] for i ∈ 𝒩) : 1) ==
-            (j < N ? sum(𝑢[j, i] for i ∈ 𝒩) : 1)
-        )
+    path = [N]
+    for s ∈ K:-1:1
+        pushfirst!(path, pred[s+1, path[1]])
     end
-
-    set_optimizer(m, options.optimizer)
-    optimize!(m)
-    if !is_solved_and_feasible(m)
-        error(
-            "Optimization failed: $(termination_status(m)) " *
-            "($(raw_status(m)))",
-        )
-    end
-
-    𝑢ᴼᵖᵗ = value.(m[:𝑢])
-    xᴼᵖᵗ = collect(x[i] for i ∈ 𝒩, j ∈ 𝒩 if 𝑢ᴼᵖᵗ[i, j] > 0.5)
-    push!(xᴼᵖᵗ, x[N])
-    zᴼᵖᵗ = collect(z[i] for i ∈ 𝒩, j ∈ 𝒩 if 𝑢ᴼᵖᵗ[i, j] > 0.5)
-    push!(zᴼᵖᵗ, z[N])
-
-    return PWAFunction1D(xᴼᵖᵗ, zᴼᵖᵗ)
+    return path, cost[2:end, N]
 end
 
 function _convex_linearization_ipol(x, z, options)
