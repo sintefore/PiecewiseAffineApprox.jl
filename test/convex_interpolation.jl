@@ -274,3 +274,81 @@ end
     @test_throws ArgumentError approx(fe, Convex(), alg(; selection = :cv, folds = 1))
     @test_throws ArgumentError approx(fe, Convex(), alg(; selection = :foo))
 end
+
+@testset "Interpolation adjusting knots" begin
+    rng = StableRNG(9)
+
+    # Nonnegative least squares satisfies the optimality conditions
+    for _ ∈ 1:5
+        A = randn(rng, 30, 6)
+        b = randn(rng, 30)
+        c = PWA._nnls(A, b)
+        w = A' * (b - A * c)
+        @test all(c .≥ 0)
+        @test all(w[c.>0] .≈ 0 .|| abs.(w[c.>0]) .< 1e-8)
+        @test all(w[c.==0] .< 1e-8)
+    end
+
+    # Refitted values at fixed breakpoints are convex
+    x = collect(range(0, 3, length = 60))
+    z = sin.(3 .* x)
+    t = [0.0, 0.7, 1.5, 2.2, 3.0]
+    for metric ∈ (:l1, :l2, :max)
+        v = PWA._fit_values(x, z, t, metric, optimizer)
+        @test PWA._isconvex(t, v)
+    end
+
+    # Adjusting never increases the deviation from the data
+    fe = FunctionEvaluations(Tuple.(x), z)
+    for metric ∈ (:l1, :l2, :max)
+        e = map((:none, :values, :breakpoints)) do adjust
+            alg = Interpol(; optimizer, planes = 4, metric, adjust)
+            return PWA._ipol_error(approx(fe, Convex(), alg), x, z, metric)
+        end
+        @test e[2] ≤ e[1] + 1e-9
+        @test e[3] ≤ e[2] + 1e-9
+    end
+
+    # For the maximum deviation from a convex function, refitting the values
+    # halves the error of the interpolant (shifting it down)
+    x = collect(range(-2, 2, length = 101))
+    fe = FunctionEvaluations(Tuple.(x), x .^ 2)
+    e = map((:none, :values)) do adjust
+        alg = Interpol(; optimizer, planes = 3, metric = :max, adjust)
+        return PWA._ipol_error(approx(fe, Convex(), alg), x, x .^ 2, :max)
+    end
+    @test e[2] ≈ e[1] / 2 rtol = 1e-6
+
+    # Moving the breakpoints recovers kinks between the data points
+    truth = max.(-x, 0.4 .* x .+ 0.3, 2 .* x .- 1.2)
+    fe = FunctionEvaluations(Tuple.(x), truth)
+    e = map((:none, :breakpoints)) do adjust
+        alg = Interpol(; planes = 3, metric = :l2, adjust)
+        return PWA._ipol_error(approx(fe, Convex(), alg), x, truth, :l2)
+    end
+    @test e[2] < 1e-3 * e[1]
+
+    # Selection uses adjusted fits, which can place kinks between data points.
+    # For noisy data from 3 planes, this selects fewer and more correct planes.
+    # Adjusting with :l2 does not require an optimizer.
+    k = map((:none, :values)) do adjust
+        alg = Interpol(; planes = 10, metric = :l2, selection = :bic, adjust)
+        return map(1:8) do seed
+            zₙ = truth .+ 0.02 .* randn(StableRNG(seed), length(x))
+            fe = FunctionEvaluations(Tuple.(x), zₙ)
+            return length(approx(fe, Convex(), alg).planes)
+        end
+    end
+    @test count(==(3), k[2]) > count(==(3), k[1])
+    @test sum(k[2]) < sum(k[1])
+    @test_throws ErrorException approx(
+        fe,
+        Convex(),
+        Interpol(; planes = 3, metric = :l1, adjust = :values),
+    )
+    @test_throws ArgumentError approx(
+        fe,
+        Convex(),
+        Interpol(; optimizer, planes = 3, adjust = :foo),
+    )
+end

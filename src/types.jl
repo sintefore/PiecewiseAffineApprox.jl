@@ -63,6 +63,20 @@ the number of distinct points minus one):
   interleaving them in sorted order. Uses the one standard error rule: the
   fewest planes with an error on the held-out points within one standard error
   of the minimum.
+
+The knots of the interpolant are data points, or adjusted after fitting by
+`adjust`:
+
+- `:none` (default): keep the knots.
+- `:values`: keep the breakpoints, and refit the function values at the knots to
+  minimize the deviation from the data, subject to convexity.
+- `:breakpoints`: also move the interior breakpoints by a local search, refitting
+  the function values for each candidate position.
+
+Adjusting never increases the deviation from the data. For `:l2` it is solved as
+a nonnegative least squares problem, while `:l1` and `:max` require an
+`optimizer`. When the number of planes is selected, the selection is based on
+the unadjusted fits.
 """
 @kwdef struct Interpol{T} <: Algorithm
     planes::Int = defaultplanes()
@@ -72,6 +86,7 @@ the number of distinct points minus one):
     selection::Symbol = :none
     tolerance::Float64 = 0.0
     folds::Int = 5
+    adjust::Symbol = :none
 end
 
 """
