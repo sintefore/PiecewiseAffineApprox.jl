@@ -151,35 +151,128 @@ end
 # updating the partition such that each point is associated with the
 # plane being active at the point. 
 #
+# Subsets that do not spread out in all directions spanned by the data (e.g. fewer
+# than D+1 points, or points lying in a lower dimensional subspace) do not determine
+# a plane. Fitting one anyway can give a plane that dominates all others (e.g. a
+# flat plane through a single high point). Such subsets are dropped and their
+# points reassigned to the active plane among the remaining ones. To keep the number of planes,
+# the partition is then refilled by splitting the subsets with the largest error
+# (deviates from Magnani & Boyd, who drop empty subsets and continue with
+# fewer planes).
+#
 # The process terminates after a given number of iterations returning
 # the pwa function corresponding to the final partition.
-function _refine_partition(X, z, 𝒫, lᵐᵃˣ, metric, optimizer, strict)
-    D = size(X, 1)
+function _refine_partition(
+    X,
+    z,
+    𝒫,
+    lᵐᵃˣ,
+    metric,
+    optimizer,
+    strict;
+    refill = true,
+    minvar = 1e-4,
+)
+    D, N = size(X)
+    K = length(𝒫)
+    determined = _determined_test(X, minvar)
+    𝒫 = filter(determined, 𝒫)
+    if isempty(𝒫)
+        𝒫 = [collect(1:N)]
+    end
+    refill && _refill!(𝒫, X, ones(N), K, determined)
+    fit(q) = _fit_planes(X, z, q, metric, optimizer, strict)
     pwa = nothing
+    converged = false
     for it ∈ 1:lᵐᵃˣ
-        pwa = PWAFunc{Convex,D}()
-        for p ∈ 𝒫
-            if length(p) > 0
-                x̄ = X[:, p]
-                z̄ = z[p]
-                a, b = _local_fit(x̄, z̄, metric, optimizer, strict)
-                _addplane!(pwa, a, b)
-            end
-        end
+        pwa = fit(𝒫)
         𝒫ⁿᵉʷ = _update_partition(X, pwa)
-        if 𝒫ⁿᵉʷ == 𝒫
+        if !all(determined, 𝒫ⁿᵉʷ)
+            # Reassign points in undetermined subsets to the remaining planes
+            keep = determined.(𝒫ⁿᵉʷ)
+            if any(keep)
+                pwa = PWAFunc{Convex,D}(pwa.planes[keep])
+                𝒫ⁿᵉʷ = _update_partition(X, pwa)
+            end
+            filter!(p -> !isempty(p), 𝒫ⁿᵉʷ)
+        end
+        if refill && length(𝒫ⁿᵉʷ) < K
+            r = [evaluate(pwa, x) - z[i] for (i, x) ∈ enumerate(eachcol(X))]
+            w = metric ∈ (:l2, :rms) ? r .^ 2 : abs.(r)
+            _refill!(𝒫ⁿᵉʷ, X, w, K, determined)
+        end
+        if 𝒫ⁿᵉʷ == 𝒫 && _planes(pwa) == length(𝒫)
+            converged = true
             break
         end
         𝒫 = 𝒫ⁿᵉʷ
     end
 
+    # Without convergence, fit the planes to the final partition
+    return converged ? pwa : fit(𝒫)
+end
+
+# Fit a plane to each subset of the partition 𝒫. For strict = :outer, all planes
+# are required to lie below all data points, so that the pwa function is an outer
+# approximation also when the partition has not converged.
+function _fit_planes(X, z, 𝒫, metric, optimizer, strict)
+    pwa = PWAFunc{Convex,size(X, 1)}()
+    for p ∈ 𝒫
+        a, b = _local_fit(X[:, p], z[p], metric, optimizer, strict, X, z)
+        _addplane!(pwa, a, b)
+    end
     return pwa
+end
+
+# Returns a function testing whether a subset of the points (columns of X)
+# determines a plane: its sample variance must be at least minvar in all directions
+# where the full data set has variation. X is assumed to be normalized, i.e. to
+# have unit variance in these directions.
+function _determined_test(X, minvar)
+    r = count(>(0.5), eigvals(Symmetric(cov(X, dims = 2))))
+    return function (p)
+        length(p) > r || return false
+        r == 0 && return true
+        λ = eigvals(Symmetric(cov(X[:, p], dims = 2, corrected = false)))
+        return count(≥(minvar), λ) ≥ r
+    end
+end
+
+# Increase the number of subsets in the partition 𝒫 to K by repeatedly splitting
+# the subset with the largest total weight w (e.g. approximation error), such that
+# all subsets still determine a plane.
+function _refill!(𝒫, X, w, K, determined)
+    splittable = trues(length(𝒫))
+    while length(𝒫) < K
+        candidates = [j for j ∈ eachindex(𝒫) if splittable[j]]
+        isempty(candidates) && break
+        j = argmax(j -> sum(w[𝒫[j]]), candidates)
+        p₁, p₂ = _split_principal(X, 𝒫[j])
+        if !determined(p₁) || !determined(p₂)
+            splittable[j] = false
+        else
+            𝒫[j] = p₁
+            push!(𝒫, p₂)
+            push!(splittable, true)
+        end
+    end
+    return 𝒫
+end
+
+# Split the points p in two halves at the median along their principal direction
+function _split_principal(X, p)
+    Xc = X[:, p] .- mean(X[:, p], dims = 2)
+    d = eigen(Symmetric(Xc * Xc')).vectors[:, end]
+    s = vec(d' * Xc)
+    m = median(s)
+    return p[s .< m], p[s .>= m]
 end
 
 # Finds the hypeplane best fitting the given subset of points 
 # using the given metric and possible restrictions on whether
-# the plane should be strictly above or below the points
-function _local_fit(X̄, z̄, metric, optimizer, strict)
+# the plane should be strictly above the points (strict = :inner) or
+# below the points Xᵒ with values zᵒ (strict = :outer)
+function _local_fit(X̄, z̄, metric, optimizer, strict, Xᵒ = X̄, zᵒ = z̄)
     if strict == :none && (metric == :l2 || metric == :rms)
         return _least_squares_fit(X̄, z̄)
     end
@@ -205,7 +298,9 @@ function _local_fit(X̄, z̄, metric, optimizer, strict)
     if strict == :inner
         @constraint(m, ẑ .≥ z̄)
     elseif strict == :outer
-        @constraint(m, ẑ .≤ z̄)
+        for i ∈ axes(Xᵒ, 2)
+            @constraint(m, sum(a[j] * Xᵒ[j, i] for j ∈ 1:M) + b ≤ zᵒ[i])
+        end
     end
 
     obj = AffExpr()

@@ -100,3 +100,53 @@ end
         Cluster(; metric = :l2, strict = :outer),
     )
 end
+
+@testset "Cluster refill of subsets" begin
+    # Subsets must spread out in all directions spanned by the data
+    X = randn(StableRNG(1), 3, 200)
+    μ, T = PWA._normalization(X)
+    X̃ = T * (X .- μ)
+    determined = PWA._determined_test(X̃, 1e-4)
+    @test determined(collect(1:50))
+    @test !determined([1, 2, 3])                    # too few points
+    Y = X̃[:, 1:10]
+    Y[3, :] .= 0.5                                  # coplanar points
+    @test !PWA._determined_test(hcat(X̃, Y), 1e-4)(collect(201:210))
+
+    # For data on a line, subsets only need to spread along the line
+    L = [1.0, 2.0, -1.0] * range(0, 1, length = 20)'
+    μ, T = PWA._normalization(L)
+    @test PWA._determined_test(T * (L .- μ), 1e-4)([1, 5, 9])
+
+    # Refilling splits the subsets with the largest weight
+    𝒫 = [collect(1:150), collect(151:200)]
+    w = [i ≤ 150 ? 0.0 : 1.0 for i ∈ 1:200]
+    PWA._refill!(𝒫, X̃, w, 4, determined)
+    @test length(𝒫) == 4
+    @test all(determined, 𝒫)
+    @test sort(reduce(vcat, 𝒫)) == 1:200
+    @test 𝒫[1] == collect(1:150)                    # zero weight, not split
+
+    # The requested number of planes is returned
+    pts = [(a, b) for a ∈ range(-2, 2, length = 25) for b ∈ range(-2, 2, length = 25)]
+    fe = FunctionEvaluations(pts, [a^2 + exp(b) + a * b for (a, b) ∈ pts])
+    for metric ∈ (:l2, :l1)
+        alg = Cluster(; optimizer, metric, planes = 8, trials = 3, rng = StableRNG(2))
+        @test length(approx(fe, Convex(), alg).planes) == 8
+    end
+
+    # No trial ends in a poor local optimum caused by a dominating plane. Before,
+    # with the example from Magnani & Boyd, some trials gave rms ≈ 3.
+    V = -5:5
+    X = Float64[c[i] for i ∈ 1:3, c ∈ vec(collect(Iterators.product(V, V, V)))]
+    z = [log(sum(exp, c)) for c ∈ eachcol(X)]
+    μ, T = PWA._normalization(X)
+    X̃ = T * (X .- μ)
+    errors = map(1:20) do i
+        𝒫 = PWA._random_partition(StableRNG(i), X̃, 12)
+        pwa = PWA._refine_partition(X̃, z, 𝒫, 50, :l2, nothing, :none)
+        @test length(pwa.planes) == 12
+        return PWA._approx_error(X̃, z, pwa, :rms)
+    end
+    @test maximum(errors) < 0.1
+end
