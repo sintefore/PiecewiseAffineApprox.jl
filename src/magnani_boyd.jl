@@ -346,8 +346,10 @@ function _local_fit(X̄, z̄, metric, optimizer, strict, Xᵒ = X̄, zᵒ = z̄)
     set_silent(m)
     optimize!(m)
 
-    if termination_status(m) != MOI.OPTIMAL
-        error("Optimization failed")
+    if !is_solved_and_feasible(m; allow_local = true)
+        error(
+            "Optimization failed: $(termination_status(m)) ($(raw_status(m)))",
+        )
     end
 
     ā = JuMP.value.(a)

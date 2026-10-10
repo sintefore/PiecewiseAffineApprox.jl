@@ -25,6 +25,14 @@ faster and does not require an `optimizer`. Other metrics, and
 `strict = :inner`/`:outer`, solve an optimization problem for each fit and require
 an `optimizer`.
 
+!!! warning "Use a robust QP solver for `:l2` with `strict`"
+    With `metric = :l2` and `strict = :inner` or `:outer`, each fit is a convex
+    quadratic program. The QP solver in HiGHS (tested with HiGHS 1.15.1) fails on
+    some of these problems: it either reports the problem as non-convex or does not
+    terminate. Use another QP solver for this combination, e.g. Ipopt or Xpress
+    (both tested), and consider setting a time limit. HiGHS works well for the
+    linear programs solved with `metric = :l1` and `:max`.
+
 Each trial returns the best approximation found during its iterations, and the best
 over all trials is selected, both as measured by `metric`.
 """
