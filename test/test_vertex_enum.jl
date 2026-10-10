@@ -84,8 +84,8 @@ end
     verts_single = PiecewiseAffineApprox.vertices_by_subsets(pwa_single)
     @test length(verts_single) == 0  # No vertices for single plane
 
-    # Test 2: Two parallel planes (no vertices - unbounded)
-    pwa_parallel = PWAFunc{Convex,2}([Plane([1, 1], 0), Plane([1, 1], 1)])
+    # Test 2: Parallel planes (no vertices - the kink is a line)
+    pwa_parallel = PWAFunc{Convex,2}([Plane([1, 1], 0), Plane([1, 1], 1), Plane([0, 0], 0)])
     verts_parallel = PiecewiseAffineApprox.vertices_by_subsets(pwa_parallel)
     @test length(verts_parallel) == 0  # No vertices for parallel planes
 
@@ -103,4 +103,51 @@ end
     for (x, z) in verts_concave
         @test abs(z - evaluate(pwa_concave, x)) < 1e-8
     end
+
+    # Test 4: Three planes meeting in a point give a single vertex
+    pwa_conc = PWAFunc{Convex,1}([Plane((1,), 0), Plane((-1,), 0), Plane((0,), 0), Plane((2,), -1)])
+    verts_conc = PiecewiseAffineApprox.vertices_by_subsets(pwa_conc)
+    @test sort(only.(first.(verts_conc))) ≈ [0.0, 1.0]
+end
+
+@testset "PWA vertex enumeration with bounds" begin
+    # 1D: tangents to x² at ±0.25 and ±0.75, with breakpoints at -0.5, 0 and 0.5
+    pwa = PWAFunc{Convex,1}([Plane((2t,), -t^2) for t in (-0.75, -0.25, 0.25, 0.75)])
+    verts = PiecewiseAffineApprox.vertices_by_subsets(pwa, [(-1, 1)])
+    @test sort(only.(first.(verts))) ≈ [-1.0, -0.5, 0.0, 0.5, 1.0]
+    for (x, z) in verts
+        @test z ≈ evaluate(pwa, x)
+    end
+    # Bounds between two breakpoints only give the end points
+    verts = PiecewiseAffineApprox.vertices_by_subsets(pwa, [(0.2, 0.3)])
+    @test sort(only.(first.(verts))) ≈ [0.2, 0.3]
+    # Single plane
+    verts = PiecewiseAffineApprox.vertices_by_subsets(PWAFunc{Convex,1}([Plane((1,), 0)]), [(-1, 2)])
+    sort!(verts)
+    @test only.(first.(verts)) ≈ [-1.0, 2.0]
+    @test last.(verts) ≈ [-1.0, 2.0]
+    # Concave
+    verts = PiecewiseAffineApprox.vertices_by_subsets(PWAFunc{Concave,1}(pwa.planes), [(-1, 1)])
+    @test length(verts) == 5
+    for (x, z) in verts
+        @test z ≈ -evaluate(pwa, x)
+    end
+
+    # 2D: f(x,y) = max(x, y, 0) on [-1, 1]². Vertices are the origin, the 4 corners
+    # and where the kinks x = 0 (y < 0) and y = 0 (x < 0) cross the boundary
+    pwa_pyramid = PWAFunc{Convex,2}([Plane([1, 0], 0), Plane([0, 1], 0), Plane([0, 0], 0)])
+    verts = PiecewiseAffineApprox.vertices_by_subsets(pwa_pyramid, [(-1, 1), (-1, 1)])
+    expected = [[0, 0], [-1, -1], [-1, 1], [1, -1], [1, 1], [0, -1], [-1, 0]]
+    @test length(verts) == length(expected)
+    for p in expected
+        @test any(v -> v[1] ≈ p, verts)
+    end
+    for (x, z) in verts
+        @test z ≈ evaluate(pwa_pyramid, x)
+    end
+
+    # Invalid bounds
+    @test_throws ErrorException PiecewiseAffineApprox.vertices_by_subsets(pwa, [(1, -1)])
+    @test_throws ErrorException PiecewiseAffineApprox.vertices_by_subsets(pwa, [(-1, 1), (-1, 1)])
+    @test_throws ErrorException PiecewiseAffineApprox.vertices_by_subsets(pwa, [(-Inf, 1)])
 end
