@@ -30,6 +30,12 @@ Compute affine approximation by method proposed by Flatberg. Only available for 
 The points do not need to be sorted, and points with the same x-value are merged
 using the average of their function values. The number of `planes` must be less
 than the number of distinct points.
+
+The knots of the interpolant are chosen among the data points to minimize the
+deviation from the data, measured by `metric`: the sum of absolute deviations
+(`:l1`), the sum of squared deviations (`:l2`) or the maximum absolute deviation
+(`:max`). The interpolant is then made convex by adjusting the function values
+at the knots.
 """
 @kwdef struct Interpol{T} <: Algorithm
     planes::Int = defaultplanes()

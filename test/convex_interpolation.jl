@@ -72,26 +72,40 @@ end
     end
 
     # The dynamic program finds the optimal knots for any number of segments,
-    # compared with enumerating all choices of interior knots
+    # compared with enumerating all choices of interior knots. For :max the
+    # largest segment penalty is minimized, with ties broken by the sum.
     N = 9
     x = sort(rand(rng, N))
     z = sin.(4 .* x) .+ 0.2 .* randn(rng, N)
     for metric ∈ (:l1, :l2, :max)
         p = PWA._segment_penalties(x, z, metric)
         K = 5
-        path, costs = PWA._shortest_path_segments(p, K)
-        pathcost(q) = sum(p[q[k], q[k+1]] for k ∈ 1:length(q)-1)
+        minimax = metric == :max
+        path, costs = PWA._shortest_path_segments(p, K; minimax)
+        edges(q) = [p[q[k], q[k+1]] for k ∈ 1:length(q)-1]
+        pathcost(q) = minimax ? maximum(edges(q)) : sum(edges(q))
+        paths(k) = ([1; collect(c); N] for c ∈ PWA.combinations(2:N-1, k - 1))
         for k ∈ 1:K
-            best = minimum(
-                pathcost([1; collect(c); N]) for
-                c ∈ PWA.combinations(2:N-1, k - 1)
-            )
-            @test costs[k] ≈ best
+            @test costs[k] ≈ minimum(pathcost, paths(k))
         end
         @test length(path) == K + 1
         @test path[1] == 1 && path[end] == N && issorted(path)
         @test pathcost(path) ≈ costs[K]
+        if minimax
+            optimal = [q for q ∈ paths(K) if pathcost(q) == costs[K]]
+            @test sum(edges(path)) ≈ minimum(q -> sum(edges(q)), optimal)
+        end
     end
+
+    # Minimax gives a smaller maximum deviation than minimizing the sum of
+    # the segment maxima
+    x = collect(range(0, 3, length = 40))
+    z = exp.(x)
+    p = PWA._segment_penalties(x, z, :max)
+    mm, _ = PWA._shortest_path_segments(p, 4; minimax = true)
+    sm, _ = PWA._shortest_path_segments(p, 4; minimax = false)
+    maxdev(q) = maximum(p[q[k], q[k+1]] for k ∈ 1:4)
+    @test maxdev(mm) < maxdev(sm)
 
     # No optimization solver is used for selecting the knots
     pwa = PWA._interpolatepw(x, z, Interpol(; optimizer = nothing, planes = 3))

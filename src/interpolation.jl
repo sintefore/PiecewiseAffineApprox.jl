@@ -72,11 +72,13 @@ _convexify1D(x, z, options) = _convexify1D(PWAFunction1D(x, z), options)
 
 # Create a pwa interpolant to the given points (sorted by x) using exactly
 # options.planes segments with end points at data points. The segments are
-# chosen to minimize the sum of the segment penalties in options.metric.
+# chosen to minimize the total deviation in options.metric: the sum over the
+# segments for :l1 and :l2, and the maximum over the segments for :max.
 function _interpolatepw(x, z, options)
     @assert length(x) == length(z)
     p = _segment_penalties(x, z, options.metric)
-    knots, _ = _shortest_path_segments(p, options.planes)
+    minimax = options.metric == :max
+    knots, _ = _shortest_path_segments(p, options.planes; minimax)
     return PWAFunction1D(x[knots], z[knots])
 end
 
@@ -130,10 +132,26 @@ function _segment_penalties_l2(x, z)
 end
 
 # Find the path 1 → N through increasing indices with exactly K edges that
-# minimizes the sum of edge costs p[i, j], by dynamic programming in O(KN²).
-# Returns the indices on the path and the minimal cost of reaching N using
-# 1, ..., K edges. Ties are broken towards smaller indices.
-function _shortest_path_segments(p, K)
+# minimizes the sum of edge costs p[i, j], or with minimax = true the maximum
+# edge cost. Returns the indices on the path and the minimal cost of reaching
+# N using 1, ..., K edges.
+#
+# For minimax, ties are broken by the sum of edge costs: a second pass
+# minimizes the sum using only edges with cost at most the minimax value.
+function _shortest_path_segments(p, K; minimax = false)
+    if !minimax
+        return _dp_segments(p, K, +)
+    end
+    _, costs = _dp_segments(p, K, max)
+    q = [v ≤ costs[K] ? v : Inf for v ∈ p]
+    path, _ = _dp_segments(q, K, +)
+    return path, costs
+end
+
+# Dynamic program in O(KN²) for the path 1 → N with exactly K edges that
+# minimizes the edge costs p[i, j] aggregated by op (+ or max). Ties are broken
+# towards smaller indices.
+function _dp_segments(p, K, op)
     N = size(p, 1)
     @assert 1 ≤ K ≤ N - 1
     # cost[s+1, j]: minimal cost of reaching j using s edges
@@ -142,7 +160,7 @@ function _shortest_path_segments(p, K)
     cost[1, 1] = 0.0
     for s ∈ 1:K, j ∈ s+1:N
         for i ∈ s:j-1
-            v = cost[s, i] + p[i, j]
+            v = op(cost[s, i], p[i, j])
             if v < cost[s+1, j]
                 cost[s+1, j] = v
                 pred[s+1, j] = i
