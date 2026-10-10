@@ -26,6 +26,10 @@ end
     Interpol
 
 Compute affine approximation by method proposed by Flatberg. Only available for 1D.
+
+The points do not need to be sorted, and points with the same x-value are merged
+using the average of their function values. The number of `planes` must be less
+than the number of distinct points.
 """
 @kwdef struct Interpol{T} <: Algorithm
     planes::Int = defaultplanes()

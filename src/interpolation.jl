@@ -55,8 +55,11 @@ function _convexify1D(pwa::PWAFunction1D, options)
 
     set_optimizer(m, options.optimizer)
     optimize!(m)
-    if termination_status(m) != MOI.OPTIMAL
-        error("Optimization failed")
+    if !is_solved_and_feasible(m)
+        error(
+            "Optimization failed: $(termination_status(m)) " *
+            "($(raw_status(m)))",
+        )
     end
 
     dp = value.(δ⁺)
@@ -134,19 +137,52 @@ function _interpolatepw(x, z, options)
 
     set_optimizer(m, options.optimizer)
     optimize!(m)
-    if termination_status(m) != MOI.OPTIMAL
-        error("Optimization failed")
+    if !is_solved_and_feasible(m)
+        error(
+            "Optimization failed: $(termination_status(m)) " *
+            "($(raw_status(m)))",
+        )
     end
 
     𝑢ᴼᵖᵗ = value.(m[:𝑢])
-    xᴼᵖᵗ = collect(x[i] for i ∈ 𝒩, j ∈ 𝒩 if 𝑢ᴼᵖᵗ[i, j] == 1)
+    xᴼᵖᵗ = collect(x[i] for i ∈ 𝒩, j ∈ 𝒩 if 𝑢ᴼᵖᵗ[i, j] > 0.5)
     push!(xᴼᵖᵗ, x[N])
-    zᴼᵖᵗ = collect(z[i] for i ∈ 𝒩, j ∈ 𝒩 if 𝑢ᴼᵖᵗ[i, j] == 1)
+    zᴼᵖᵗ = collect(z[i] for i ∈ 𝒩, j ∈ 𝒩 if 𝑢ᴼᵖᵗ[i, j] > 0.5)
     push!(zᴼᵖᵗ, z[N])
 
     return PWAFunction1D(xᴼᵖᵗ, zᴼᵖᵗ)
 end
 
 function _convex_linearization_ipol(x, z, options)
+    @assert length(x) == length(z)
+    x, z = _sort_unique(x, z)
+    N = length(x)
+    if !(1 ≤ options.planes ≤ N - 1)
+        throw(
+            ArgumentError(
+                "Interpol with planes = $(options.planes) requires at least " *
+                "planes + 1 distinct points, got $N",
+            ),
+        )
+    end
     return _asconvex(_convexify1D(_interpolatepw(x, z, options), options))
+end
+
+# Sort the points by x and merge points with identical x, using the average
+# of their function values
+function _sort_unique(x, z)
+    xs = Float64[]
+    zs = Float64[]
+    n = Int[]
+    for i ∈ sortperm(x)
+        if !isempty(xs) && x[i] == xs[end]
+            n[end] += 1
+            zs[end] += (z[i] - zs[end]) / n[end]
+        else
+            push!(xs, x[i])
+            push!(zs, z[i])
+            push!(n, 1)
+        end
+    end
+    return xs, zs
 end
