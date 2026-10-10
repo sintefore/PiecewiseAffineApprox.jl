@@ -157,6 +157,18 @@ end
 # minimizes the edge costs p[i, j] aggregated by op (+ or max). Ties are broken
 # towards smaller indices.
 function _dp_segments(p, K, op)
+    cost, pred = _dp_tables(p, K, op)
+    N = size(p, 1)
+    return _dp_backtrack(pred, K, N), cost[2:end, N]
+end
+
+# The optimal paths with exactly s = 1, ..., K edges
+function _dp_all_paths(p, K, op)
+    _, pred = _dp_tables(p, K, op)
+    return [_dp_backtrack(pred, s, size(p, 1)) for s ∈ 1:K]
+end
+
+function _dp_tables(p, K, op)
     N = size(p, 1)
     @assert 1 ≤ K ≤ N - 1
     # cost[s+1, j]: minimal cost of reaching j using s edges
@@ -172,11 +184,15 @@ function _dp_segments(p, K, op)
             end
         end
     end
+    return cost, pred
+end
+
+function _dp_backtrack(pred, s, N)
     path = [N]
-    for s ∈ K:-1:1
-        pushfirst!(path, pred[s+1, path[1]])
+    for t ∈ s:-1:1
+        pushfirst!(path, pred[t+1, path[1]])
     end
-    return path, cost[2:end, N]
+    return path
 end
 
 # Find the path 1 → N through increasing indices with at most K edges that
@@ -201,6 +217,25 @@ function _convex_shortest_path(σ, p, K; minimax = false)
 end
 
 function _convex_dp_segments(σ, p, K, op)
+    best, last, pred = _convex_dp_tables(σ, p, K, op)
+    s = argmin(best)
+    best[s] == Inf && return Int[]
+    return _convex_backtrack(pred, s, last[s], size(p, 1))
+end
+
+# The optimal convex paths with at most k = 1, ..., K edges
+function _convex_dp_all_paths(σ, p, K, op)
+    best, last, pred = _convex_dp_tables(σ, p, K, op)
+    N = size(p, 1)
+    return map(1:min(K, N - 1)) do k
+        s = argmin(best[1:k])
+        return _convex_backtrack(pred, s, last[s], N)
+    end
+end
+
+# Returns the minimal cost of reaching N with exactly s edges, the first node
+# of the corresponding last edge, and the predecessor table
+function _convex_dp_tables(σ, p, K, op)
     N = size(p, 1)
     K = min(K, N - 1)
     # cost[i, j]: minimal cost of a path to j with s edges, the last (i, j)
@@ -211,8 +246,9 @@ function _convex_dp_segments(σ, p, K, op)
     pred = zeros(N ≤ typemax(Int16) ? Int16 : Int32, K, N, N)
     incoming = [sortperm(σ[1:j-1, j]) for j ∈ 1:N]
     outgoing = [j .+ sortperm(σ[j, j+1:N]) for j ∈ 1:N]
-    # Best cost at N over all numbers of edges, with its last edge
-    best, bestᵢ, bestₛ = cost[1, N], 1, 1
+    best = fill(Inf, K)
+    last = ones(Int, K)
+    best[1] = cost[1, N]
     for s ∈ 2:K
         next = fill(Inf, N, N)
         for j ∈ s:N-1
@@ -235,15 +271,18 @@ function _convex_dp_segments(σ, p, K, op)
         end
         cost = next
         for i ∈ 1:N-1
-            if cost[i, N] < best
-                best, bestᵢ, bestₛ = cost[i, N], i, s
+            if cost[i, N] < best[s]
+                best[s], last[s] = cost[i, N], i
             end
         end
     end
-    best == Inf && return Int[]
-    path = [bestᵢ, N]
-    for s ∈ bestₛ:-1:2
-        pushfirst!(path, pred[s, path[1], path[2]])
+    return best, last, pred
+end
+
+function _convex_backtrack(pred, s, i, N)
+    path = [i, N]
+    for t ∈ s:-1:2
+        pushfirst!(path, pred[t, path[1], path[2]])
     end
     return path
 end
@@ -324,11 +363,143 @@ function _ipol_dp(x, z, options)
     return _asconvex(PWAFunction1D(x[knots], z[knots]))
 end
 
+# Fits with k = 1, ..., K planes for the given convexify method, computed from
+# a single dynamic program (without the minimax tie-breaking used for the final
+# fit). Used for selecting the number of planes.
+function _ipol_candidates(x, z, options, K)
+    method, metric = options.convexify, options.metric
+    op = metric == :max ? max : +
+    if method == :dp || (method == :auto && isnothing(options.optimizer))
+        N = length(x)
+        σ = [i < j ? (z[j] - z[i]) / (x[j] - x[i]) : 0.0 for i ∈ 1:N, j ∈ 1:N]
+        p = _segment_penalties(x, z, metric)
+        return [
+            _asconvex(PWAFunction1D(x[q], z[q])) for
+            q ∈ _convex_dp_all_paths(σ, p, K, op)
+        ]
+    elseif method == :data
+        v = _convexify_values(x, z, metric, options.optimizer)
+        p = _segment_penalties(x, v, z, metric)
+        return [
+            _asconvex(PWAFunction1D(x[q], v[q])) for q ∈ _dp_all_paths(p, K, op)
+        ]
+    elseif method == :knots
+        p = _segment_penalties(x, z, metric)
+        return [
+            _asconvex(_convexify1D(x[q], z[q], options)) for
+            q ∈ _dp_all_paths(p, K, op)
+        ]
+    elseif method == :auto
+        dp = _ipol_candidates(x, z, _with(options; convexify = :dp), K)
+        _isconvex(x, z) && return dp
+        data = _ipol_candidates(x, z, _with(options; convexify = :data), K)
+        return map(dp, data) do a, b
+            ea, eb = (_ipol_error(f, x, z, metric) for f ∈ (a, b))
+            return eb < ea ? b : a
+        end
+    end
+    throw(ArgumentError("Unknown convexify option :$method"))
+end
+
+# Copy of the Interpol options with some fields changed
+function _with(options::Interpol; kwargs...)
+    fields = (f => getfield(options, f) for f ∈ fieldnames(Interpol))
+    return Interpol(; fields..., kwargs...)
+end
+
+# Select the number of planes (at most K) according to options.selection.
+# Returns the selected number and the score for each number of planes.
+function _select_planes(x, z, options, K)
+    N, metric, selection = length(x), options.metric, options.selection
+    if selection == :cv
+        # One standard error rule: the fewest planes with a cross validation
+        # error within one standard error (over the folds) of the minimum
+        E = _cv_errors(x, z, options, K)
+        F = size(E, 1)
+        scores = vec(mean(E, dims = 1))
+        se = vec(std(E, dims = 1)) ./ sqrt(F)
+        kᵐⁱⁿ = argmin(scores)
+        return findfirst(≤(scores[kᵐⁱⁿ] + se[kᵐⁱⁿ]), scores), scores
+    end
+    fits = _ipol_candidates(x, z, options, K)
+    e = [_ipol_error(f, x, z, metric) for f ∈ fits]
+    if selection == :tolerance
+        options.tolerance > 0 || throw(
+            ArgumentError("selection = :tolerance requires tolerance > 0"),
+        )
+        # Error per data point, comparable to the tolerance
+        scores = metric == :l1 ? e ./ N : metric == :l2 ? sqrt.(e ./ N) : e
+        k = findfirst(≤(options.tolerance), scores)
+        if isnothing(k)
+            @warn "Tolerance $(options.tolerance) not reached with $K planes " *
+                  "(error $(minimum(scores)))"
+            k = K
+        end
+        return k, scores
+    elseif selection ∈ (:aic, :bic)
+        metric == :max && throw(
+            ArgumentError("selection = :$selection requires metric :l1 or :l2"),
+        )
+        # -2 log-likelihood for Gaussian (:l2) or Laplace (:l1) errors, with
+        # 2 parameters per plane (knot values and breakpoints)
+        m2ll = if metric == :l2
+            N .* log.(2π .* e ./ N) .+ N
+        else
+            2N .* log.(2 .* e ./ N) .+ 2N
+        end
+        nparams = [2length(f.planes) for f ∈ fits]
+        penalty = selection == :aic ? 2.0 : log(N)
+        scores = m2ll .+ penalty .* nparams
+        return argmin(scores), scores
+    end
+    throw(ArgumentError("Unknown selection option :$selection"))
+end
+
+# Cross validation errors E[f, k] for fold f and k = 1, ..., K planes: the mean
+# absolute deviation (:l1), mean squared deviation (:l2) or maximum absolute
+# deviation (:max) on the held-out points. The points (sorted by x) are assigned
+# to the folds in an interleaved manner, so that all folds cover the full range
+# of the data.
+function _cv_errors(x, z, options, K)
+    N, metric = length(x), options.metric
+    F = min(options.folds, N)
+    F ≥ 2 || throw(ArgumentError("selection = :cv requires folds ≥ 2"))
+    fold = [mod(i - 1, F) + 1 for i ∈ 1:N]
+    E = fill(Inf, F, K)
+    for f ∈ 1:F
+        train, test = findall(≠(f), fold), findall(==(f), fold)
+        length(train) ≥ 2 ||
+            throw(ArgumentError("Too few points for $F-fold cross validation"))
+        Kᶠ = min(K, length(train) - 1)
+        fits = _ipol_candidates(x[train], z[train], options, Kᶠ)
+        for k ∈ 1:Kᶠ
+            r = [abs(evaluate(fits[k], (x[t],)) - z[t]) for t ∈ test]
+            E[f, k] =
+                metric == :max ? maximum(r) :
+                metric == :l2 ? mean(abs2, r) : mean(r)
+        end
+    end
+    return E
+end
+
 function _convex_linearization_ipol(x, z, options)
     @assert length(x) == length(z)
     x, z = _sort_unique(x, z)
     N = length(x)
-    if !(1 ≤ options.planes ≤ N - 1)
+    method = options.convexify
+    if method ∈ (:data, :knots) && isnothing(options.optimizer)
+        error("Interpol with convexify = :$method requires an optimizer")
+    end
+    if options.selection != :none
+        # planes is the maximum number of planes to consider
+        if options.planes < 1 || N < 2
+            throw(ArgumentError("Interpol requires planes ≥ 1 and 2 points"))
+        end
+        K = min(options.planes, N - 1)
+        k, scores = _select_planes(x, z, options, K)
+        @debug "Interpol selected $k planes" options.selection scores
+        options = _with(options; planes = k, selection = :none)
+    elseif !(1 ≤ options.planes ≤ N - 1)
         throw(
             ArgumentError(
                 "Interpol with planes = $(options.planes) requires at least " *
@@ -336,10 +507,11 @@ function _convex_linearization_ipol(x, z, options)
             ),
         )
     end
+    return _ipol_fit(x, z, options)
+end
+
+function _ipol_fit(x, z, options)
     method = options.convexify
-    if method ∈ (:data, :knots) && isnothing(options.optimizer)
-        error("Interpol with convexify = :$method requires an optimizer")
-    end
     if method == :auto
         return _ipol_auto(x, z, options)
     elseif method == :dp
@@ -348,9 +520,8 @@ function _convex_linearization_ipol(x, z, options)
         return _ipol_data(x, z, options)
     elseif method == :knots
         return _ipol_knots(x, z, options)
-    else
-        throw(ArgumentError("Unknown convexify option :$method"))
     end
+    throw(ArgumentError("Unknown convexify option :$method"))
 end
 
 # Use the convex dynamic program if the data is convex (where all methods give

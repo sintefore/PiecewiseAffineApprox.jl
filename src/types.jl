@@ -47,12 +47,31 @@ deviation from the data, measured by `metric`: the sum of absolute deviations
 - `:auto` (default): uses `:dp` if the data is convex or no `optimizer` is
   given. Otherwise both `:dp` and `:data` are computed, and the one with the
   smallest deviation from the data is returned.
+
+The number of planes is given by `planes`, or selected automatically by
+`selection`, with `planes` as the maximum number of planes considered (capped at
+the number of distinct points minus one):
+
+- `:none` (default): use `planes` planes.
+- `:tolerance`: the fewest planes with an error of at most `tolerance`, where the
+  error is the mean absolute deviation (`:l1`), the root mean square deviation
+  (`:l2`) or the maximum absolute deviation (`:max`).
+- `:aic`, `:bic`: minimize the Akaike or Bayesian information criterion,
+  assuming normally (`:l2`) or Laplace (`:l1`) distributed errors, with two
+  parameters per plane. Not available for `:max`.
+- `:cv`: `folds`-fold cross validation, with the points assigned to folds by
+  interleaving them in sorted order. Uses the one standard error rule: the
+  fewest planes with an error on the held-out points within one standard error
+  of the minimum.
 """
 @kwdef struct Interpol{T} <: Algorithm
     planes::Int = defaultplanes()
     metric = defaultmetric()
     optimizer::T = nothing
     convexify::Symbol = :auto
+    selection::Symbol = :none
+    tolerance::Float64 = 0.0
+    folds::Int = 5
 end
 
 """

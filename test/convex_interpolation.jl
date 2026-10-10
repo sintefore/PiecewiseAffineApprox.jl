@@ -199,3 +199,78 @@ end
     @test_throws ErrorException approx(fe, Convex(), Interpol(; convexify = :knots))
     @test_throws ArgumentError approx(fe, Convex(), Interpol(; convexify = :foo))
 end
+
+@testset "Interpolation selection of planes" begin
+    rng = StableRNG(5)
+
+    # Paths for all numbers of edges agree with single dynamic programs
+    x = sort(rand(rng, 12))
+    z = sin.(4 .* x) .+ 0.2 .* randn(rng, 12)
+    for metric ∈ (:l1, :l2, :max)
+        p = PWA._segment_penalties(x, z, metric)
+        op = metric == :max ? max : +
+        paths = PWA._dp_all_paths(p, 6, op)
+        @test all(paths[s] == PWA._dp_segments(p, s, op)[1] for s ∈ 1:6)
+
+        # Convex paths with at most k edges improve with k, and agree with
+        # the single convex dynamic program
+        σ = [i < j ? (z[j] - z[i]) / (x[j] - x[i]) : 0.0 for i ∈ 1:12, j ∈ 1:12]
+        cpaths = PWA._convex_dp_all_paths(σ, p, 6, op)
+        cost(q) = reduce(op, p[q[k], q[k+1]] for k ∈ 1:length(q)-1)
+        @test issorted(cost.(cpaths), rev = true)
+        @test all(
+            cost(cpaths[k]) ≈ cost(PWA._convex_dp_segments(σ, p, k, op)) for
+            k ∈ 1:6
+        )
+        @test all(length(cpaths[k]) ≤ k + 1 for k ∈ 1:6)
+    end
+
+    # Noise-free data from 3 planes with kinks at data points (x = 0 and x = 1)
+    x = collect(range(-2, 2, length = 41))
+    truth = max.(-x, 0.5 .* x, 2 .* x .- 1.5)
+    fe = FunctionEvaluations(Tuple.(x), truth)
+    alg(; kwargs...) = Interpol(; optimizer, planes = 10, kwargs...)
+    for metric ∈ (:l1, :l2, :max)
+        sel = approx(fe, Convex(), alg(; metric, selection = :tolerance,
+                                       tolerance = 1e-8))
+        @test length(sel.planes) == 3
+    end
+    for metric ∈ (:l1, :l2), s ∈ (:aic, :bic)
+        @test length(approx(fe, Convex(), alg(; metric, selection = s)).planes) == 3
+    end
+
+    # Noisy data: the selected number of planes is close to the truth, and
+    # cross validation is deterministic
+    z = truth .+ 0.03 .* randn(rng, length(x))
+    fen = FunctionEvaluations(Tuple.(x), z)
+    for s ∈ (:bic, :cv), metric ∈ (:l1, :l2)
+        k = length(approx(fen, Convex(), alg(; metric, selection = s)).planes)
+        @test 3 ≤ k ≤ 6
+    end
+    a = approx(fen, Convex(), alg(; selection = :cv))
+    b = approx(fen, Convex(), alg(; selection = :cv))
+    @test a.planes == b.planes
+
+    # Tolerance that cannot be reached gives the maximum number of planes
+    pwa = @test_logs (:warn,) approx(
+        fen,
+        Convex(),
+        alg(; planes = 2, selection = :tolerance, tolerance = 1e-6),
+    )
+    @test length(pwa.planes) == 2
+
+    # The maximum number of planes is capped by the number of points
+    few = FunctionEvaluations([(0.0,), (1.0,), (3.0,)], [1.0, 0.0, 2.0])
+    pwa = approx(few, Convex(), alg(; planes = 20, selection = :bic))
+    @test length(pwa.planes) ≤ 2
+
+    # Invalid options
+    @test_throws ArgumentError approx(fe, Convex(), alg(; selection = :tolerance))
+    @test_throws ArgumentError approx(
+        fe,
+        Convex(),
+        alg(; metric = :max, selection = :aic),
+    )
+    @test_throws ArgumentError approx(fe, Convex(), alg(; selection = :cv, folds = 1))
+    @test_throws ArgumentError approx(fe, Convex(), alg(; selection = :foo))
+end
