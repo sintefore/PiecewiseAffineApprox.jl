@@ -23,7 +23,8 @@ piecewise affine function.
 Enforcing the curvature is performed using a linear optimization problem
 that adjust the function values and tries to minimize the total deviation.
 The total deviation can be measured in different metrics specified
-by the `metric` parameter.
+by the `metric` parameter: `:l1` (sum of absolute changes), `:l2` (sum of
+squared changes, solved as a quadratic program) or `:max` (largest change).
 This function can be useful as a pre-step for running the full-order and progressive
 fitting heuristics that require data points that are convex/concave in this sense.
 """
@@ -53,9 +54,18 @@ function convexify(
     metric = :l1,
     curv_string = "convex",
 ) where {D}
+    if metric ∉ (:l1, :l2, :rms, :max)
+        throw(
+            ArgumentError(
+                "Unsupported metric :$metric for enforcing curvature, " *
+                "use :l1, :l2 or :max",
+            ),
+        )
+    end
     K = length(f)
 
     m = Model(optimizer)
+    set_silent(m)
     @variable(m, a[1:K, 1:D])
     @variable(m, b[1:K])
     @variable(m, s⁺[1:K] ≥ 0)
@@ -76,32 +86,31 @@ function convexify(
         for l ∈ 1:K
             @constraint(m, smax ≥ s⁺[l] + s⁻[l])
         end
-    elseif metric == :l1
-        obj = sum(s⁺[l] + s⁻[l] for l ∈ 1:K)
-    elseif metric == :none
-        # No regularization term added
     else
-        error("Unrecognized/unsupported metric type $(metric)")
+        obj = sum(s⁺[l] + s⁻[l] for l ∈ 1:K)
     end
     @objective(m, Min, obj)
 
     optimize!(m)
 
-    if !is_solved_and_feasible(m)
-        #JuMP.write_to_file(m, "convexify.lp")
-        error("Unable to find a feasible solution")
+    if !is_solved_and_feasible(m; allow_local = true)
+        error(
+            "Unable to enforce $(curv_string) curvature: " *
+            "$(termination_status(m)) ($(raw_status(m)))",
+        )
     end
 
-    obj_val = objective_value(m)
-    if obj_val == 0
+    # Changes at the level of the solver tolerance are ignored
+    δ = value.(s⁺) .- value.(s⁻)
+    scale = max(maximum(abs, f.values), 1.0)
+    adjusted = abs.(δ) .> 1e-7 * scale
+    if !any(adjusted)
         @debug "Data points are $(curv_string)"
         return f
     end
-
-    pts_adj = count(v -> v > 0, value.(s⁺ + s⁻))
-
-    @debug "Data are not $(curv_string), dev = $(round(obj_val; digits=3)), $(pts_adj) point(s) adjusted"
-    values = [f.values[l] + value(s⁺[l]) - value(s⁻[l]) for l ∈ 1:K]
+    @debug "Data are not $(curv_string), $(count(adjusted)) point(s) adjusted, " *
+           "largest change = $(round(maximum(abs, δ); sigdigits = 3))"
+    values = [f.values[l] + δ[l] for l ∈ 1:K]
     return FunctionEvaluations(f.points, values)
 end
 
@@ -111,6 +120,7 @@ function _full_order_pwa(f::FunctionEvaluations{D}, optimizer, metric) where {D}
     K = length(f)
 
     m = Model(optimizer)
+    set_silent(m)
     @variable(m, a[1:K, 1:D])
     @variable(m, b[1:K])
     @variable(m, s[1:K, 1:K] ≥ 0)
@@ -137,10 +147,17 @@ function _full_order_pwa(f::FunctionEvaluations{D}, optimizer, metric) where {D}
     @objective(m, Min, obj)
     optimize!(m)
 
-    if !is_solved_and_feasible(m)
+    if termination_status(m) ∈ (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED)
         error(
-            "No full order convex approximation exists. Function evaluations should be " *
-            "from a convex function.",
+            "No full order convex approximation exists, since the data points " *
+            "are not convex (for example due to noise). Use " *
+            "`enforce_curvature(data, Convex(), optimizer)` to adjust the " *
+            "function values to be convex first.",
+        )
+    elseif !is_solved_and_feasible(m; allow_local = true)
+        error(
+            "Optimization failed: $(termination_status(m)) " *
+            "($(raw_status(m)))",
         )
     end
 
@@ -165,6 +182,7 @@ function _reduced_order_pwa(
     # https://github.com/sintefore/PiecewiseAffineApprox.jl/issues/11
     K = length(f)
     m = Model(optimizer)
+    set_silent(m)
     @variable(m, ared[1:p, 1:D])
     @variable(m, bred[1:p])
     @variable(m, s[1:K] ≥ 0)
@@ -181,6 +199,12 @@ function _reduced_order_pwa(
     end
     @objective(m, Min, sum(s) + μ / p * sum(sʳ))
     optimize!(m)
+    if !is_solved_and_feasible(m; allow_local = true)
+        error(
+            "Optimization failed: $(termination_status(m)) " *
+            "($(raw_status(m)))",
+        )
+    end
     obj = objective_value(m)
 
     aʳ = value.(ared)
@@ -233,37 +257,41 @@ function _increase_order(f::FunctionEvaluations, pwa_red, pwa, used)
     return U, vcat(used, imax)
 end
 
-# Calculate the approximation error between input data points and the piecewise
-# affine approximation in different metrics
-function _approx_error(f::FunctionEvaluations, pwa::PWAFunc, metric = :l1)
-    err = 0.0
-    for (x, z) ∈ f
-        v = evaluate(pwa, x)
-        if metric == :l1
-            err += abs(v - z)
-        elseif metric == :l2 || metric == :rms
-            err += (v - z)^2
-        elseif metric == :max
-            err = max(err, abs(v - z))
-        end
+# Approximation error per data point, compared with the tolerance: the mean
+# absolute deviation (:l1), the root mean square deviation (:l2, :rms) or the
+# maximum absolute deviation (:max)
+function _tolerance_error(f::FunctionEvaluations, pwa::PWAFunc, metric)
+    r = [abs(evaluate(pwa, x) - z) for (x, z) ∈ f]
+    if metric == :l1
+        return mean(r)
+    elseif metric == :l2 || metric == :rms
+        return sqrt(mean(abs2, r))
+    elseif metric == :max
+        return maximum(r)
     end
-    if metric == :rms
-        err = err / length(f.points)
-    end
-    if metric == :l2 || metric == :rms
-        err = sqrt(err)
-    end
-    return err
+    throw(
+        ArgumentError(
+            "Unsupported metric :$metric for Progressive, use :l1, :l2 or :max",
+        ),
+    )
 end
 
 # Main algorithm
 function _progressive_pwa(
     f::FunctionEvaluations,
     optimizer,
-    δᵗᵒˡ = 1e-3,
-    metric = :max,
+    δᵗᵒˡ,
+    metric,
     full_order_metric = :l1,
 )
+    if metric ∉ (:l1, :l2, :rms, :max)
+        throw(
+            ArgumentError(
+                "Unsupported metric :$metric for Progressive, " *
+                "use :l1, :l2 or :max",
+            ),
+        )
+    end
 
     # Find the full order convex approximation, will error if the points are
     # not convex
@@ -276,12 +304,13 @@ function _progressive_pwa(
     # Increase the number of planes until the required tolerance is met
     pwa_red = _allocation_improvement(f, p, U, optimizer)
     used = []
-    while _approx_error(f, pwa_red, metric) > δᵗᵒˡ && p < length(f.points)
+    while _tolerance_error(f, pwa_red, metric) > δᵗᵒˡ && p < length(f.points)
         U, used = _increase_order(f, pwa_red, pwa, used)
         p += 1
         pwa_red = _allocation_improvement(f, p, U, optimizer)
     end
-    @debug "Fitting finished, error = $(round(_approx_error(f, pwa_red, metric); digits = 3)), p = $p"
+    @debug "Fitting finished, error = " *
+           "$(round(_tolerance_error(f, pwa_red, metric); sigdigits = 3)), p = $p"
     return pwa_red
 end
 

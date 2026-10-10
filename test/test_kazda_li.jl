@@ -5,7 +5,7 @@
     x = collect(range(-1, 1; length = 30))
     z = x .^ 2
     f = FunctionEvaluations(tuple.(x), z)
-    for (tol, pen) ∈ [(0.05, :max), (2.5, :l1), (0.5, :l2), (0.5, :none)]
+    for (tol, pen) ∈ [(0.05, :max), (0.02, :l1), (0.03, :l2)]
         pwa_red = approx(
             f,
             Convex(),
@@ -15,7 +15,27 @@
             pv = evaluate(pwa_red, x)
             @test z ≥ pv || z ≈ pv
         end
+        # The tolerance is met for the error per data point
+        @test PWA._tolerance_error(f, pwa_red, pen) ≤ tol
+        @test length(pwa_red.planes) < length(f)
     end
+
+    # The tolerance is per data point, so the number of planes does not grow
+    # with the number of data points
+    planes = map((30, 120)) do N
+        xN = collect(range(-1, 1; length = N))
+        fN = FunctionEvaluations(tuple.(xN), xN .^ 2)
+        alg = Progressive(optimizer = optimizer, tolerance = 0.01, metric = :l1)
+        return length(approx(fN, Convex(), alg).planes)
+    end
+    @test planes[2] ≤ planes[1] + 1
+
+    # Metrics without a tolerance interpretation are rejected
+    @test_throws ArgumentError approx(
+        f,
+        Convex(),
+        Progressive(optimizer = optimizer, tolerance = 0.5, metric = :none),
+    )
 
     # 2D
     g(x) = x[1]^2 + x[2]^2
@@ -60,9 +80,22 @@
         pwa_con = approx(
             fc,
             Convex(),
-            Progressive(optimizer = optimizer, tolerance = 0.2, metric = :l1),
+            Progressive(optimizer = optimizer, tolerance = 0.02, metric = :l1),
         )
-        @test PWA._planes(pwa_con) == 8
+        @test PWA._tolerance_error(fc, pwa_con, :l1) ≤ 0.02
+        @test 1 < PWA._planes(pwa_con) < length(fc)
+
+        # Convex data is returned unchanged, and :none is not a valid metric
+        @test enforce_curvature(fc, Convex(), optimizer) === fc
+        @test_throws ArgumentError enforce_curvature(f, Convex(), optimizer, :none)
+
+        # The error for non-convex data suggests enforcing curvature
+        err = try
+            approx(f, Convex(), FullOrder(optimizer = optimizer))
+        catch e
+            sprint(showerror, e)
+        end
+        @test occursin("enforce_curvature", err)
 
         x = collect(range(-1, 1; length = 30))
         z = -x .^ 2
