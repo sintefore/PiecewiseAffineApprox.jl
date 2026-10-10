@@ -10,12 +10,30 @@ function initPWL!(m::JuMP.Model)
     return nothing
 end
 
+"""
+    PWAFormulation
+
+Abstract type for the formulations used by [`pwaffine`](@ref) to add a piecewise affine
+function to a JuMP model. The formulations follow Coffrin et al. (2021), and are also
+available under their Greek names `Ψ_Formulation`, `λ_Formulation`, `Δ_Formulation` and
+`Φ_Formulation`.
+"""
 abstract type PWAFormulation end
 
-struct Ψ_Formulation <: PWAFormulation end
-struct λ_Formulation <: PWAFormulation end
-struct Δ_Formulation <: PWAFormulation end
-struct Φ_Formulation <: PWAFormulation end
+"Ψ-formulation: one constraint for each plane of the piecewise affine function."
+struct PsiFormulation <: PWAFormulation end
+"λ-formulation: convex combination of the vertices of the piecewise affine function."
+struct LambdaFormulation <: PWAFormulation end
+"Δ-formulation (1D only): a bin for each segment between consecutive breakpoints."
+struct DeltaFormulation <: PWAFormulation end
+"Φ-formulation (1D only): first segment extended, plus the change in slope at each breakpoint."
+struct PhiFormulation <: PWAFormulation end
+
+# Greek aliases, following the notation of Coffrin et al. (2021)
+const Ψ_Formulation = PsiFormulation
+const λ_Formulation = LambdaFormulation
+const Δ_Formulation = DeltaFormulation
+const Φ_Formulation = PhiFormulation
 
 const VarOrAff = Union{JuMP.VariableRef,JuMP.AffExpr}
 
@@ -33,14 +51,15 @@ piecewise linear function/approximation `pwa` of JuMP-variables `x`.
 # Keyword Arguments
 - `z`: JuMP variable or expression representing the output. If `nothing`, a new variable is created
 - `formulation::PWAFormulation`: The formulation to use. Options are:
-  - `Ψ_Formulation()` (default): Direct plane representation. Works for any dimension. No preprocessing required.
-  - `λ_Formulation()`: Convex combination of vertices. Works for any dimension. Requires vertex enumeration.
-  - `Δ_Formulation()`: Specialized for 1D. Uses ordered breakpoint structure. Requires breakpoint enumeration.
-  - `Φ_Formulation()`: Alternative 1D formulation. Requires breakpoint enumeration.
+  - `PsiFormulation()` (default): Direct plane representation. Works for any dimension. No preprocessing required.
+  - `LambdaFormulation()`: Convex combination of vertices. Works for any dimension. Requires vertex enumeration.
+  - `DeltaFormulation()`: Specialized for 1D. Uses ordered breakpoint structure. Requires breakpoint enumeration.
+  - `PhiFormulation()`: Alternative 1D formulation. Requires breakpoint enumeration.
 - `bounds`: Box `[(lo₁, hi₁), …, (lo_D, hi_D)]` restricting the domain of `x`. Required by the
   λ, Δ and Φ formulations unless all of `x` are JuMP variables with finite bounds (or fixed
-  values), in which case these are used. For the Ψ formulation the bounds are optional, and
-  are added as constraints on `x` if given.
+  values), in which case these are used. For the Ψ formulation the bounds are optional. If
+  given, they are added as constraints on `x`, and `z` is bounded by the smallest and
+  largest value of the function over the box.
 
 # Returns
 - The JuMP variable `z` representing the piecewise affine function value
@@ -58,7 +77,7 @@ typically much faster than Ψ (see Coffrin et al. (2021), arXiv:2005.14087).
 m = Model(HiGHS.Optimizer)
 @variable(m, -1 ≤ x ≤ 1)
 pwa = approx(x -> x[1]^2, [(-1, 1)], Convex(), MILP(optimizer = optimizer, planes=5))
-z = pwaffine(m, x, pwa; formulation = λ_Formulation())
+z = pwaffine(m, x, pwa; formulation = LambdaFormulation())
 ```
 """
 function pwaffine(
@@ -66,9 +85,11 @@ function pwaffine(
     x,
     pwa::PWAFunc{C,D};
     z = nothing,
-    formulation::PWAFormulation = Ψ_Formulation(),
+    formulation::PWAFormulation = PsiFormulation(),
     bounds = nothing,
 ) where {C,D}
+    n = length(_inputs(x))
+    n == D || error("The pwa function has dimension $D, but x has $n element(s)")
     initPWL!(m)
     counter = m.ext[:PWL].counter + 1
     m.ext[:PWL].counter = counter
@@ -86,7 +107,7 @@ function pwaffine(
     curvature::Curvature,
     a::Algorithm;
     z = nothing,
-    formulation::PWAFormulation = Ψ_Formulation(),
+    formulation::PWAFormulation = PsiFormulation(),
     bounds = nothing,
 )
     return pwaffine(
@@ -134,7 +155,7 @@ function pwaffine_formulation(
     z,
     counter,
     pwa::PWAFunc{C,D},
-    ::λ_Formulation,
+    ::LambdaFormulation,
     bounds,
 ) where {C,D}
     vertices = vertices_by_subsets(pwa, _resolve_bounds(x, bounds, D))
@@ -168,7 +189,7 @@ function pwaffine_formulation(
     z,
     counter,
     pwa::PWAFunc{C,D},
-    ::Ψ_Formulation,
+    ::PsiFormulation,
     bounds,
 ) where {C,D}
     for (k, p) ∈ enumerate(pwa.planes)
@@ -179,6 +200,23 @@ function pwaffine_formulation(
         lo, hi = _check_bounds(bounds, D)
         xs = _inputs(x)
         @constraint(m, [i = 1:D], lo[i] ≤ xs[i] ≤ hi[i], base_name = "pwa_$(counter)_bounds")
+        # The function values over the box are bounded by the values at the vertices
+        zmin, zmax = extrema(v[2] for v ∈ vertices_by_subsets(pwa, bounds))
+        _bound_z!(m, z, zmin, zmax, counter)
+    end
+    return
+end
+
+# Bound z to [zmin, zmax]: as variable bounds for a free variable, otherwise as a constraint
+function _bound_z!(m, z, zmin, zmax, counter)
+    if z isa JuMP.VariableRef &&
+       !JuMP.has_lower_bound(z) &&
+       !JuMP.has_upper_bound(z) &&
+       !JuMP.is_fixed(z)
+        JuMP.set_lower_bound(z, zmin)
+        JuMP.set_upper_bound(z, zmax)
+    else
+        @constraint(m, zmin ≤ z ≤ zmax, base_name = "pwa_$(counter)_zbounds")
     end
     return
 end
@@ -187,11 +225,27 @@ end
 function _breakpoints(x, pwa::PWAFunc{C,1}, bounds) where {C}
     verts = vertices_by_subsets(pwa, _resolve_bounds(x, bounds, 1))
     sort!(verts, by = v -> v[1][1])
-    return [v[1][1] for v ∈ verts], [v[2] for v ∈ verts]
+    return _merge_segments([v[1][1] for v ∈ verts], [v[2] for v ∈ verts])
 end
 
-function pwaffine_formulation(m, x, z, counter, pwa::PWAFunc, ::Δ_Formulation, bounds)
-    return error("Δ_Formulation for piecewise affine functions only possible for 1D functions")
+# Remove breakpoints where the slopes of the adjacent segments are (nearly) equal, to avoid
+# redundant variables in the formulations
+function _merge_segments(xp, zp; rtol = 1e-6)
+    keep = [1]
+    for i ∈ 2:length(xp)-1
+        j = keep[end]
+        s₁ = (zp[i] - zp[j]) / (xp[i] - xp[j])
+        s₂ = (zp[i+1] - zp[i]) / (xp[i+1] - xp[i])
+        if abs(s₂ - s₁) > rtol * max(1.0, abs(s₁), abs(s₂))
+            push!(keep, i)
+        end
+    end
+    length(xp) > 1 && push!(keep, length(xp))
+    return xp[keep], zp[keep]
+end
+
+function pwaffine_formulation(m, x, z, counter, pwa::PWAFunc, ::DeltaFormulation, bounds)
+    return error("DeltaFormulation for piecewise affine functions only possible for 1D functions")
 end
 
 # Model the 1D piecewise affine function by having a "bin" for each segment between
@@ -202,7 +256,7 @@ function pwaffine_formulation(
     z,
     counter,
     pwa::PWAFunc{C,1},
-    ::Δ_Formulation,
+    ::DeltaFormulation,
     bounds,
 ) where {C}
     xp, zp = _breakpoints(x, pwa, bounds)
@@ -226,8 +280,8 @@ function pwaffine_formulation(
     return
 end
 
-function pwaffine_formulation(m, x, z, counter, pwa::PWAFunc, ::Φ_Formulation, bounds)
-    return error("Φ_Formulation for piecewise affine functions only possible for 1D functions")
+function pwaffine_formulation(m, x, z, counter, pwa::PWAFunc, ::PhiFormulation, bounds)
+    return error("PhiFormulation for piecewise affine functions only possible for 1D functions")
 end
 
 # Model the 1D piecewise affine function as the first segment extended over the domain,
@@ -238,7 +292,7 @@ function pwaffine_formulation(
     z,
     counter,
     pwa::PWAFunc{C,1},
-    ::Φ_Formulation,
+    ::PhiFormulation,
     bounds,
 ) where {C}
     xp, zp = _breakpoints(x, pwa, bounds)

@@ -80,15 +80,17 @@ PiecewiseAffineApprox.jl provides four different linear programming formulations
 
 Note that all formulations model the epigraph `z ≥ f(x)` of a convex function (or the hypograph `z ≤ f(x)` of a concave function). The value of `z` is therefore only equal to `f(x)` when the objective pushes `z` towards the function, i.e. when minimizing a convex function or maximizing a concave function.
 
-**Ψ-Formulation (default):** Uses the plane representation directly without requiring vertex enumeration, with one constraint for each plane. This formulation is the most intuitive, works for any dimension and gives the smallest model. Bounds on the input variables are optional.
+The formulations are selected with the keyword argument `formulation` to `pwaffine`, using the types `PsiFormulation`, `LambdaFormulation`, `DeltaFormulation` and `PhiFormulation`. The Greek names `Ψ_Formulation`, `λ_Formulation`, `Δ_Formulation` and `Φ_Formulation` are available as aliases.
 
-**λ-Formulation:** Represents the piecewise affine function as a convex combination of its vertices. This formulation works for any dimension. It requires vertex enumeration as a preprocessing step, which computes all vertices of the piecewise affine function's epigraph (for convex functions) or hypograph (for concave functions) restricted to the bounds of the input variables.
+**Ψ-Formulation (`PsiFormulation`, default):** Uses the plane representation directly without requiring vertex enumeration, with one constraint for each plane. This formulation is the most intuitive, works for any dimension and gives the smallest model. Bounds on the input variables are optional. If bounds are given explicitly, the output `z` is also bounded by the smallest and largest value of the function over the bounds, as in Coffrin et al. This requires vertex enumeration.
 
-**Δ-Formulation:** A specialized formulation that exploits the ordered structure of breakpoints in one-dimensional piecewise affine functions. Each segment between two consecutive breakpoints is a "bin" with a variable for how much of the segment is used, i.e. the formulation integrates the slope of the function along the x-axis. It requires breakpoint enumeration as a preprocessing step. This formulation only works for 1D problems and will error for higher dimensions.
+**λ-Formulation (`LambdaFormulation`):** Represents the piecewise affine function as a convex combination of its vertices. This formulation works for any dimension. It requires vertex enumeration as a preprocessing step, which computes all vertices of the piecewise affine function's epigraph (for convex functions) or hypograph (for concave functions) restricted to the bounds of the input variables.
 
-**Φ-Formulation:** An alternative specialized formulation for one-dimensional problems. It extends the first segment over the whole domain and adds the change in slope at each later breakpoint, and is the mathematical dual of the Δ-formulation. It is uncommon in practice, and is included mainly for completeness. Like the Δ-formulation, it requires breakpoint enumeration and only works for 1D problems.
+**Δ-Formulation (`DeltaFormulation`):** A specialized formulation that exploits the ordered structure of breakpoints in one-dimensional piecewise affine functions. Each segment between two consecutive breakpoints is a "bin" with a variable for how much of the segment is used, i.e. the formulation integrates the slope of the function along the x-axis. It requires breakpoint enumeration as a preprocessing step. This formulation only works for 1D problems and will error for higher dimensions.
 
-The λ, Δ and Φ formulations need a bounded domain for the input variables. The bounds are taken from the JuMP variables if they have finite bounds, or can be given explicitly with the keyword argument `bounds = [(lo₁, hi₁), …, (lo_D, hi_D)]`. Typically, these should be the bounds of the domain used to compute the approximation.
+**Φ-Formulation (`PhiFormulation`):** An alternative specialized formulation for one-dimensional problems. It extends the first segment over the whole domain and adds the change in slope at each later breakpoint, and is the mathematical dual of the Δ-formulation. It is uncommon in practice, and is included mainly for completeness. Like the Δ-formulation, it requires breakpoint enumeration and only works for 1D problems.
+
+The λ, Δ and Φ formulations need a bounded domain for the input variables. The bounds are taken from the JuMP variables if they have finite bounds, or can be given explicitly with the keyword argument `bounds = [(lo₁, hi₁), …, (lo_D, hi_D)]`. Typically, these should be the bounds of the domain used to compute the approximation. For the one-dimensional formulations, adjacent segments with nearly equal slopes are merged to avoid redundant variables.
 
 ```jldoctest; output = false
 using JuMP, PiecewiseAffineApprox, HiGHS
@@ -106,7 +108,7 @@ function solve(formulation)
     return round(value(z); digits=4)
 end
 
-[solve(f) for f in (λ_Formulation(), Ψ_Formulation(), Δ_Formulation(), Φ_Formulation())]
+[solve(f) for f in (LambdaFormulation(), PsiFormulation(), DeltaFormulation(), PhiFormulation())]
 
 # output
 4-element Vector{Float64}:
@@ -119,7 +121,7 @@ end
 The bounds can also be given explicitly, e.g. when the input is an expression:
 
 ```julia
-z = pwaffine(m, x + y, pwa; formulation = Δ_Formulation(), bounds = [(-1, 1)])
+z = pwaffine(m, x + y, pwa; formulation = DeltaFormulation(), bounds = [(-1, 1)])
 ```
 
 **Choosing a formulation:**
