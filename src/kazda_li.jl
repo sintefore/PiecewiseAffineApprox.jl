@@ -203,7 +203,7 @@ _below_tolerance(z) = 1e-7 * max(1.0, maximum(abs, z))
 # the largest slope to the points on the left and the smallest slope to the
 # points on the right, and the deviation from the other points is a simple
 # function of the slope within this interval.
-function _full_order_plane_1d(X, z, k, metric)
+function _full_order_plane_1d(X, z, k, metric; check = true)
     dx = X[1, :] .- X[1, k]
     dz = z .- z[k]
     lo, hi = -Inf, Inf
@@ -231,7 +231,9 @@ function _full_order_plane_1d(X, z, k, metric)
         isfinite(lo) ? lo : isfinite(hi) ? hi : 0.0
     end
     τ = _below_tolerance(z)
-    any(a * dx[l] > dz[l] + τ for l ∈ eachindex(z)) && _nonconvex_error()
+    if check && any(a * dx[l] > dz[l] + τ for l ∈ eachindex(z))
+        _nonconvex_error()
+    end
     return Plane((a,), z[k] - a * X[1, k])
 end
 
@@ -256,7 +258,7 @@ end
 
 # Full order plane through point k for general dimension, by an optimization
 # problem with the slopes a as variables
-function _full_order_plane(X, z, k, metric, optimizer)
+function _full_order_plane(X, z, k, metric, optimizer; slack = 0.0)
     D, N = size(X)
     dX = X .- X[:, k]
     dz = z .- z[k]
@@ -264,8 +266,9 @@ function _full_order_plane(X, z, k, metric, optimizer)
     set_silent(m)
     @variable(m, a[1:D])
     # The gaps between the data points and the plane, which must be nonnegative
+    # (up to the given slack)
     r = [dz[l] - sum(a[i] * dX[i, l] for i ∈ 1:D) for l ∈ 1:N]
-    @constraint(m, r .≥ 0)
+    @constraint(m, r .≥ -slack)
     if metric == :l1
         @objective(m, Min, sum(r))
     elseif metric ∈ (:l2, :rms)
@@ -410,7 +413,9 @@ function _allocation_improvement(
         U = _update_allocation(f, pwa_red)
         obj, pwa_red = _reduced_order_pwa(f, p, U, optimizer; support)
     end
-    return pwa_red
+    # Remove planes that are not active at any data point
+    active = sort(unique(last.(_update_allocation(f, pwa_red))))
+    return PWAFunc(pwa_red.planes[active], Convex())
 end
 
 # Add an extra plane to the pwa by identifying the point lying
@@ -478,11 +483,13 @@ function _progressive_pwa(
     # Increase the number of planes until the required tolerance is met
     support = _envelope_support(f, optimizer)
     pwa_red = _allocation_improvement(f, p, U, optimizer; support)
+    p = length(pwa_red.planes)
     used = Int[]
     while _tolerance_error(f, pwa_red, metric) > δᵗᵒˡ && p < length(f.points)
         U, used = _increase_order(f, pwa_red, pwa, used)
         p += 1
         pwa_red = _allocation_improvement(f, p, U, optimizer; support)
+        p = length(pwa_red.planes)
     end
     e = _tolerance_error(f, pwa_red, metric)
     @debug "Fitting finished, error = $(round(e; sigdigits = 3)), p = $p"
@@ -491,10 +498,171 @@ end
 
 # Map algorithm structure to correct parameters
 function _progressive_pwa(f::FunctionEvaluations, options::Progressive)
-    return _progressive_pwa(
-        f,
-        options.optimizer,
-        options.tolerance,
-        options.metric,
+    if options.strict == :outer
+        return _progressive_pwa(
+            f,
+            options.optimizer,
+            options.tolerance,
+            options.metric,
+        )
+    elseif options.strict ∈ (:none, :inner)
+        return _progressive_band(
+            f,
+            options.optimizer,
+            options.tolerance,
+            options.strict,
+        )
+    end
+    throw(
+        ArgumentError(
+            "Unsupported strict = :$(options.strict) for Progressive, " *
+            "use :outer, :none or :inner",
+        ),
     )
+end
+
+# Progressive fitting within a band around the data, following Kazda and Li
+# (2024) specialized to convex functions. Values v within the band, such that
+# the points (x, v) are convex, are found together with p planes below these
+# values, minimizing the total gap between the values and the planes allocated
+# to the points. When the total gap is zero, the maximum of the planes equals v
+# at all data points, so the approximation lies within the band: within ±δ of
+# the data (strict = :none) or between the data and δ above it (:inner).
+function _progressive_band(
+    f::FunctionEvaluations{D},
+    optimizer,
+    δ,
+    strict;
+    μ = 1e-4,
+) where {D}
+    δ ≥ 0 || throw(ArgumentError("The tolerance must be nonnegative"))
+    X = [pt[i] for i ∈ 1:D, pt ∈ f.points]
+    z = f.values
+    N = length(z)
+    lo = strict == :inner ? copy(z) : z .- δ
+    hi = z .+ δ
+    scale = max(1.0, maximum(abs, z))
+    # Total gap regarded as zero, given the solver tolerances
+    tol = 1e-7 * scale * N
+    U = ones(Int, N)
+    v, planes, gaps = _band_lp(X, z, lo, hi, U, 1, optimizer, μ)
+    for _ ∈ 1:2N
+        # Allocation improvement: allocate the points to the active planes
+        # (removing planes that are not active at any point) and refit, as
+        # long as the total gap decreases
+        φ = sum(gaps)
+        while φ > tol
+            U, planes = _active_allocation(X, planes)
+            v₂, planes₂, gaps₂ =
+                _band_lp(X, z, lo, hi, U, length(planes), optimizer, μ)
+            sum(gaps₂) < φ - 1e-9 * scale || break
+            v, planes, gaps, φ = v₂, planes₂, gaps₂, sum(gaps₂)
+        end
+        φ ≤ tol && break
+        # Order increase: add the full order planes at the points with the
+        # largest gaps, without refitting, until the total gap has decreased
+        φ₀ = φ
+        while φ > max(tol, φ₀ - 1e-5 * scale)
+            push!(planes, _band_plane(X, v, argmax(gaps), optimizer))
+            gaps = [
+                max(v[l] - maximum(evaluate(q, X[:, l]) for q ∈ planes), 0.0)
+                for l ∈ 1:N
+            ]
+            φ = sum(gaps)
+        end
+        φ ≤ tol && break
+        U, planes = _active_allocation(X, planes)
+        p = length(planes)
+        v, planes, gaps = _band_lp(X, z, lo, hi, U, p, optimizer, μ)
+    end
+    pwa = PWAFunc{Convex,D}(planes)
+    @debug "Fitting finished, max error = " *
+           "$(round(_tolerance_error(f, pwa, :max); sigdigits = 3)), " *
+           "p = $(length(planes))"
+    return pwa
+end
+
+# Allocate each point to the plane that is active at the point, and remove the
+# planes that are not active at any point
+function _active_allocation(X, planes)
+    U = [argmax([evaluate(q, X[:, l]) for q ∈ planes]) for l ∈ axes(X, 2)]
+    active = sort(unique(U))
+    index = Dict(k => i for (i, k) ∈ enumerate(active))
+    return [index[k] for k ∈ U], planes[active]
+end
+
+# A plane through the point (xᵢ, vᵢ) and below all other points (xₗ, vₗ), where
+# the values v are convex up to the solver tolerance
+function _band_plane(X, v, i, optimizer)
+    if size(X, 1) == 1
+        return _full_order_plane_1d(X, v, i, :l1; check = false)
+    end
+    τ = _below_tolerance(v)
+    return _full_order_plane(X, v, i, :l1, optimizer; slack = τ)
+end
+
+# The linear program for given allocation U of the data points to p planes.
+# Returns the values v, the planes and the gaps between the values and the
+# allocated planes. Among solutions with the same total gap, values close to
+# the data are preferred (with weight μ).
+function _band_lp(X, z, lo, hi, U, p, optimizer, μ)
+    D, N = size(X)
+    m = Model(optimizer)
+    set_silent(m)
+    @variable(m, lo[l] ≤ v[l = 1:N] ≤ hi[l])
+    _convexity_constraints!(m, X, v)
+    @variable(m, a[1:p, 1:D])
+    @variable(m, b[1:p])
+    plane(k, l) = sum(a[k, i] * X[i, l] for i ∈ 1:D) + b[k]
+    @constraint(m, [l = 1:N, k = 1:p], plane(k, l) ≤ v[l])
+    @variable(m, t[1:N])
+    @constraint(m, t .≥ v .- z)
+    @constraint(m, t .≥ z .- v)
+    @objective(m, Min, sum(v[l] - plane(U[l], l) for l ∈ 1:N) + μ * sum(t))
+    optimize!(m)
+    if termination_status(m) ∈ (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED)
+        error(
+            "No convex function lies within the tolerance of the data. " *
+            "Increase the tolerance, or use `enforce_curvature` first.",
+        )
+    elseif !is_solved_and_feasible(m; allow_local = true)
+        error(
+            "Optimization failed: $(termination_status(m)) " *
+            "($(raw_status(m)))",
+        )
+    end
+    v̂ = value.(v)
+    planes = [Plane(Tuple(value.(a[k, :])), value(b[k])) for k ∈ 1:p]
+    gaps = [max(v̂[l] - evaluate(planes[U[l]], X[:, l]), 0.0) for l ∈ 1:N]
+    return v̂, planes, gaps
+end
+
+# Constraints ensuring that the points (x, v) are convex: for one-dimensional
+# data with distinct points, nondecreasing slopes between consecutive points,
+# and otherwise a plane through each point that lies below all other points
+function _convexity_constraints!(m, X, v)
+    D, N = size(X)
+    if D == 1 && allunique(X[1, :])
+        o = sortperm(X[1, :])
+        x = X[1, :]
+        for j ∈ 2:N-1
+            i, k, l = o[j-1], o[j], o[j+1]
+            @constraint(
+                m,
+                (v[k] - v[i]) / (x[k] - x[i]) ≤ (v[l] - v[k]) / (x[l] - x[k])
+            )
+        end
+        return
+    end
+    af = @variable(m, [1:N, 1:D])
+    bf = @variable(m, [1:N])
+    for l ∈ 1:N, k ∈ 1:N
+        rel = sum(af[k, i] * X[i, l] for i ∈ 1:D) + bf[k]
+        if k == l
+            @constraint(m, rel == v[l])
+        else
+            @constraint(m, rel ≤ v[l])
+        end
+    end
+    return
 end

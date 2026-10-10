@@ -54,18 +54,29 @@ end
 Compute affine approximation based on a variation of the method of Kazda and Li (2024)
 specialized to convex approximations.
 
-Planes are added until the approximation error per data point is at most
-`tolerance`, where the error is measured by `metric`: the mean absolute
-deviation (`:l1`), the root mean square deviation (`:l2`) or the maximum absolute
-deviation (`:max`). The planes are fitted to lie below all data points.
+Planes are added until the approximation meets the `tolerance`, in one of two
+ways depending on `strict`:
 
-The data points must be convex, i.e. possible to interpolate by a convex
-function. Use [`enforce_curvature`](@ref) first for noisy or non-convex data.
+- `:outer` (default): the planes lie below all data points, and planes are added
+  until the error per data point is at most `tolerance`, measured by `metric`:
+  the mean absolute deviation (`:l1`), the root mean square deviation (`:l2`) or
+  the maximum absolute deviation (`:max`). The data points must be convex, i.e.
+  possible to interpolate by a convex function. Use [`enforce_curvature`](@ref)
+  first for noisy or non-convex data.
+- `:none`: the approximation lies within `tolerance` of all data points (above
+  or below), as in the original method of Kazda and Li. The data does not need
+  to be convex, as long as some convex function lies within the tolerance, so
+  noise up to the tolerance is handled. `metric` is not used.
+- `:inner`: as `:none`, but the approximation lies between the data and
+  `tolerance` above it.
+
+For concave approximations, above and below are interchanged.
 """
 @kwdef struct Progressive{T} <: Algorithm
     tolerance::Float64 = 0.01
     metric::Symbol = defaultmetric()
     optimizer::T
+    strict::Symbol = :outer
 end
 
 """

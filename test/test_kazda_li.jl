@@ -224,3 +224,62 @@ end
     pwa = approx(fN, Convex(), alg)
     @test PWA._tolerance_error(fN, pwa, :max) ≤ 0.005
 end
+
+@testset "Progressive fitting within a band" begin
+    x = collect(range(-1, 1; length = 50))
+    f = FunctionEvaluations(tuple.(x), x .^ 2 .+ 0.3 .* x)
+    alg(δ, strict) = Progressive(; optimizer, tolerance = δ, metric = :max, strict)
+    dev(f, pwa) = [evaluate(pwa, xᵢ) - zᵢ for (xᵢ, zᵢ) ∈ f]
+
+    # Two-sided band: within the tolerance above and below, with fewer planes
+    # than when all planes must lie below the data
+    none = approx(f, Convex(), alg(0.01, :none))
+    outer = approx(f, Convex(), alg(0.01, :outer))
+    @test maximum(abs, dev(f, none)) ≤ 0.01 + 1e-6
+    @test length(none.planes) ≤ length(outer.planes)
+    @test all(dev(f, outer) .≤ 1e-6)
+
+    # One-sided band above the data
+    inner = approx(f, Convex(), alg(0.01, :inner))
+    @test all(-1e-6 .≤ dev(f, inner) .≤ 0.01 + 1e-6)
+
+    # Noisy data is handled without enforcing curvature, and the result is
+    # within the tolerance of the original data
+    xn = collect(range(0, 2; length = 100))
+    fn = FunctionEvaluations(tuple.(xn), exp.(xn) .+ 0.02 .* randn(StableRNG(1), 100))
+    pwa = approx(fn, Convex(), alg(0.05, :none))
+    @test maximum(abs, dev(fn, pwa)) ≤ 0.05 + 1e-6
+    @test length(pwa.planes) < 20
+
+    # No convex function above the noisy data within the tolerance
+    err = try
+        approx(fn, Convex(), alg(0.05, :inner))
+    catch e
+        sprint(showerror, e)
+    end
+    @test occursin("tolerance", err)
+
+    # Concave approximations: the band is mirrored
+    fc = FunctionEvaluations(tuple.(x), -x .^ 2)
+    pwa = approx(fc, Concave(), alg(0.02, :none))
+    @test maximum(abs, dev(fc, pwa)) ≤ 0.02 + 1e-6
+    pwa = approx(fc, Concave(), alg(0.02, :inner))
+    @test all(-0.02 - 1e-6 .≤ dev(fc, pwa) .≤ 1e-6)
+
+    # Two-dimensional data
+    vals = PWA._sample_uniform(
+        x -> x[1]^2 + x[2]^2 + 0.5x[1] * x[2],
+        [(-1, 1), (-1, 1)],
+        6,
+    )
+    pwa = approx(vals, Convex(), alg(0.05, :none))
+    @test maximum(abs, dev(vals, pwa)) ≤ 0.05 + 1e-6
+
+    # All planes are active at some data point
+    for p ∈ (none, outer, inner)
+        U = PWA._update_allocation(f, p)
+        @test sort(unique(last.(U))) == 1:length(p.planes)
+    end
+
+    @test_throws ArgumentError approx(f, Convex(), alg(0.01, :foo))
+end
