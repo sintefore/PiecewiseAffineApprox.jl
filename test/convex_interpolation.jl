@@ -111,3 +111,91 @@ end
     pwa = PWA._interpolatepw(x, z, Interpol(; optimizer = nothing, planes = 3))
     @test length(pwa.x) == 4
 end
+
+@testset "Interpolation convexification" begin
+    rng = StableRNG(11)
+
+    # The convex dynamic program finds the best convex interpolant through a
+    # subset of the points, compared with enumerating all subsets
+    N = 9
+    x = sort(rand(rng, N))
+    z = sin.(5 .* x) .+ 0.3 .* randn(rng, N)
+    σ = [i < j ? (z[j] - z[i]) / (x[j] - x[i]) : 0.0 for i ∈ 1:N, j ∈ 1:N]
+    K = 4
+    for metric ∈ (:l1, :l2, :max)
+        p = PWA._segment_penalties(x, z, metric)
+        minimax = metric == :max
+        edges(q) = [p[q[k], q[k+1]] for k ∈ 1:length(q)-1]
+        cost(q) = minimax ? maximum(edges(q)) : sum(edges(q))
+        convex(q) = all(
+            PWA._leq(σ[q[k], q[k+1]], σ[q[k+1], q[k+2]]) for k ∈ 1:length(q)-2
+        )
+        feasible = [
+            [1; collect(c); N] for k ∈ 1:K for
+            c ∈ PWA.combinations(2:N-1, k - 1) if convex([1; collect(c); N])
+        ]
+        path = PWA._convex_shortest_path(σ, p, K; minimax)
+        @test convex(path)
+        @test length(path) ≤ K + 1
+        @test cost(path) ≈ minimum(cost, feasible)
+        if minimax
+            optimal = [q for q ∈ feasible if cost(q) == cost(path)]
+            @test sum(edges(path)) ≈ minimum(q -> sum(edges(q)), optimal)
+        end
+    end
+
+    # Data made convex has nondecreasing slopes, and convex data is unchanged
+    x = collect(range(0, 3, length = 30))
+    z = sin.(3 .* x)
+    for metric ∈ (:l1, :l2, :max)
+        v = PWA._convexify_values(x, z, metric, optimizer)
+        @test PWA._isconvex(x, v)
+        @test !PWA._isconvex(x, z)
+        w = PWA._convexify_values(x, x .^ 2, metric, optimizer)
+        @test maximum(abs.(w .- x .^ 2)) < 1e-5
+    end
+
+    fe = FunctionEvaluations(Tuple.(x), z)
+    error(pwa, metric) = PWA._ipol_error(pwa, x, z, metric)
+    for metric ∈ (:l1, :l2, :max)
+        alg(c; opt = optimizer) =
+            Interpol(; optimizer = opt, planes = 5, metric, convexify = c)
+        results = Dict(c => approx(fe, Convex(), alg(c)) for c ∈
+                       (:auto, :dp, :data, :knots))
+        e = Dict(c => error(pwa, metric) for (c, pwa) ∈ results)
+        @test all(length(pwa.planes) ≤ 5 for pwa ∈ values(results))
+
+        # The dynamic program interpolates the end points of the data
+        @test evaluate(results[:dp], (x[1],)) ≈ z[1]
+        @test evaluate(results[:dp], (x[end],)) ≈ z[end]
+
+        # Auto selects the best of :dp and :data, which for these non-convex
+        # data is better than adjusting the knots after interpolation
+        @test e[:auto] ≈ min(e[:dp], e[:data])
+        @test e[:auto] < e[:knots]
+
+        # Without an optimizer, auto uses the dynamic program
+        pwa = approx(fe, Convex(), alg(:auto; opt = nothing))
+        @test error(pwa, metric) ≈ e[:dp]
+    end
+
+    # For convex data all methods give the same result
+    zc = exp.(x)
+    fec = FunctionEvaluations(Tuple.(x), zc)
+    ec = [
+        PWA._ipol_error(
+            approx(fec, Convex(), Interpol(; optimizer, planes = 4, convexify = c)),
+            x,
+            zc,
+            :l1,
+        ) for c ∈ (:auto, :dp, :data, :knots)
+    ]
+    @test all(e ≈ ec[1] for e ∈ ec)
+
+    # Options requiring an optimizer, and unknown options
+    @test Interpol().optimizer === nothing
+    @test Interpol().convexify == :auto
+    @test_throws ErrorException approx(fe, Convex(), Interpol(; convexify = :data))
+    @test_throws ErrorException approx(fe, Convex(), Interpol(; convexify = :knots))
+    @test_throws ArgumentError approx(fe, Convex(), Interpol(; convexify = :foo))
+end

@@ -34,13 +34,25 @@ than the number of distinct points.
 The knots of the interpolant are chosen among the data points to minimize the
 deviation from the data, measured by `metric`: the sum of absolute deviations
 (`:l1`), the sum of squared deviations (`:l2`) or the maximum absolute deviation
-(`:max`). The interpolant is then made convex by adjusting the function values
-at the knots.
+(`:max`). Convexity of the interpolant is ensured by `convexify`:
+
+- `:dp`: the best convex interpolant through (a subset of) the data points,
+  found by dynamic programming. Exact, and does not need an `optimizer`, but
+  may give a poor fit for data that is far from convex.
+- `:data`: the data is first made convex by changing the function values as
+  little as possible (measured by `metric`), and then interpolated. Handles
+  non-convex and noisy data well. Requires an `optimizer`.
+- `:knots`: the data is interpolated, and the function values at the knots
+  are then made convex. Requires an `optimizer`.
+- `:auto` (default): uses `:dp` if the data is convex or no `optimizer` is
+  given. Otherwise both `:dp` and `:data` are computed, and the one with the
+  smallest deviation from the data is returned.
 """
 @kwdef struct Interpol{T} <: Algorithm
     planes::Int = defaultplanes()
     metric = defaultmetric()
-    optimizer::T
+    optimizer::T = nothing
+    convexify::Symbol = :auto
 end
 
 """
