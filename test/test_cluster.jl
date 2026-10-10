@@ -150,3 +150,23 @@ end
     end
     @test maximum(errors) < 0.1
 end
+
+@testset "Cluster best fit and defaults" begin
+    @test Cluster().metric == :l2
+
+    # Each trial returns the best fit over its iterations, so allowing more
+    # iterations never gives a worse result
+    V = -5:5
+    X = Float64[c[i] for i ∈ 1:3, c ∈ vec(collect(Iterators.product(V, V, V)))]
+    z = [log(sum(exp, c)) for c ∈ eachcol(X)]
+    μ, T = PWA._normalization(X)
+    X̃ = T * (X .- μ)
+    for seed ∈ 1:5
+        𝒫 = PWA._random_partition(StableRNG(seed), X̃, 12)
+        errors = map(0:15) do itlim
+            pwa = PWA._refine_partition(X̃, z, 𝒫, itlim, :l2, nothing, :none)
+            return PWA._approx_error(X̃, z, pwa, :l2)
+        end
+        @test issorted(errors, rev = true)
+    end
+end

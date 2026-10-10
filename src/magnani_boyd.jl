@@ -160,8 +160,10 @@ end
 # (deviates from Magnani & Boyd, who drop empty subsets and continue with
 # fewer planes).
 #
-# The process terminates after a given number of iterations returning
-# the pwa function corresponding to the final partition.
+# The process terminates when the partition no longer changes, or after a given
+# number of iterations, returning the best pwa function found (as measured by
+# metric). Only fits to complete partitions are considered, to retain the
+# properties given by strict.
 function _refine_partition(
     X,
     z,
@@ -182,34 +184,46 @@ function _refine_partition(
     end
     refill && _refill!(𝒫, X, ones(N), K, determined)
     fit(q) = _fit_planes(X, z, q, metric, optimizer, strict)
-    pwa = nothing
-    converged = false
+
+    pwaᵇᵉˢᵗ = fit(𝒫)
+    eᵇᵉˢᵗ = _approx_error(X, z, pwaᵇᵉˢᵗ, metric)
+    pwa = pwaᵇᵉˢᵗ
     for it ∈ 1:lᵐᵃˣ
-        pwa = fit(𝒫)
+        if it > 1
+            pwa = fit(𝒫)
+            e = _approx_error(X, z, pwa, metric)
+            if e < eᵇᵉˢᵗ
+                pwaᵇᵉˢᵗ, eᵇᵉˢᵗ = pwa, e
+            end
+        end
+
+        # Update the partition with the active planes, reassigning points
+        # in undetermined subsets to the remaining planes
         𝒫ⁿᵉʷ = _update_partition(X, pwa)
+        active = pwa
         if !all(determined, 𝒫ⁿᵉʷ)
-            # Reassign points in undetermined subsets to the remaining planes
             keep = determined.(𝒫ⁿᵉʷ)
             if any(keep)
-                pwa = PWAFunc{Convex,D}(pwa.planes[keep])
-                𝒫ⁿᵉʷ = _update_partition(X, pwa)
+                active = PWAFunc{Convex,D}(pwa.planes[keep])
+                𝒫ⁿᵉʷ = _update_partition(X, active)
             end
             filter!(p -> !isempty(p), 𝒫ⁿᵉʷ)
         end
         if refill && length(𝒫ⁿᵉʷ) < K
-            r = [evaluate(pwa, x) - z[i] for (i, x) ∈ enumerate(eachcol(X))]
+            r = [evaluate(active, x) - z[i] for (i, x) ∈ enumerate(eachcol(X))]
             w = metric ∈ (:l2, :rms) ? r .^ 2 : abs.(r)
             _refill!(𝒫ⁿᵉʷ, X, w, K, determined)
         end
-        if 𝒫ⁿᵉʷ == 𝒫 && _planes(pwa) == length(𝒫)
-            converged = true
-            break
+        if 𝒫ⁿᵉʷ == 𝒫
+            # Converged, pwa is the fit to this partition
+            return pwaᵇᵉˢᵗ
         end
         𝒫 = 𝒫ⁿᵉʷ
     end
 
-    # Without convergence, fit the planes to the final partition
-    return converged ? pwa : fit(𝒫)
+    # Iteration limit reached, also consider the fit to the final partition
+    pwa = fit(𝒫)
+    return _approx_error(X, z, pwa, metric) < eᵇᵉˢᵗ ? pwa : pwaᵇᵉˢᵗ
 end
 
 # Fit a plane to each subset of the partition 𝒫. For strict = :outer, all planes

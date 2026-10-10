@@ -19,14 +19,18 @@ independent of the number of threads. Note that `rng` is advanced by each call t
 `approx`, so reusing the same `Cluster` object gives a different (but still
 reproducible) sequence of results.
 
-With `metric = :l2` (or `:rms`) and `strict = :none`, each plane is fitted with
-closed form least squares as in the original method. This is much faster and does
-not require an `optimizer`. Other metrics, and `strict = :inner`/`:outer`, solve
-an optimization problem for each fit and require an `optimizer`.
+With `metric = :l2` (the default, or `:rms`) and `strict = :none`, each plane is
+fitted with closed form least squares as in the original method. This is much
+faster and does not require an `optimizer`. Other metrics, and
+`strict = :inner`/`:outer`, solve an optimization problem for each fit and require
+an `optimizer`.
+
+Each trial returns the best approximation found during its iterations, and the best
+over all trials is selected, both as measured by `metric`.
 """
 @kwdef struct Cluster{T,R<:AbstractRNG} <: Algorithm
     planes::Int = defaultplanes()
-    metric::Symbol = defaultmetric()
+    metric::Symbol = :l2
     trials::Int = 20
     itlim::Int = 50
     strict::Symbol = :none
