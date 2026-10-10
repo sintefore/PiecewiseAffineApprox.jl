@@ -50,7 +50,8 @@ All formulations are pure linear programs (no binary variables). They model z �
 convex and z ≤ f(x) for concave functions, i.e. the relation is only tight if the
 objective pushes `z` towards the function (minimizing a convex or maximizing a concave
 function). The Δ and Φ formulations only work for 1D problems and will error for higher
-dimensions.
+dimensions. With interior point solvers for nonlinear models, the λ and Δ formulations are
+typically much faster than Ψ (see Coffrin et al. (2021), arXiv:2005.14087).
 
 # Example
 ```julia

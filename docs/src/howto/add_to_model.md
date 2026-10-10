@@ -76,17 +76,17 @@ round(value.(y))
 
 ## Formulations
 
-PiecewiseAffineApprox.jl provides four different linear programming formulations for adding convex (or concave) piecewise affine functions to optimization models. All formulations are pure linear programs (no binary variables required) and differ in their computational structure and preprocessing requirements. Within the bounds of the input variables they model the same function. For more details see [Coffrin et al. (2021)](https://doi.org/10.1016/j.epsr.2021.107191).
+PiecewiseAffineApprox.jl provides four different linear programming formulations for adding convex (or concave) piecewise affine functions to optimization models. All formulations are pure linear programs (no binary variables required) and differ in their computational structure and preprocessing requirements. Within the bounds of the input variables they model the same function. The formulations and their names follow [Coffrin et al. (2021)](https://doi.org/10.1016/j.epsr.2021.107191) (preprint: [arXiv:2005.14087](https://arxiv.org/abs/2005.14087)), which considers one-dimensional piecewise linear cost functions. The λ-formulation for functions of two or more variables is a natural extension of the one-dimensional formulation.
 
 Note that all formulations model the epigraph `z ≥ f(x)` of a convex function (or the hypograph `z ≤ f(x)` of a concave function). The value of `z` is therefore only equal to `f(x)` when the objective pushes `z` towards the function, i.e. when minimizing a convex function or maximizing a concave function.
 
-**Ψ-Formulation (default):** Uses the plane representation directly without requiring vertex enumeration, with one constraint for each plane. This formulation works for any dimension and can be more efficient when vertex enumeration is expensive (large number of planes). Bounds on the input variables are optional.
+**Ψ-Formulation (default):** Uses the plane representation directly without requiring vertex enumeration, with one constraint for each plane. This formulation is the most intuitive, works for any dimension and gives the smallest model. Bounds on the input variables are optional.
 
 **λ-Formulation:** Represents the piecewise affine function as a convex combination of its vertices. This formulation works for any dimension. It requires vertex enumeration as a preprocessing step, which computes all vertices of the piecewise affine function's epigraph (for convex functions) or hypograph (for concave functions) restricted to the bounds of the input variables.
 
-**Δ-Formulation:** A specialized formulation that exploits the ordered structure of breakpoints in one-dimensional piecewise affine functions. It requires breakpoint enumeration as a preprocessing step. This formulation only works for 1D problems and will error for higher dimensions.
+**Δ-Formulation:** A specialized formulation that exploits the ordered structure of breakpoints in one-dimensional piecewise affine functions. Each segment between two consecutive breakpoints is a "bin" with a variable for how much of the segment is used, i.e. the formulation integrates the slope of the function along the x-axis. It requires breakpoint enumeration as a preprocessing step. This formulation only works for 1D problems and will error for higher dimensions.
 
-**Φ-Formulation:** An alternative specialized formulation for one-dimensional problems. Like the Δ-formulation, it requires breakpoint enumeration and only works for 1D problems.
+**Φ-Formulation:** An alternative specialized formulation for one-dimensional problems. It extends the first segment over the whole domain and adds the change in slope at each later breakpoint, and is the mathematical dual of the Δ-formulation. It is uncommon in practice, and is included mainly for completeness. Like the Δ-formulation, it requires breakpoint enumeration and only works for 1D problems.
 
 The λ, Δ and Φ formulations need a bounded domain for the input variables. The bounds are taken from the JuMP variables if they have finite bounds, or can be given explicitly with the keyword argument `bounds = [(lo₁, hi₁), …, (lo_D, hi_D)]`. Typically, these should be the bounds of the domain used to compute the approximation.
 
@@ -123,7 +123,9 @@ z = pwaffine(m, x + y, pwa; formulation = Δ_Formulation(), bounds = [(-1, 1)])
 ```
 
 **Choosing a formulation:**
-- For **1D problems**: All four formulations are available. The Δ and Φ formulations may offer computational advantages for problems with many breakpoints.
+- **Linear programs** (e.g. HiGHS): The choice of formulation has limited impact. In the experiments of Coffrin et al. (DC optimal power flow), λ and Δ were fastest on average, but all formulations were within a factor of 1.7 of the best.
+- **Nonlinear models with interior point solvers** (e.g. Ipopt, Knitro): Avoid the Ψ-formulation. Coffrin et al. found it on average 5 times, and up to 10 times, slower than the other formulations for AC optimal power flow. The λ and Δ formulations performed best, with λ best for convex (second order cone) relaxations.
+- For **1D problems**: All four formulations are available.
 - For **2D and higher**: Only λ-Formulation and Ψ-Formulation are available (Δ and Φ will error).
 - **Preprocessing considerations**: λ, Δ, and Φ formulations require enumeration of vertices or breakpoints, which may be computationally expensive for complex approximations. The Ψ-formulation works directly with planes and avoids this preprocessing step.
-- **Default**: Ψ-Formulation is used when no formulation is specified. It requires no preprocessing and no bounds, and works well in most cases.
+- **Default**: Ψ-Formulation is used when no formulation is specified. It requires no preprocessing and no bounds, and works well for linear and mixed-integer linear programs.
