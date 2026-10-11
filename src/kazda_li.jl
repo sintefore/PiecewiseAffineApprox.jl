@@ -299,6 +299,10 @@ end
 # Each plane then maximizes its value at a weighted centroid cₖ of the points,
 # subject to lying below all points, i.e. it is a supporting plane of the lower
 # convex envelope of the data at cₖ.
+#
+# With a group fitter (see _group_fitter), each plane is instead fitted to its
+# points in the given metric, and the returned objective is the aggregated gap
+# of the points to their planes in that metric.
 function _reduced_order_pwa(
     f::FunctionEvaluations{D},
     p::Int,
@@ -306,10 +310,25 @@ function _reduced_order_pwa(
     optimizer,
     μ = 1e-4;
     support = _envelope_support(f, optimizer),
+    fitter = nothing,
+    metric = :l1,
 ) where {D}
     X = [pt[i] for i ∈ 1:D, pt ∈ f.points]
     z = f.values
     N = length(z)
+    if !isnothing(fitter)
+        groups = [Int[] for _ ∈ 1:p]
+        for (l, k) ∈ U
+            push!(groups[k], l)
+        end
+        c̄ = vec(mean(X, dims = 2))
+        planes = [isempty(g) ? support(c̄) : fitter(g) for g ∈ groups]
+        gaps = [z[l] - evaluate(planes[k], X[:, l]) for (l, k) ∈ U]
+        agg = metric == :max ? maximum(gaps) : sum(abs2, gaps)
+        # The total gap breaks ties, so that improvements of other planes
+        # than the one with the largest gap are also recognized
+        return agg + 1e-6 * sum(gaps), PWAFunc{Convex,D}(planes)
+    end
     # Weights and weighted centroids of the points for each plane
     n = zeros(p)
     S = zeros(D, p)
@@ -367,6 +386,86 @@ function _envelope_support(f::FunctionEvaluations{D}, optimizer) where {D}
     end
 end
 
+# Returns a function fitting a plane to a group of the data points (given by
+# their indices), minimizing the gaps between the points of the group and the
+# plane in the given metric, subject to the plane lying below all data points.
+# A small multiple μ of the mean gap breaks ties. Returns nothing for :l1, where
+# the planes of the weighted centroids are used, and for :l2 in two or more
+# dimensions (which would require a quadratic program per group).
+function _group_fitter(
+    f::FunctionEvaluations{D},
+    metric,
+    optimizer;
+    μ = 1e-4,
+) where {D}
+    if metric == :l1 || (metric ∈ (:l2, :rms) && D > 1)
+        return nothing
+    end
+    X = [pt[i] for i ∈ 1:D, pt ∈ f.points]
+    z = f.values
+    if D == 1
+        x = X[1, :]
+        hx, hz = _lower_hull(x, z)
+        # Slopes of the hull edges: optimal slopes lie between the extremes
+        slopes = diff(hz) ./ diff(hx)
+        return function (g)
+            isempty(slopes) && return Plane((0.0,), hz[1])
+            # The highest line with slope a below all points
+            b(a) = minimum(hz[j] - a * hx[j] for j ∈ eachindex(hx))
+            function obj(a)
+                bₐ = b(a)
+                r = (max(z[l] - a * x[l] - bₐ, 0.0) for l ∈ g)
+                agg = metric == :max ? maximum(r) : sum(abs2, r)
+                return agg + μ * sum(r) / length(g)
+            end
+            a = _golden_section(obj, minimum(slopes), maximum(slopes))
+            return Plane((a,), b(a))
+        end
+    end
+    return function (g)
+        m = Model(optimizer)
+        set_silent(m)
+        @variable(m, a[1:D])
+        @variable(m, b)
+        @variable(m, t)
+        plane(l) = sum(a[i] * X[i, l] for i ∈ 1:D) + b
+        @constraint(m, [l ∈ eachindex(z)], plane(l) ≤ z[l])
+        @constraint(m, [l ∈ g], t ≥ z[l] - plane(l))
+        @objective(m, Min, t + μ * sum(z[l] - plane(l) for l ∈ g) / length(g))
+        optimize!(m)
+        if !is_solved_and_feasible(m; allow_local = true)
+            error(
+                "Optimization failed: $(termination_status(m)) " *
+                "($(raw_status(m)))",
+            )
+        end
+        return Plane(Tuple(value.(a)), value(b))
+    end
+end
+
+# Minimizer of a convex function on [lo, hi] by golden section search
+function _golden_section(obj, lo, hi; maxiter = 200)
+    lo == hi && return lo
+    φ = (sqrt(5) - 1) / 2
+    c, d = hi - φ * (hi - lo), lo + φ * (hi - lo)
+    fc, fd = obj(c), obj(d)
+    for _ ∈ 1:maxiter
+        hi - lo ≤ 1e-12 * max(abs(lo), abs(hi), 1.0) && break
+        if fc ≤ fd
+            hi, d, fd = d, c, fc
+            c = hi - φ * (hi - lo)
+            fc = obj(c)
+        else
+            lo, c, fc = c, d, fd
+            d = lo + φ * (hi - lo)
+            fd = obj(d)
+        end
+    end
+    # Also consider the end points, as the minimum may be at the boundary
+    candidates = (lo, (lo + hi) / 2, hi)
+    return candidates[argmin(obj.(candidates))]
+end
+
 # Vertices of the lower convex hull of the points (x, z), sorted by x
 function _lower_hull(x, z)
     hx, hz = Float64[], Float64[]
@@ -404,14 +503,17 @@ function _allocation_improvement(
     Uᴵ,
     optimizer;
     support = _envelope_support(f, optimizer),
+    fitter = nothing,
+    metric = :l1,
 )
     U = Uᴵ
     prev_obj = Inf64
-    obj, pwa_red = _reduced_order_pwa(f, p, U, optimizer; support)
+    fit(U, p) = _reduced_order_pwa(f, p, U, optimizer; support, fitter, metric)
+    obj, pwa_red = fit(U, p)
     while obj < prev_obj
         prev_obj = obj
         U = _update_allocation(f, pwa_red)
-        obj, pwa_red = _reduced_order_pwa(f, p, U, optimizer; support)
+        obj, pwa_red = fit(U, p)
     end
     # Remove planes that are not active at any data point
     active = sort(unique(last.(_update_allocation(f, pwa_red))))
@@ -475,14 +577,17 @@ function _progressive_pwa(
     # Increase the number of planes until the required tolerance is met. As
     # inactive planes are removed, the number of planes does not necessarily
     # grow with each round, so the number of rounds is limited.
+    # The planes are fitted to their points in the metric of the tolerance
     support = _envelope_support(f, optimizer)
-    pwa_red = _allocation_improvement(f, p, U, optimizer; support)
+    fitter = _group_fitter(f, metric, optimizer)
+    improve(U, p) =
+        _allocation_improvement(f, p, U, optimizer; support, fitter, metric)
+    pwa_red = improve(U, p)
     rounds = 0
     while _tolerance_error(f, pwa_red, metric) > δᵗᵒˡ && rounds < 2length(f)
         rounds += 1
         U = _increase_order(f, pwa_red, pwa)
-        p = length(pwa_red.planes)
-        pwa_red = _allocation_improvement(f, p, U, optimizer; support)
+        pwa_red = improve(U, length(pwa_red.planes))
     end
     _check_tolerance(f, pwa_red, metric, δᵗᵒˡ, rounds)
     return pwa_red

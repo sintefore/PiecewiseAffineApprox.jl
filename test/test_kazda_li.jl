@@ -49,7 +49,9 @@
     # several equally good solutions is found, so test the guaranteed properties
     @test PWA._tolerance_error(vals, pwa_red, :max) ≤ 0.2
     @test all(evaluate(pwa_red, x) ≤ z + 1e-6 for (x, z) ∈ vals)
-    @test abs(evaluate(pwa_red, (0, 0))) ≤ 0.025
+    # The origin is not a data point, but lies within the convex hull of the
+    # data, where the error is of the order of the tolerance
+    @test abs(evaluate(pwa_red, (0, 0))) ≤ 0.2
 
     @testset "Nonconvex" begin
         h(x) = sin(5 * x[1]) * (x[1]^2 + x[2]^2)
@@ -335,4 +337,49 @@ end
     for (k, pt) ∈ enumerate(pts.points)
         @test evaluate(qo, pt) ≈ s * evaluate(q, Tuple(X[:, k])) + z̄
     end
+end
+
+@testset "Progressive planes fitted in the tolerance metric" begin
+    x = sort(rand(StableRNG(3), 40))
+    z = exp.(2 .* x)
+    f = FunctionEvaluations(tuple.(x), z)
+    X = reshape(x, 1, :)
+    g = collect(8:25)
+
+    # One-dimensional group fits are optimal: compared with a dense search over
+    # slopes, for the highest line below all points with each slope
+    for metric ∈ (:max, :l2)
+        fit = PWA._group_fitter(f, metric, optimizer; μ = 0.0)
+        q = fit(g)
+        @test all(evaluate(q, (xᵢ,)) ≤ zᵢ + 1e-9 for (xᵢ, zᵢ) ∈ zip(x, z))
+        agg(r) = metric == :max ? maximum(r) : sum(abs2, r)
+        gaps(a, b) = [z[l] - a * x[l] - b for l ∈ g]
+        best = minimum(range(0, 2exp(2); length = 20001)) do a
+            return agg(gaps(a, minimum(z .- a .* x)))
+        end
+        @test agg(gaps(q.α[1], q.β)) ≤ best + 1e-8
+    end
+
+    # The :l1 metric keeps the planes of the weighted centroids, and :l2 in two
+    # dimensions is not fitted per group
+    @test isnothing(PWA._group_fitter(f, :l1, optimizer))
+    vals = PWA._sample_uniform(x -> x[1]^2 + x[2]^2, [(-1, 1), (-1, 1)], 5)
+    @test isnothing(PWA._group_fitter(vals, :l2, optimizer))
+
+    # Two-dimensional minimax group fit by linear programming
+    fit = PWA._group_fitter(vals, :max, optimizer)
+    q = fit([1, 2, 6, 7])
+    @test all(evaluate(q, xₗ) ≤ zₗ + 1e-7 for (xₗ, zₗ) ∈ vals)
+
+    # The tolerance is met, with no more planes than needed before
+    for (metric, tol) ∈ ((:max, 0.005), (:l2, 0.002))
+        alg = Progressive(optimizer = optimizer, tolerance = tol, metric = metric)
+        pwa = approx(f, Convex(), alg)
+        @test PWA._tolerance_error(f, pwa, metric) ≤ tol
+    end
+    v10 = PWA._sample_uniform(x -> exp(x[1]) + x[2]^2, [(-1, 1), (-1, 1)], 10)
+    alg = Progressive(optimizer = optimizer, tolerance = 0.05, metric = :max)
+    pwa = approx(v10, Convex(), alg)
+    @test PWA._tolerance_error(v10, pwa, :max) ≤ 0.05
+    @test length(pwa.planes) ≤ 22
 end

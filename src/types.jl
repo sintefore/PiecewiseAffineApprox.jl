@@ -60,7 +60,9 @@ ways depending on `strict`:
 - `:outer` (default): the planes lie below all data points, and planes are added
   until the error per data point is at most `tolerance`, measured by `metric`:
   the mean absolute deviation (`:l1`), the root mean square deviation (`:l2`) or
-  the maximum absolute deviation (`:max`). The data points must be convex, i.e.
+  the maximum absolute deviation (`:max`). Each plane is fitted to its points
+  in the same metric (for `:l2` with two or more inputs, the absolute deviation
+  is used for the fit). The data points must be convex, i.e.
   possible to interpolate by a convex function. Use [`enforce_curvature`](@ref)
   first for noisy or non-convex data.
 - `:none`: the approximation lies within `tolerance` of all data points (above
