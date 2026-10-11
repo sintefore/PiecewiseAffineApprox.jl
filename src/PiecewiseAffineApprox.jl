@@ -1,10 +1,11 @@
 module PiecewiseAffineApprox
 
 using Combinatorics
-using Distributions
 using JuMP
 using LinearAlgebra
 using Printf
+using Random
+using StableRNGs
 using Statistics
 using StructTypes
 using Base.Threads: @spawn
