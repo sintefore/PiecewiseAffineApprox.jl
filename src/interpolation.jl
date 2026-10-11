@@ -299,8 +299,11 @@ function _convex_dp_tables(σ, p, K, op)
     best = fill(Inf, K)
     last = ones(Int, K)
     best[1] = cost[1, N]
+    # The costs of the previous and the current number of edges alternate
+    # between two buffers
+    next = similar(cost)
     for s ∈ 2:K
-        next = fill(Inf, N, N)
+        fill!(next, Inf)
         for j ∈ s:N-1
             in, out = incoming[j], outgoing[j]
             ptr, c, cᵢ = 1, Inf, 0
@@ -319,7 +322,7 @@ function _convex_dp_tables(σ, p, K, op)
                 end
             end
         end
-        cost = next
+        cost, next = next, cost
         for i ∈ 1:N-1
             if cost[i, N] < best[s]
                 best[s], last[s] = cost[i, N], i
@@ -327,6 +330,21 @@ function _convex_dp_tables(σ, p, K, op)
         end
     end
     return best, last, pred
+end
+
+# The memory needed by the convex dynamic program for N points and K planes
+# (penalties, slopes, two cost buffers and the predecessors), which grows as
+# N² and limits the size of the data that can be handled
+function _check_size(N, K; limit = 4 * 2^30)
+    bytes = (4 * 8 + 2K) * N^2
+    bytes ≤ limit || throw(
+        ArgumentError(
+            "Interpol with $N distinct points and up to $K planes needs " *
+            "about $(round(bytes / 2^30; digits = 1)) GiB of memory. " *
+            "Reduce the number of points (e.g. by sampling) or planes.",
+        ),
+    )
+    return
 end
 
 function _convex_backtrack(pred, s, i, N)
@@ -507,9 +525,12 @@ function _with(options::Interpol; kwargs...)
 end
 
 # Select the number of planes (at most K) according to options.selection.
-# Returns the selected number and the score for each number of planes.
-function _select_planes(d::_Data1D, options, K)
+# Returns the selected number, the score for each number of planes, and the
+# candidate fits (nothing for cross validation, where the fits are to parts of
+# the data).
+function _select_planes(d::_Data1D, options, K; scale = 1.0)
     N, metric, selection = _total(d), options.metric, options.selection
+    fits = nothing
     k, scores = if selection == :cv
         # One standard error rule: the fewest planes with a cross validation
         # error within one standard error (over the folds) of the minimum
@@ -529,8 +550,8 @@ function _select_planes(d::_Data1D, options, K)
         scores = metric == :l1 ? e ./ N : metric == :l2 ? sqrt.(e ./ N) : e
         k = findfirst(≤(options.tolerance), scores)
         if isnothing(k)
-            @warn "Tolerance $(options.tolerance) not reached with $K planes " *
-                  "(error $(minimum(scores)))"
+            @warn "Tolerance $(options.tolerance * scale) not reached with " *
+                  "$K planes (error $(minimum(scores) * scale))"
             k = K
         end
         k, scores
@@ -562,7 +583,7 @@ function _select_planes(d::_Data1D, options, K)
         @warn "The maximum number of planes ($K) was selected by " *
               ":$selection, consider increasing `planes`"
     end
-    return k, scores
+    return k, scores, fits
 end
 
 # Cross validation errors E[f, k] for fold f and k = 1, ..., K planes: the mean
@@ -597,7 +618,36 @@ end
 function _convex_linearization_ipol(x, z, options)
     @assert length(x) == length(z)
     options = _validate(options)
-    d = _sort_unique(x, z)
+    # Work with points and values normalized to the order of one, so that the
+    # tolerances of the algorithms are independent of the scale of the data
+    x̄, sx = _shift_scale(x)
+    z̄, sz = _shift_scale(z)
+    d = _sort_unique((x .- x̄) ./ sx, (z .- z̄) ./ sz)
+    options = _with(options; tolerance = options.tolerance / sz)
+    knots = _fit_knots(d, options, sz)
+    return _denormalize_1d(_asconvex(knots), x̄, sx, z̄, sz)
+end
+
+# Shift and scale mapping the values to [-1, 1]
+function _shift_scale(v)
+    lo, hi = extrema(v)
+    return (lo + hi) / 2, hi > lo ? (hi - lo) / 2 : 1.0
+end
+
+# The planes fitted to normalized points x̃ = (x - x̄) / sx and values
+# z̃ = (z - z̄) / sz, in the original coordinates
+function _denormalize_1d(pwa::PWAFunc{Convex,1}, x̄, sx, z̄, sz)
+    planes = map(pwa.planes) do q
+        a = q.α[1] * sz / sx
+        return Plane((a,), sz * q.β - a * x̄ + z̄)
+    end
+    return PWAFunc{Convex,1}(planes)
+end
+
+# The knots of the fit to the normalized data d, with the number of planes
+# selected if requested. The scale of the values is used to report the
+# tolerance in the original units.
+function _fit_knots(d::_Data1D, options, sz)
     N = length(d)
     method = options.convexify
     if method ∈ (:data, :knots) && isnothing(options.optimizer)
@@ -612,13 +662,21 @@ function _convex_linearization_ipol(x, z, options)
     end
     if options.selection != :none
         # planes is the maximum number of planes to consider
-        if options.planes < 1 || N < 2
-            throw(ArgumentError("Interpol requires planes ≥ 1 and 2 points"))
-        end
+        N ≥ 2 || throw(ArgumentError("Interpol requires at least 2 points"))
         K = min(options.planes, N - 1)
-        k, scores = _select_planes(d, options, K)
+        _check_size(N, K)
+        k, scores, fits = _select_planes(d, options, K; scale = sz)
         @debug "Interpol selected $k planes" options.selection scores
         options = _with(options; planes = k, selection = :none)
+        # The candidate fit is the final fit, except for the minimax tie
+        # breaking of :max, and the search over the breakpoints
+        if !isnothing(fits) && options.metric != :max
+            knots = fits[k]
+            if options.adjust == :breakpoints
+                knots = _adjust_breakpoints(d, knots, options)
+            end
+            return knots
+        end
     elseif !(1 ≤ options.planes ≤ N - 1)
         throw(
             ArgumentError(
@@ -626,6 +684,8 @@ function _convex_linearization_ipol(x, z, options)
                 "planes + 1 distinct points, got $N",
             ),
         )
+    else
+        _check_size(N, options.planes)
     end
     return _ipol_fit(d, options)
 end
@@ -672,7 +732,7 @@ function _ipol_fit(d::_Data1D, options)
     elseif options.adjust != :none
         throw(ArgumentError("Unknown adjust option :$(options.adjust)"))
     end
-    return _asconvex(knots)
+    return knots
 end
 
 # Use the convex dynamic program if the data is convex (where all methods give

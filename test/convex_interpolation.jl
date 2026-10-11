@@ -447,3 +447,51 @@ end
         @test length(p3.planes) ≤ 3
     end
 end
+
+@testset "Interpolation scale invariance, size guard and candidate reuse" begin
+    x = collect(range(-1, 1, length = 40))
+    z = exp.(x) .+ 0.01 .* randn(StableRNG(2), 40)
+    fe = FunctionEvaluations(Tuple.(x), z)
+    scaled(sx, ox, sz) = FunctionEvaluations(Tuple.(sx .* x .+ ox), sz .* z)
+    for kw ∈ (
+        (convexify = :dp,),
+        (convexify = :dp, metric = :l2, adjust = :values),
+        (convexify = :data, metric = :l1, adjust = :breakpoints),
+        (metric = :l2, selection = :bic, planes = 8),
+    )
+        alg = Interpol(; optimizer, planes = 5, kw...)
+        base = approx(fe, Convex(), alg)
+        sse(p, pts, scale) = sum((evaluate(p, (pt,)) / scale - v)^2 for (pt, v) ∈ zip(pts, z))
+        for (sx, ox, sz) ∈ ((1e6, 3e7, 1e-13), (1e-4, -2.0, 1e9))
+            pwa = approx(scaled(sx, ox, sz), Convex(), alg)
+            @test length(pwa.planes) == length(base.planes)
+            if get(kw, :adjust, :none) == :breakpoints
+                # The search over the breakpoints is a local search that can
+                # end in different local optima, so only the error is compared
+                @test sse(pwa, sx .* x .+ ox, sz) ≈ sse(base, x, 1.0) rtol = 1e-2
+            else
+                @test all(
+                    isapprox(evaluate(pwa, (sx * t + ox,)) / sz, evaluate(base, (t,));
+                        rtol = 1e-6) for t ∈ x
+                )
+            end
+        end
+    end
+
+    # The tolerance is in the units of the data (here scaled by 1e-13)
+    tol = 3e-15
+    alg = Interpol(; planes = 8, metric = :max, selection = :tolerance, tolerance = tol)
+    pwa = approx(scaled(1.0, 0.0, 1e-13), Convex(), alg)
+    @test maximum(abs(evaluate(pwa, (t,)) - 1e-13 * v) for (t, v) ∈ zip(x, z)) ≤ tol * (1 + 1e-6)
+    @test length(pwa.planes) < 8
+
+    # Data too large for the dynamic program is rejected before any work
+    big = FunctionEvaluations(Tuple.(range(0, 1, length = 30_000)), zeros(30_000))
+    @test_throws ArgumentError approx(big, Convex(), Interpol(; planes = 50))
+    @test_throws ArgumentError approx(big, Convex(), Interpol(; planes = 50, selection = :bic))
+
+    # After selection, the result is the fit with the selected number of planes
+    sel = approx(fe, Convex(), Interpol(; planes = 8, metric = :l2, selection = :bic))
+    fixed = approx(fe, Convex(), Interpol(; planes = length(sel.planes), metric = :l2))
+    @test all(evaluate(sel, (t,)) ≈ evaluate(fixed, (t,)) for t ∈ x)
+end
