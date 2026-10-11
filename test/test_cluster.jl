@@ -170,3 +170,42 @@ end
         @test issorted(errors, rev = true)
     end
 end
+
+@testset "Cluster validation and edge cases" begin
+    pts = [(a, b) for a ∈ range(-1, 1, length = 6) for b ∈ range(-1, 1, length = 6)]
+    fe = FunctionEvaluations(pts, [a^2 + b^2 for (a, b) ∈ pts])
+    @test_throws ArgumentError approx(fe, Convex(), Cluster(; metric = :foo))
+    @test_throws ArgumentError approx(fe, Convex(), Cluster(; optimizer, metric = :foo))
+    @test_throws ArgumentError approx(fe, Convex(), Cluster(; optimizer, strict = :bar))
+    @test_throws ArgumentError approx(fe, Convex(), Cluster(; planes = 0))
+    @test_throws ArgumentError PWA._approx_error(zeros(2, 1), [0.0], PWAFunc{Convex,2}(), :foo)
+
+    # Errors in the trials are reported directly, not as failed tasks
+    failing = () -> error("no solver available")
+    err = try
+        approx(fe, Convex(), Cluster(; optimizer = failing, metric = :l1, trials = 2))
+    catch e
+        e
+    end
+    @test err isa ErrorException
+    @test occursin("no solver available", sprint(showerror, err))
+
+    # A single point, and identical points
+    one = FunctionEvaluations([(0.5, 0.5)], [1.0])
+    @test evaluate(approx(one, Convex(), Cluster(; planes = 2, trials = 2)), (0.5, 0.5)) ≈ 1.0
+    same = FunctionEvaluations(fill((1.0, 2.0), 5), ones(5))
+    @test evaluate(approx(same, Convex(), Cluster(; planes = 2, trials = 2)), (1.0, 2.0)) ≈ 1.0
+
+    # A coordinate with a small but genuine range is not treated as degenerate:
+    # the fit is as good as with the coordinate rescaled
+    pts3 = [(a, b) for a ∈ range(-1, 1, length = 10) for b ∈ range(0, 1e-6, length = 10)]
+    z3 = [a^2 + (b / 1e-6)^2 for (a, b) ∈ pts3]
+    rms(f, pwa) = sqrt(PWA.mean((evaluate(pwa, x) - v)^2 for (x, v) ∈ f))
+    f3 = FunctionEvaluations(pts3, z3)
+    f3r = FunctionEvaluations([(a, 1e6 * b) for (a, b) ∈ pts3], z3)
+    alg() = Cluster(; planes = 6, trials = 5, rng = StableRNG(2))
+    e3 = rms(f3, approx(f3, Convex(), alg()))
+    e3r = rms(f3r, approx(f3r, Convex(), alg()))
+    @test e3 ≤ 1.1 * e3r
+    @test e3 < 0.1
+end

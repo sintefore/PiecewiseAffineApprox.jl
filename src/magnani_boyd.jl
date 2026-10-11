@@ -12,6 +12,8 @@ function _approx_error(X::Matrix, z::Vector, pwa::PWAFunc, metric = :l1)
             err += (v - z[i])^2
         elseif metric == :max
             err = max(err, abs(v - z[i]))
+        else
+            throw(ArgumentError("Unsupported metric :$metric"))
         end
     end
 
@@ -55,6 +57,18 @@ function _convex_linearization_mb(X::Matrix, z::Vector, options::Cluster)
     strict = options.strict
     optimizer = options.optimizer
 
+    metric ∈ (:l1, :l2, :rms, :max) || throw(
+        ArgumentError(
+            "Unsupported metric :$metric for Cluster, use :l1, :l2 or :max",
+        ),
+    )
+    strict ∈ (:none, :inner, :outer) || throw(
+        ArgumentError(
+            "Unsupported strict = :$strict for Cluster, " *
+            "use :none, :inner or :outer",
+        ),
+    )
+    K ≥ 1 || throw(ArgumentError("Cluster requires at least one plane"))
     if isnothing(optimizer) && !(strict == :none && metric ∈ (:l2, :rms))
         error(
             "Cluster with metric = :$metric and strict = :$strict requires an optimizer. " *
@@ -72,20 +86,26 @@ function _convex_linearization_mb(X::Matrix, z::Vector, options::Cluster)
     seeds = rand(options.rng, UInt64, Nᵗʳ)
 
     @debug "Starting heuristic search "
-    approxes = collect(
-        fetch.(
-            @spawn _convex_linearization_mb_single(
-                X̃,
-                z,
-                K,
-                lᵐᵃˣ,
-                metric,
-                optimizer,
-                strict,
-                StableRNG(seeds[i]),
-            ) for i ∈ 1:Nᵗʳ
-        ),
-    )
+    tasks = [
+        @spawn _convex_linearization_mb_single(
+            X̃,
+            z,
+            K,
+            lᵐᵃˣ,
+            metric,
+            optimizer,
+            strict,
+            StableRNG(seeds[i]),
+        ) for i ∈ 1:Nᵗʳ
+    ]
+    approxes = map(tasks) do task
+        try
+            fetch(task)
+        catch e
+            # Report the error of the trial rather than the failure of the task
+            e isa TaskFailedException ? throw(e.task.result) : rethrow()
+        end
+    end
     min_error, pwa_best = argmin(first, approxes)
 
     @debug "Terminating search - best approximation error = $(min_error) ($metric)"
@@ -93,19 +113,25 @@ function _convex_linearization_mb(X::Matrix, z::Vector, options::Cluster)
 end
 
 # Affine transformation x̃ = T(x - μ) giving data with zero mean and identity
-# covariance. T = Σ^(-1/2) (ZCA whitening) is used since it is unique and leaves
+# covariance. Each coordinate is first scaled by its range, so that coordinates
+# with a small but genuine range are not treated as degenerate, and the result
+# is then whitened with T = Σ^(-1/2) (ZCA whitening), which is unique and leaves
 # data that is only scaled along the axes in identical normalized coordinates.
 # Directions with (near) zero variance are mapped to zero.
 function _normalization(X)
+    D, N = size(X)
     μ = vec(mean(X, dims = 2))
-    λ, V = eigen(Symmetric(cov(X, dims = 2)))
+    N < 2 && return μ, Matrix{Float64}(I, D, D)
+    r = vec(maximum(X, dims = 2) .- minimum(X, dims = 2))
+    S = Diagonal([rᵢ > 0 ? 1 / rᵢ : 1.0 for rᵢ ∈ r])
+    λ, V = eigen(Symmetric(cov(S * (X .- μ), dims = 2)))
     keep = λ .> 1e-10 * max(maximum(λ), 0)
     if !any(keep)
         # All points coincide, nothing to normalize
-        return μ, Matrix{Float64}(I, length(μ), length(μ))
+        return μ, Matrix{Float64}(I, D, D)
     end
     Vᵣ = V[:, keep]
-    return μ, Vᵣ * Diagonal(1 ./ sqrt.(λ[keep])) * Vᵣ'
+    return μ, Vᵣ * Diagonal(1 ./ sqrt.(λ[keep])) * Vᵣ' * S
 end
 
 # Transform a pwa function fitted to normalized data x̃ = T(x - μ) back to the
@@ -126,6 +152,7 @@ _dist(x, y) = sqrt(sum((x - y) .^ 2))
 # rather than Cholesky so that singular covariances (e.g. collinear points) work.
 function _sample_normal(rng::AbstractRNG, X, K)
     μ = vec(mean(X, dims = 2))
+    size(X, 2) < 2 && return repeat(μ, 1, K)
     λ, V = eigen(Symmetric(cov(X, dims = 2)))
     L = V * Diagonal(sqrt.(max.(λ, 0)))
     return μ .+ L * randn(rng, length(μ), K)
@@ -243,7 +270,11 @@ end
 # where the full data set has variation. X is assumed to be normalized, i.e. to
 # have unit variance in these directions.
 function _determined_test(X, minvar)
-    r = count(>(0.5), eigvals(Symmetric(cov(X, dims = 2))))
+    r = if size(X, 2) < 2
+        0
+    else
+        count(>(0.5), eigvals(Symmetric(cov(X, dims = 2))))
+    end
     return function (p)
         length(p) > r || return false
         r == 0 && return true
