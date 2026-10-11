@@ -34,7 +34,10 @@ an `optimizer`.
     linear programs solved with `metric = :l1` and `:max`.
 
 Each trial returns the best approximation found during its iterations, and the best
-over all trials is selected, both as measured by `metric`.
+over all trials is selected, both as measured by `metric`. For the fits that solve
+an optimization problem, each trial first refines its partition of the points with
+closed form least squares, and then for at most five iterations with the requested
+fit, which is both faster and better than the requested fit alone.
 """
 @kwdef struct Cluster{T,R<:AbstractRNG} <: Algorithm
     planes::Int = defaultplanes()

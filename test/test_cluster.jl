@@ -209,3 +209,23 @@ end
     @test e3 ≤ 1.1 * e3r
     @test e3 < 0.1
 end
+
+@testset "Cluster two-phase refinement" begin
+    # The partition is first refined with least squares, as for :l2, so the
+    # :l1 fit is never worse in l1 error than the :l2 fit with the same seeds
+    pts = [(a, b) for a ∈ range(-1, 1, length = 12) for b ∈ range(-1, 1, length = 12)]
+    vals = [exp(a) + b^2 + 0.5a * b for (a, b) ∈ pts]
+    fe = FunctionEvaluations(pts, vals)
+    X = [p[i] for i ∈ 1:2, p ∈ pts]
+    l1(pwa) = PWA._approx_error(X, vals, pwa, :l1)
+    alg(metric) = Cluster(; optimizer, metric, planes = 6, trials = 4, rng = StableRNG(5))
+    @test l1(approx(fe, Convex(), alg(:l1))) ≤ l1(approx(fe, Convex(), alg(:l2))) + 1e-9
+
+    # The second phase respects the constraints of strict
+    for strict ∈ (:inner, :outer)
+        alg = Cluster(; optimizer, metric = :l1, strict, planes = 4, trials = 2, rng = StableRNG(1))
+        pwa = approx(fe, Convex(), alg)
+        dev = [evaluate(pwa, x) - v for (x, v) ∈ fe]
+        @test strict == :inner ? all(dev .≥ -1e-6) : all(dev .≤ 1e-6)
+    end
+end

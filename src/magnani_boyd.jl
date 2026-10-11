@@ -36,10 +36,23 @@ function _convex_linearization_mb_single(
     metric,
     optimizer,
     strict,
-    rng,
+    rng;
+    polish = 5,
 )
     𝒫 = _random_partition(rng, X, K)
-    pwa = _refine_partition(X, z, 𝒫, lᵐᵃˣ, metric, optimizer, strict)
+    if strict == :none && metric ∈ (:l2, :rms)
+        pwa = _refine_partition(X, z, 𝒫, lᵐᵃˣ, metric, optimizer, strict)
+    else
+        # Two phases: the partition is first refined with closed form least
+        # squares, which is fast and moves the planes smoothly, and then for a
+        # few iterations with the requested fit. This is both faster and better
+        # than the requested fit alone, whose solutions at vertices of the
+        # feasible region tend to get stuck in limit cycles early.
+        pwa₁ = _refine_partition(X, z, 𝒫, lᵐᵃˣ, :l2, nothing, :none)
+        𝒫 = _update_partition(X, pwa₁)
+        l = min(lᵐᵃˣ, polish)
+        pwa = _refine_partition(X, z, 𝒫, l, metric, optimizer, strict)
+    end
     e = _approx_error(X, z, pwa, metric)
     return e => pwa
 end
