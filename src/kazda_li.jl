@@ -221,7 +221,7 @@ function _full_order_plane_1d(X, z, k, metric; check = true)
         # The total deviation decreases linearly with the slope times the sum
         # of the distances to the other points
         w = sum(dx)
-        w > 0 ? hi : w < 0 ? lo : (isfinite(lo) ? lo : hi)
+        w > 0 ? hi : w < 0 ? lo : isfinite(lo) ? lo : isfinite(hi) ? hi : 0.0
     elseif metric ∈ (:l2, :rms)
         clamp(dot(dx, dz) / max(dot(dx, dx), floatmin()), lo, hi)
     elseif metric == :max
@@ -418,22 +418,14 @@ function _allocation_improvement(
     return PWAFunc(pwa_red.planes[active], Convex())
 end
 
-# Add an extra plane to the pwa by identifying the point lying
-# further away and use the corresponding plane in the full order pwa
-# to update the allocation of points to planes.
-function _increase_order(f::FunctionEvaluations, pwa_red, pwa, used)
+# Add an extra plane to the pwa: the full order plane at the point with the
+# largest gap to the approximation. As this plane passes through the point, it
+# is not already part of the approximation (the gap would then be zero), and
+# the point is allocated to it in the updated allocation.
+function _increase_order(f::FunctionEvaluations, pwa_red, pwa)
     s = [z - evaluate(pwa_red, x) for (x, z) ∈ f]
-    imax = 0
-    smax = -1
-    for i ∈ 1:length(f)
-        if s[i] > smax && !(i in used)
-            imax = i
-            smax = s[i]
-        end
-    end
-    push!(pwa_red.planes, pwa.planes[imax])
-    U = _update_allocation(f, pwa_red)
-    return U, vcat(used, imax)
+    push!(pwa_red.planes, pwa.planes[argmax(s)])
+    return _update_allocation(f, pwa_red)
 end
 
 # Approximation error per data point, compared with the tolerance: the mean
@@ -480,20 +472,33 @@ function _progressive_pwa(
     p = 1
     U = [(l, 1) for l ∈ 1:length(f)]
 
-    # Increase the number of planes until the required tolerance is met
+    # Increase the number of planes until the required tolerance is met. As
+    # inactive planes are removed, the number of planes does not necessarily
+    # grow with each round, so the number of rounds is limited.
     support = _envelope_support(f, optimizer)
     pwa_red = _allocation_improvement(f, p, U, optimizer; support)
-    p = length(pwa_red.planes)
-    used = Int[]
-    while _tolerance_error(f, pwa_red, metric) > δᵗᵒˡ && p < length(f.points)
-        U, used = _increase_order(f, pwa_red, pwa, used)
-        p += 1
-        pwa_red = _allocation_improvement(f, p, U, optimizer; support)
+    rounds = 0
+    while _tolerance_error(f, pwa_red, metric) > δᵗᵒˡ && rounds < 2length(f)
+        rounds += 1
+        U = _increase_order(f, pwa_red, pwa)
         p = length(pwa_red.planes)
+        pwa_red = _allocation_improvement(f, p, U, optimizer; support)
     end
-    e = _tolerance_error(f, pwa_red, metric)
-    @debug "Fitting finished, error = $(round(e; sigdigits = 3)), p = $p"
+    _check_tolerance(f, pwa_red, metric, δᵗᵒˡ, rounds)
     return pwa_red
+end
+
+# Warn if the fitting stopped without meeting the tolerance
+function _check_tolerance(f, pwa, metric, δ, rounds)
+    e = _tolerance_error(f, pwa, metric)
+    p = length(pwa.planes)
+    if e > δ * (1 + 1e-6) + 1e-9 * max(1.0, maximum(abs, f.values))
+        @warn "Progressive fitting stopped after $rounds rounds without " *
+              "meeting the tolerance $δ (error $e with $p planes)"
+    else
+        @debug "Fitting finished, error = $(round(e; sigdigits = 3)), p = $p"
+    end
+    return nothing
 end
 
 # Map algorithm structure to correct parameters
@@ -546,7 +551,9 @@ function _progressive_band(
     tol = 1e-7 * scale * N
     U = ones(Int, N)
     v, planes, gaps = _band_lp(X, z, lo, hi, U, 1, optimizer, μ)
+    rounds = 0
     for _ ∈ 1:2N
+        rounds += 1
         # Allocation improvement: allocate the points to the active planes
         # (removing planes that are not active at any point) and refit, as
         # long as the total gap decreases
@@ -576,9 +583,7 @@ function _progressive_band(
         v, planes, gaps = _band_lp(X, z, lo, hi, U, p, optimizer, μ)
     end
     pwa = PWAFunc{Convex,D}(planes)
-    @debug "Fitting finished, max error = " *
-           "$(round(_tolerance_error(f, pwa, :max); sigdigits = 3)), " *
-           "p = $(length(planes))"
+    _check_tolerance(f, pwa, :max, δ, rounds)
     return pwa
 end
 

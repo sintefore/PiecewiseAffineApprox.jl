@@ -283,3 +283,32 @@ end
 
     @test_throws ArgumentError approx(f, Convex(), alg(0.01, :foo))
 end
+
+@testset "Progressive robustness" begin
+    # Tolerances that require many planes, where planes are also removed
+    # along the way (previously an index error)
+    x = collect(range(-1, 1; length = 30))
+    f = FunctionEvaluations(tuple.(x), x .^ 2)
+    for metric ∈ (:l1, :l2, :max), tol ∈ (0.0, 1e-12)
+        alg = Progressive(optimizer = optimizer, tolerance = tol, metric = metric)
+        pwa = approx(f, Convex(), alg)
+        @test PWA._tolerance_error(f, pwa, metric) ≤ 1e-9
+        @test length(pwa.planes) ≤ length(f)
+    end
+
+    # Two-dimensional data with a moderate tolerance
+    vals = PWA._sample_uniform(x -> exp(x[1]) + x[2]^2, [(-1, 1), (-1, 1)], 10)
+    alg = Progressive(optimizer = optimizer, tolerance = 0.05, metric = :max)
+    pwa = approx(vals, Convex(), alg)
+    @test PWA._tolerance_error(vals, pwa, :max) ≤ 0.05
+
+    # A single data point
+    one = FunctionEvaluations([(0.5,)], [0.25])
+    pwa = approx(one, Convex(), FullOrder(optimizer = optimizer))
+    @test all(isfinite, pwa.planes[1].α) && isfinite(pwa.planes[1].β)
+    @test evaluate(pwa, (0.5,)) ≈ 0.25
+    alg = Progressive(optimizer = optimizer, tolerance = 0.01, metric = :max)
+    @test evaluate(approx(one, Convex(), alg), (0.5,)) ≈ 0.25
+    alg = Progressive(optimizer = optimizer, tolerance = 0.01, strict = :none)
+    @test abs(evaluate(approx(one, Convex(), alg), (0.5,)) - 0.25) ≤ 0.01
+end
