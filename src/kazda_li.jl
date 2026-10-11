@@ -66,20 +66,15 @@ function convexify(
         return _convexify_1d(f, optimizer, metric, curv_string)
     end
     K = length(f)
+    X = [pt[i] for i ∈ 1:D, pt ∈ f.points]
 
     m = Model(optimizer)
     set_silent(m)
-    @variable(m, a[1:K, 1:D])
-    @variable(m, b[1:K])
     @variable(m, s⁺[1:K] ≥ 0)
     @variable(m, s⁻[1:K] ≥ 0)
-
-    for (l, (x, z)) ∈ enumerate(f)
-        for k ∈ 1:K
-            @constraint(m, z + s⁺[l] - s⁻[l] ≥ dot(a[k, :], x) + b[k])
-        end
-        @constraint(m, z + s⁺[l] - s⁻[l] ≤ dot(a[l, :], x) + b[l])
-    end
+    v = f.values .+ s⁺ .- s⁻
+    lc = _LazyConvexity(X)
+    af, bf = _add_convexity!(m, lc, v)
     obj = AffExpr()
     if metric == :l2 || metric == :rms
         obj = sum(s⁺[l]^2 + s⁻[l]^2 for l ∈ 1:K)
@@ -94,7 +89,7 @@ function convexify(
     end
     @objective(m, Min, obj)
 
-    optimize!(m)
+    _optimize_lazy!(m, lc, v, af, bf)
 
     if !is_solved_and_feasible(m; allow_local = true)
         error(
@@ -597,7 +592,8 @@ end
 function _check_tolerance(f, pwa, metric, δ, rounds)
     e = _tolerance_error(f, pwa, metric)
     p = length(pwa.planes)
-    if e > δ * (1 + 1e-6) + 1e-9 * max(1.0, maximum(abs, f.values))
+    spread = maximum(f.values) - minimum(f.values)
+    if e > δ + 1e-6 * (δ + spread) + 1e-12 * max(1.0, maximum(abs, f.values))
         @warn "Progressive fitting stopped after $rounds rounds without " *
               "meeting the tolerance $δ (error $e with $p planes)"
     else
@@ -657,8 +653,15 @@ function _progressive_band(
     # The approximation lies within the band when the largest gap between the
     # values and the planes is zero, up to the solver tolerances
     ε = max(1e-6 * δ̂, 1e-9)
+    # Convexity constraints in two or more dimensions are generated lazily, and
+    # kept for all the linear programs solved below
+    lc = D == 1 && allunique(X[1, :]) ? nothing : _LazyConvexity(X)
+    # The constraints that the planes lie below the values are also generated
+    # lazily, starting with the planes of each point and its neighbours
+    nbrs = _nearest_neighbours(X, 2(D + 1))
+    lp(U, p) = _band_lp(X, z, lo, hi, U, p, optimizer, μ; lc, nbrs)
     U = ones(Int, N)
-    v, planes, gaps = _band_lp(X, z, lo, hi, U, 1, optimizer, μ)
+    v, planes, gaps = lp(U, 1)
     rounds = 0
     for _ ∈ 1:2N
         rounds += 1
@@ -668,8 +671,7 @@ function _progressive_band(
         φ = sum(gaps)
         while maximum(gaps) > ε
             U, planes = _active_allocation(X, planes)
-            v₂, planes₂, gaps₂ =
-                _band_lp(X, z, lo, hi, U, length(planes), optimizer, μ)
+            v₂, planes₂, gaps₂ = lp(U, length(planes))
             sum(gaps₂) < φ * (1 - 1e-9) || break
             v, planes, gaps, φ = v₂, planes₂, gaps₂, sum(gaps₂)
         end
@@ -687,8 +689,7 @@ function _progressive_band(
         end
         maximum(gaps) ≤ ε && break
         U, planes = _active_allocation(X, planes)
-        p = length(planes)
-        v, planes, gaps = _band_lp(X, z, lo, hi, U, p, optimizer, μ)
+        v, planes, gaps = lp(U, length(planes))
     end
     pwa = PWAFunc{Convex,D}([_denormalize(q, μx, σx, z̄, s) for q ∈ planes])
     _check_tolerance(f, pwa, :max, δ, rounds)
@@ -745,22 +746,70 @@ end
 # The linear program for given allocation U of the data points to p planes.
 # Returns the values v, the planes and the gaps between the values and the
 # allocated planes. Among solutions with the same total gap, values close to
-# the data are preferred (with weight μ).
-function _band_lp(X, z, lo, hi, U, p, optimizer, μ)
+# the data are preferred (with weight μ). Without lazy convexity constraints
+# lc, the data must be one-dimensional with distinct points. With neighbours
+# nbrs of the points, the constraints that the planes lie below the values are
+# generated lazily: initially for the planes allocated to each point and its
+# neighbours, and then for violated pairs until none remain.
+function _band_lp(
+    X,
+    z,
+    lo,
+    hi,
+    U,
+    p,
+    optimizer,
+    μ;
+    lc = nothing,
+    nbrs = nothing,
+)
     D, N = size(X)
     m = Model(optimizer)
     set_silent(m)
     @variable(m, lo[l] ≤ v[l = 1:N] ≤ hi[l])
-    _convexity_constraints!(m, X, v)
+    if isnothing(lc)
+        _convexity_constraints_1d!(m, X, v)
+    else
+        af, bf = _add_convexity!(m, lc, v)
+    end
     @variable(m, a[1:p, 1:D])
     @variable(m, b[1:p])
     plane(k, l) = sum(a[k, i] * X[i, l] for i ∈ 1:D) + b[k]
-    @constraint(m, [l = 1:N, k = 1:p], plane(k, l) ≤ v[l])
+    below = if isnothing(nbrs)
+        [Set(1:p) for _ ∈ 1:N]
+    else
+        [Set(U[j] for j ∈ (l, nbrs[l]...)) for l ∈ 1:N]
+    end
+    for l ∈ 1:N, k ∈ below[l]
+        @constraint(m, plane(k, l) ≤ v[l])
+    end
     @variable(m, t[1:N])
     @constraint(m, t .≥ v .- z)
     @constraint(m, t .≥ z .- v)
     @objective(m, Min, sum(v[l] - plane(U[l], l) for l ∈ 1:N) + μ * sum(t))
-    optimize!(m)
+    while true
+        optimize!(m)
+        is_solved_and_feasible(m; allow_local = true) || break
+        # Planes above the values of points without a constraint for them (all
+        # solution values are queried before the model is modified)
+        v̂ = value.(v)
+        P = value.(a) * X .+ value.(b)
+        τ = 1e-7 * max(1.0, maximum(abs, v̂))
+        new = Tuple{Int,Int}[]
+        for l ∈ 1:N
+            viol = [
+                (P[k, l] - v̂[l], k) for
+                k ∈ 1:p if P[k, l] - v̂[l] > τ && k ∉ below[l]
+            ]
+            append!(new, ((l, k) for (_, k) ∈ first(sort!(viol; rev = true), 3)))
+        end
+        added = isnothing(lc) ? 0 : _add_violated_convexity!(m, lc, v, af, bf)
+        for (l, k) ∈ new
+            push!(below[l], k)
+            @constraint(m, plane(k, l) ≤ v[l])
+        end
+        added + length(new) == 0 && break
+    end
     if termination_status(m) ∈ (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED)
         error(
             "No convex function lies within the tolerance of the data. " *
@@ -778,32 +827,103 @@ function _band_lp(X, z, lo, hi, U, p, optimizer, μ)
     return v̂, planes, gaps
 end
 
-# Constraints ensuring that the points (x, v) are convex: for one-dimensional
-# data with distinct points, nondecreasing slopes between consecutive points,
-# and otherwise a plane through each point that lies below all other points
-function _convexity_constraints!(m, X, v)
-    D, N = size(X)
-    if D == 1 && allunique(X[1, :])
-        o = sortperm(X[1, :])
-        x = X[1, :]
-        for j ∈ 2:N-1
-            i, k, l = o[j-1], o[j], o[j+1]
-            @constraint(
-                m,
-                (v[k] - v[i]) / (x[k] - x[i]) ≤ (v[l] - v[k]) / (x[l] - x[k])
-            )
-        end
-        return
-    end
-    af = @variable(m, [1:N, 1:D])
-    bf = @variable(m, [1:N])
-    for l ∈ 1:N, k ∈ 1:N
-        rel = sum(af[k, i] * X[i, l] for i ∈ 1:D) + bf[k]
-        if k == l
-            @constraint(m, rel == v[l])
-        else
-            @constraint(m, rel ≤ v[l])
-        end
+# Constraints ensuring that the one-dimensional points (x, v), with distinct x,
+# are convex: nondecreasing slopes between consecutive points
+function _convexity_constraints_1d!(m, X, v)
+    N = size(X, 2)
+    x = X[1, :]
+    o = sortperm(x)
+    for j ∈ 2:N-1
+        i, k, l = o[j-1], o[j], o[j+1]
+        @constraint(
+            m,
+            (v[k] - v[i]) / (x[k] - x[i]) ≤ (v[l] - v[k]) / (x[l] - x[k])
+        )
     end
     return
+end
+
+# Convexity of the points (x, v) in general: a plane through each point
+# (xₖ, vₖ) that lies below all other points. As most of these N² constraints are
+# not binding, they are generated lazily, as in the relaxed linear program of
+# Kazda and Li (2024): initially for the nearest neighbours of each point, and
+# then for violated pairs until none remain. The generated pairs (k, l) are
+# kept, and reused for further problems with the same points.
+struct _LazyConvexity
+    X::Matrix{Float64}
+    pairs::Set{Tuple{Int,Int}}
+end
+
+function _LazyConvexity(X::AbstractMatrix; neighbours = 2(size(X, 1) + 1))
+    nbrs = _nearest_neighbours(X, neighbours)
+    pairs = Set((k, l) for k ∈ axes(X, 2) for l ∈ nbrs[k])
+    return _LazyConvexity(Matrix{Float64}(X), pairs)
+end
+
+# Adds the planes through the points, and the generated constraints that the
+# planes lie below the other points, to the model. Returns the slopes and
+# intercepts of the planes.
+function _add_convexity!(m, lc::_LazyConvexity, v)
+    D, N = size(lc.X)
+    af = @variable(m, [1:N, 1:D])
+    bf = @variable(m, [1:N])
+    for k ∈ 1:N
+        @constraint(m, sum(af[k, i] * lc.X[i, k] for i ∈ 1:D) + bf[k] == v[k])
+    end
+    for (k, l) ∈ lc.pairs
+        @constraint(m, sum(af[k, i] * lc.X[i, l] for i ∈ 1:D) + bf[k] ≤ v[l])
+    end
+    return af, bf
+end
+
+# Optimizes the model, adding the violated convexity constraints and
+# reoptimizing until none are violated
+function _optimize_lazy!(m, lc::_LazyConvexity, v, af, bf)
+    while true
+        optimize!(m)
+        is_solved_and_feasible(m; allow_local = true) || return
+        _add_violated_convexity!(m, lc, v, af, bf) == 0 && return
+    end
+end
+
+# Adds the violated convexity constraints for the current solution, at most
+# maxadd per plane, and returns the number of constraints added
+function _add_violated_convexity!(
+    m,
+    lc::_LazyConvexity,
+    v,
+    af,
+    bf;
+    maxadd = 10,
+)
+    D, N = size(lc.X)
+    v̂ = value.(v)
+    # P[k, l]: value of plane k at point l, compared with the value of l
+    P = value.(af) * lc.X .+ value.(bf)
+    τ = 1e-7 * max(1.0, maximum(abs, v̂))
+    added = 0
+    for k ∈ 1:N
+        viol = [
+            (P[k, l] - v̂[l], l) for
+            l ∈ 1:N if l != k && P[k, l] - v̂[l] > τ && (k, l) ∉ lc.pairs
+        ]
+        for (_, l) ∈ first(sort!(viol; rev = true), maxadd)
+            push!(lc.pairs, (k, l))
+            @constraint(m, sum(af[k, i] * lc.X[i, l] for i ∈ 1:D) + bf[k] ≤ v[l])
+            added += 1
+        end
+    end
+    return added
+end
+
+# The indices of the n nearest neighbours of each point (columns of X), with
+# the coordinates scaled to the same range
+function _nearest_neighbours(X, n)
+    D, N = size(X)
+    r = vec(maximum(X, dims = 2) .- minimum(X, dims = 2))
+    Y = X .* [rᵢ > 0 ? 1 / rᵢ : 1.0 for rᵢ ∈ r]
+    return map(1:N) do k
+        d = [sum(abs2, Y[:, l] .- Y[:, k]) for l ∈ 1:N]
+        return [l for l ∈ partialsortperm(d, 1:min(N, n + 1)) if l != k]
+    end
 end

@@ -383,3 +383,47 @@ end
     @test PWA._tolerance_error(v10, pwa, :max) ≤ 0.05
     @test length(pwa.planes) ≤ 22
 end
+
+@testset "Lazy constraint generation" begin
+    v0 = PWA._sample_uniform(x -> x[1]^2 + x[2]^2 + 0.5x[1] * x[2], [(-1, 1), (-1, 1)], 6)
+    vals = FunctionEvaluations(v0.points, v0.values .+ 0.02 .* randn(StableRNG(4), 36))
+    X = [pt[i] for i ∈ 1:2, pt ∈ vals.points]
+    z = vals.values
+    N = length(z)
+
+    # The band linear program with lazily generated constraints has the same
+    # optimal gaps as with all constraints
+    U = [mod(l - 1, 4) + 1 for l ∈ 1:N]
+    lazy = PWA._band_lp(X, z, z .- 0.05, z .+ 0.05, U, 4, optimizer, 1e-4;
+        lc = PWA._LazyConvexity(X), nbrs = PWA._nearest_neighbours(X, 6))
+    full = PWA._band_lp(X, z, z .- 0.05, z .+ 0.05, U, 4, optimizer, 1e-4;
+        lc = PWA._LazyConvexity(X; neighbours = N - 1))
+    @test sum(lazy[3]) ≈ sum(full[3]) atol = 1e-6
+    # The values are convex: a plane through each point below all others
+    for k ∈ 1:N
+        q = PWA._full_order_plane(X, lazy[1], k, :l1, optimizer)
+        @test all(evaluate(q, X[:, l]) ≤ lazy[1][l] + 1e-6 for l ∈ 1:N)
+    end
+
+    # Only a fraction of the convexity constraints are generated
+    lc = PWA._LazyConvexity(X)
+    fc = enforce_curvature(vals, Convex(), optimizer)
+    m = Model(optimizer)
+    set_silent(m)
+    @variable(m, w[1:N])
+    af, bf = PWA._add_convexity!(m, lc, w)
+    @objective(m, Min, sum((w .- z) .^ 2))
+    PWA._optimize_lazy!(m, lc, w, af, bf)
+    @test length(lc.pairs) < N * (N - 1) / 2
+
+    # Infeasibility is still detected with lazy constraints: no convex function
+    # lies above a raised interior point and within the tolerance of its
+    # neighbours
+    spike = copy(v0.values)
+    spike[15] += 0.5
+    @test_throws ErrorException approx(
+        FunctionEvaluations(v0.points, spike),
+        Convex(),
+        Progressive(optimizer = optimizer, tolerance = 0.005, strict = :inner),
+    )
+end
