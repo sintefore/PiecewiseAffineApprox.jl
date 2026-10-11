@@ -11,6 +11,7 @@ using Base.Threads: @spawn
 
 include("types.jl")
 include("convexapprox.jl")
+include("vertex_enum.jl")
 include("linopt.jl")
 include("magnani_boyd.jl")
 include("kazda_li.jl")
@@ -25,6 +26,8 @@ export FunctionEvaluations
 export PWAFunc
 export approx
 export pwaffine
+export PWAFormulation, PsiFormulation, LambdaFormulation, DeltaFormulation, PhiFormulation
+export Ψ_Formulation, λ_Formulation, Δ_Formulation, Φ_Formulation
 export evaluate
 export enforce_curvature
 
