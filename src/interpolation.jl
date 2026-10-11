@@ -69,39 +69,6 @@ function _asconvex(pwa::PWAFunction1D)
     return PWAFunc{Convex,1}(Plane.(c, d))
 end
 
-# Create a convex approximation to a general pwa function
-# by perturbing function values as little as possible (l1-deviation)
-function _convexify1D(pwa::PWAFunction1D, options)
-    N = length(pwa.x)
-    𝒩 = 1:N
-    x = pwa.x
-    z = pwa.z
-
-    m = Model(options.optimizer)
-    set_silent(m)
-
-    δ⁺ = @variable(m, [𝒩], lower_bound = 0)
-    δ⁻ = @variable(m, [𝒩], lower_bound = 0)
-
-    @objective(m, Min, sum(δ⁺[i] + δ⁻[i] for i ∈ 𝒩))
-    _slope_constraints!(m, x, z .+ δ⁺ .- δ⁻)
-
-    optimize!(m)
-    if !is_solved_and_feasible(m; allow_local = true)
-        error(
-            "Optimization failed: $(termination_status(m)) " *
-            "($(raw_status(m)))",
-        )
-    end
-
-    dp = value.(δ⁺)
-    dn = value.(δ⁻)
-
-    return PWAFunction1D(x, [z[i] + dp[i] - dn[i] for i ∈ 𝒩])
-end
-
-_convexify1D(x, z, options) = _convexify1D(PWAFunction1D(x, z), options)
-
 # Create a pwa interpolant to the data using exactly options.planes segments
 # with end points at data points. The segments are chosen to minimize the
 # total deviation in options.metric: the sum over the segments for :l1 and :l2,
@@ -445,12 +412,7 @@ function _ipol_error(pwa, x::AbstractVector, z::AbstractVector, metric)
     return _ipol_error(pwa, _Data1D(x, z), metric)
 end
 
-# The three methods below return the knots of a convex interpolant.
-
-# A: Interpolate the data, then adjust the knot values to make it convex
-function _ipol_knots(d::_Data1D, options)
-    return _convexify1D(_interpolatepw(d, options), options)
-end
+# The two methods below return the knots of a convex interpolant.
 
 # B: Make the data convex, then interpolate. Any interpolant through convex
 # points is convex. Deviations are measured against the original data.
@@ -493,10 +455,6 @@ function _ipol_candidates(d::_Data1D, options, K)
         v = _convexify_values(d, metric, options.optimizer)
         p = _segment_penalties(d, v, metric)
         return [PWAFunction1D(d.x[q], v[q]) for q ∈ _dp_all_paths(p, K, op)]
-    elseif method == :knots
-        p = _segment_penalties(d, metric)
-        paths = _dp_all_paths(p, K, op)
-        return [_convexify1D(d.x[q], d.z[q], options) for q ∈ paths]
     elseif method == :auto
         dp = _ipol_candidates(d, _with(options; convexify = :dp), K)
         _isconvex(d.x, d.z) && return dp
@@ -650,7 +608,7 @@ end
 function _fit_knots(d::_Data1D, options, sz)
     N = length(d)
     method = options.convexify
-    if method ∈ (:data, :knots) && isnothing(options.optimizer)
+    if method == :data && isnothing(options.optimizer)
         error("Interpol with convexify = :$method requires an optimizer")
     end
     if options.adjust != :none && options.metric != :l2 &&
@@ -700,7 +658,7 @@ function _validate(options::Interpol)
             ),
         )
     valid("metric", options.metric, (:l1, :l2, :rms, :max))
-    valid("convexify", options.convexify, (:auto, :dp, :data, :knots))
+    valid("convexify", options.convexify, (:auto, :dp, :data))
     valid("selection", options.selection, (:none, :tolerance, :aic, :bic, :cv))
     valid("adjust", options.adjust, (:none, :values, :breakpoints))
     options.planes ≥ 1 ||
@@ -720,8 +678,6 @@ function _ipol_fit(d::_Data1D, options)
         _ipol_dp(d, options)
     elseif method == :data
         _ipol_data(d, options)
-    elseif method == :knots
-        _ipol_knots(d, options)
     else
         throw(ArgumentError("Unknown convexify option :$method"))
     end

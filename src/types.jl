@@ -42,8 +42,6 @@ deviation from the data, measured by `metric`: the sum of absolute deviations
 - `:data`: the data is first made convex by changing the function values as
   little as possible (measured by `metric`), and then interpolated. Handles
   non-convex and noisy data well. Requires an `optimizer`.
-- `:knots`: the data is interpolated, and the function values at the knots
-  are then made convex. Requires an `optimizer`.
 - `:auto` (default): uses `:dp` if the data is convex or no `optimizer` is
   given. Otherwise both `:dp` and `:data` are computed, and the one with the
   smallest deviation from the data is returned.

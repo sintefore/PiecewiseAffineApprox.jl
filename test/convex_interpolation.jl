@@ -13,11 +13,10 @@
     @test pwa.z[2] ≈ 1.44
     @test pwa.z[3] ≈ 0.16
 
-    # Test convexification
-    cpwa = PWA._convexify1D(pwa, Interpol(optimizer = optimizer))
-
-    @test cpwa.x[2] ≈ -1.2
-    @test cpwa.x[3] ≈ -0.4
+    # Test convexification of the knot values
+    v = PWA._convexify_values(pwa.x, pwa.z, :l1, optimizer)
+    @test length(v) == 6
+    @test all(diff(diff(v) ./ diff(pwa.x)) .≥ -1e-8)
 end
 
 @testset "Interpolation input handling" begin
@@ -168,7 +167,7 @@ end
         alg(c; opt = optimizer) =
             Interpol(; optimizer = opt, planes = 5, metric, convexify = c)
         results = Dict(c => approx(fe, Convex(), alg(c)) for c ∈
-                       (:auto, :dp, :data, :knots))
+                       (:auto, :dp, :data))
         e = Dict(c => error(pwa, metric) for (c, pwa) ∈ results)
         @test all(length(pwa.planes) ≤ 5 for pwa ∈ values(results))
 
@@ -176,10 +175,8 @@ end
         @test evaluate(results[:dp], (x[1],)) ≈ z[1]
         @test evaluate(results[:dp], (x[end],)) ≈ z[end]
 
-        # Auto selects the best of :dp and :data, which for these non-convex
-        # data is better than adjusting the knots after interpolation
+        # Auto selects the best of :dp and :data
         @test e[:auto] ≈ min(e[:dp], e[:data])
-        @test e[:auto] < e[:knots]
 
         # Without an optimizer, auto uses the dynamic program
         pwa = approx(fe, Convex(), alg(:auto; opt = nothing))
@@ -195,7 +192,7 @@ end
             x,
             zc,
             :l1,
-        ) for c ∈ (:auto, :dp, :data, :knots)
+        ) for c ∈ (:auto, :dp, :data)
     ]
     @test all(e ≈ ec[1] for e ∈ ec)
 
@@ -203,7 +200,7 @@ end
     @test Interpol().optimizer === nothing
     @test Interpol().convexify == :auto
     @test_throws ErrorException approx(fe, Convex(), Interpol(; convexify = :data))
-    @test_throws ErrorException approx(fe, Convex(), Interpol(; convexify = :knots))
+    @test_throws ArgumentError approx(fe, Convex(), Interpol(; convexify = :knots))
     @test_throws ArgumentError approx(fe, Convex(), Interpol(; convexify = :foo))
 end
 
