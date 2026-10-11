@@ -312,3 +312,27 @@ end
     alg = Progressive(optimizer = optimizer, tolerance = 0.01, strict = :none)
     @test abs(evaluate(approx(one, Convex(), alg), (0.5,)) - 0.25) ≤ 0.01
 end
+
+@testset "Progressive band independent of data scale" begin
+    # The band is met regardless of offsets and scales of points and values
+    x = collect(range(-1, 1; length = 100))
+    for (xs, zs, zo) ∈ ((1.0, 1.0, 1e5), (1e4, 1.0, 1e5), (1.0, 1e-3, 0.0), (1.0, 1e4, -1e6))
+        f = FunctionEvaluations(tuple.(xs .* x .+ 3xs), zs .* (x .^ 2 .+ 0.3 .* x) .+ zo)
+        for strict ∈ (:none, :inner)
+            alg = Progressive(optimizer = optimizer, tolerance = 0.01zs, strict = strict)
+            pwa = approx(f, Convex(), alg)
+            @test PWA._tolerance_error(f, pwa, :max) ≤ 0.01zs * (1 + 1e-5)
+            @test length(pwa.planes) ≤ 25
+        end
+    end
+
+    # Normalization of planes is undone exactly
+    pts = FunctionEvaluations([(1.0, 10.0), (3.0, -2.0), (2.0, 4.0)], [5.0, 7.0, 6.0])
+    X, μx, σx = PWA._normalize_points(pts)
+    zn, z̄, s = PWA._normalize_values(pts.values, 0.1)
+    q = Plane((0.3, -0.7), 0.2)
+    qo = PWA._denormalize(q, μx, σx, z̄, s)
+    for (k, pt) ∈ enumerate(pts.points)
+        @test evaluate(qo, pt) ≈ s * evaluate(q, Tuple(X[:, k])) + z̄
+    end
+end

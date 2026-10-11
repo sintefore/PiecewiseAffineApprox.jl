@@ -541,14 +541,17 @@ function _progressive_band(
     μ = 1e-4,
 ) where {D}
     δ ≥ 0 || throw(ArgumentError("The tolerance must be nonnegative"))
-    X = [pt[i] for i ∈ 1:D, pt ∈ f.points]
-    z = f.values
+    # Work with data normalized to the order of one, so that the thresholds
+    # below are independent of the scale and offset of the data
+    X, μx, σx = _normalize_points(f)
+    z, z̄, s = _normalize_values(f.values, δ)
+    δ̂ = δ / s
     N = length(z)
-    lo = strict == :inner ? copy(z) : z .- δ
-    hi = z .+ δ
-    scale = max(1.0, maximum(abs, z))
-    # Total gap regarded as zero, given the solver tolerances
-    tol = 1e-7 * scale * N
+    lo = strict == :inner ? copy(z) : z .- δ̂
+    hi = z .+ δ̂
+    # The approximation lies within the band when the largest gap between the
+    # values and the planes is zero, up to the solver tolerances
+    ε = max(1e-6 * δ̂, 1e-9)
     U = ones(Int, N)
     v, planes, gaps = _band_lp(X, z, lo, hi, U, 1, optimizer, μ)
     rounds = 0
@@ -558,18 +561,18 @@ function _progressive_band(
         # (removing planes that are not active at any point) and refit, as
         # long as the total gap decreases
         φ = sum(gaps)
-        while φ > tol
+        while maximum(gaps) > ε
             U, planes = _active_allocation(X, planes)
             v₂, planes₂, gaps₂ =
                 _band_lp(X, z, lo, hi, U, length(planes), optimizer, μ)
-            sum(gaps₂) < φ - 1e-9 * scale || break
+            sum(gaps₂) < φ * (1 - 1e-9) || break
             v, planes, gaps, φ = v₂, planes₂, gaps₂, sum(gaps₂)
         end
-        φ ≤ tol && break
+        maximum(gaps) ≤ ε && break
         # Order increase: add the full order planes at the points with the
         # largest gaps, without refitting, until the total gap has decreased
         φ₀ = φ
-        while φ > max(tol, φ₀ - 1e-5 * scale)
+        while maximum(gaps) > ε && φ ≥ φ₀ * (1 - 1e-6)
             push!(planes, _band_plane(X, v, argmax(gaps), optimizer))
             gaps = [
                 max(v[l] - maximum(evaluate(q, X[:, l]) for q ∈ planes), 0.0)
@@ -577,14 +580,42 @@ function _progressive_band(
             ]
             φ = sum(gaps)
         end
-        φ ≤ tol && break
+        maximum(gaps) ≤ ε && break
         U, planes = _active_allocation(X, planes)
         p = length(planes)
         v, planes, gaps = _band_lp(X, z, lo, hi, U, p, optimizer, μ)
     end
-    pwa = PWAFunc{Convex,D}(planes)
+    pwa = PWAFunc{Convex,D}([_denormalize(q, μx, σx, z̄, s) for q ∈ planes])
     _check_tolerance(f, pwa, :max, δ, rounds)
     return pwa
+end
+
+# The points as columns of a matrix, shifted and scaled to [-1, 1] in each
+# coordinate, together with the shift and scale
+function _normalize_points(f::FunctionEvaluations{D}) where {D}
+    X = [pt[i] for i ∈ 1:D, pt ∈ f.points]
+    lo, hi = vec(minimum(X, dims = 2)), vec(maximum(X, dims = 2))
+    μx = (lo .+ hi) ./ 2
+    σx = [h > l ? (h - l) / 2 : 1.0 for (l, h) ∈ zip(lo, hi)]
+    return (X .- μx) ./ σx, μx, σx
+end
+
+# The values shifted to mean zero and scaled to a largest absolute value of one
+# (or by the tolerance δ for constant values), together with the shift and scale
+function _normalize_values(z, δ)
+    z̄ = mean(z)
+    s = maximum(abs, z .- z̄)
+    s = s > 0 ? s : δ > 0 ? δ : 1.0
+    return (z .- z̄) ./ s, z̄, s
+end
+
+# The plane ẑ = â⋅x̂ + b̂ for normalized points x̂ = (x - μx) ./ σx and values
+# ẑ = (z - z̄) / s, in the original coordinates
+function _denormalize(q::Plane, μx, σx, z̄, s)
+    â = collect(q.α)
+    a = s .* â ./ σx
+    b = s * (q.β - sum(â .* μx ./ σx)) + z̄
+    return Plane(Tuple(a), b)
 end
 
 # Allocate each point to the plane that is active at the point, and remove the
