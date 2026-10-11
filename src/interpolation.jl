@@ -18,6 +18,40 @@ function PWAFunction1D(x::Vector, z::Vector)
     )
 end
 
+# One-dimensional data with distinct x in increasing order. Repeated
+# measurements at the same x are kept as a group: z is the mean of the group,
+# n the number of measurements and vals the measurements themselves, so that
+# deviations can be measured against every measurement.
+struct _Data1D
+    x::Vector{Float64}
+    z::Vector{Float64}
+    n::Vector{Int}
+    vals::Vector{Vector{Float64}}
+end
+_Data1D(x::AbstractVector, z::AbstractVector) = _sort_unique(x, z)
+Base.length(d::_Data1D) = length(d.x)
+
+# The total number of measurements
+_total(d::_Data1D) = sum(d.n)
+
+# The data at the points with the given indices
+_subset(d::_Data1D, idx) = _Data1D(d.x[idx], d.z[idx], d.n[idx], d.vals[idx])
+
+# Sort the points by x and group points with identical x
+function _sort_unique(x, z)
+    xs = Float64[]
+    vals = Vector{Float64}[]
+    for i ∈ sortperm(x)
+        if !isempty(xs) && x[i] == xs[end]
+            push!(vals[end], z[i])
+        else
+            push!(xs, x[i])
+            push!(vals, [z[i]])
+        end
+    end
+    return _Data1D(xs, mean.(vals), length.(vals), vals)
+end
+
 function _asconvex(pwa::PWAFunction1D)
     N = length(pwa.x)
     x = pwa.x
@@ -70,67 +104,85 @@ end
 
 _convexify1D(x, z, options) = _convexify1D(PWAFunction1D(x, z), options)
 
-# Create a pwa interpolant to the given points (sorted by x) using exactly
-# options.planes segments with end points at data points. The segments are
-# chosen to minimize the total deviation in options.metric: the sum over the
-# segments for :l1 and :l2, and the maximum over the segments for :max.
-function _interpolatepw(x, z, options)
-    @assert length(x) == length(z)
-    p = _segment_penalties(x, z, options.metric)
+# Create a pwa interpolant to the data using exactly options.planes segments
+# with end points at data points. The segments are chosen to minimize the
+# total deviation in options.metric: the sum over the segments for :l1 and :l2,
+# and the maximum over the segments for :max.
+function _interpolatepw(d::_Data1D, options)
+    p = _segment_penalties(d, options.metric)
     minimax = options.metric == :max
     knots, _ = _shortest_path_segments(p, options.planes; minimax)
-    return PWAFunction1D(x[knots], z[knots])
+    return PWAFunction1D(d.x[knots], d.z[knots])
+end
+function _interpolatepw(x::AbstractVector, z::AbstractVector, options)
+    return _interpolatepw(_Data1D(x, z), options)
 end
 
-# Penalty p[i, j] (i < j) for approximating the data points (xₖ, zᵈₖ),
-# k = i, ..., j-1, by the line segment between the knots (xᵢ, zᵏᵢ) and
-# (xⱼ, zᵏⱼ):
-# the sum of absolute deviations (:l1), the sum of squared deviations (:l2) or
-# the maximum absolute deviation (:max). Each data point is thereby assigned to
-# exactly one segment, except the last point that is always a knot.
-function _segment_penalties(x, zᵏ, zᵈ, metric)
+# Penalty p[i, j] (i < j) for approximating the measurements at the points
+# k = i, ..., j-1 by the line segment between the knots (xᵢ, zᵏᵢ) and
+# (xⱼ, zᵏⱼ): the sum of absolute deviations (:l1), the sum of squared
+# deviations (:l2) or the maximum absolute deviation (:max). Each point is
+# thereby assigned to exactly one segment, except the last point that is
+# always a knot. Deviations are measured against every measurement, so
+# repeated measurements at a point count with their number and spread.
+function _segment_penalties(d::_Data1D, zᵏ, metric)
     if metric == :l2
-        return _segment_penalties_l2(x, zᵏ, zᵈ)
+        return _segment_penalties_l2(d, zᵏ)
     elseif metric ∉ (:l1, :max)
         error("Unrecognized/unsupported metric $(metric)")
     end
+    x = d.x
     N = length(x)
     p = zeros(N, N)
     for i ∈ 1:N-1, j ∈ i+1:N
         c = (zᵏ[j] - zᵏ[i]) / (x[j] - x[i])
         acc = 0.0
         for k ∈ i:j-1
-            r = abs(zᵏ[i] + c * (x[k] - x[i]) - zᵈ[k])
-            acc = metric == :l1 ? acc + r : max(acc, r)
+            f = zᵏ[i] + c * (x[k] - x[i])
+            for zₖ ∈ d.vals[k]
+                r = abs(f - zₖ)
+                acc = metric == :l1 ? acc + r : max(acc, r)
+            end
         end
         p[i, j] = acc
     end
     return p
 end
-_segment_penalties(x, z, metric) = _segment_penalties(x, z, z, metric)
+_segment_penalties(d::_Data1D, metric) = _segment_penalties(d, d.z, metric)
+function _segment_penalties(x::AbstractVector, zᵏ, zᵈ::AbstractVector, metric)
+    return _segment_penalties(_Data1D(x, zᵈ), zᵏ, metric)
+end
+function _segment_penalties(x::AbstractVector, z::AbstractVector, metric)
+    return _segment_penalties(_Data1D(x, z), metric)
+end
 
-# Sum of squared deviations for all segments in O(N²) using prefix sums.
-# The data is centered first to reduce cancellation errors.
-function _segment_penalties_l2(x, zᵏ, zᵈ)
-    N = length(x)
-    x = x .- mean(x)
-    zᵏ = zᵏ .- mean(zᵈ)
-    zᵈ = zᵈ .- mean(zᵈ)
-    Sx = [0.0; cumsum(x)]
-    Sz = [0.0; cumsum(zᵈ)]
-    Sxx = [0.0; cumsum(x .^ 2)]
-    Szz = [0.0; cumsum(zᵈ .^ 2)]
-    Sxz = [0.0; cumsum(x .* zᵈ)]
+# Sum of squared deviations for all segments in O(N²) using prefix sums over
+# the groups of measurements. The data is centered first to reduce
+# cancellation errors.
+function _segment_penalties_l2(d::_Data1D, zᵏ)
+    N = length(d)
+    n = Float64.(d.n)
+    x̄ = sum(n .* d.x) / sum(n)
+    z̄ = sum(sum.(d.vals)) / sum(n)
+    x = d.x .- x̄
+    zᵏ = zᵏ .- z̄
+    # Sums of the centered measurements and their squares per group
+    sz = [sum(v .- z̄) for v ∈ d.vals]
+    szz = [sum(abs2, v .- z̄) for v ∈ d.vals]
+    Sn = [0.0; cumsum(n)]
+    Sx = [0.0; cumsum(n .* x)]
+    Sxx = [0.0; cumsum(n .* x .^ 2)]
+    Sz = [0.0; cumsum(sz)]
+    Szz = [0.0; cumsum(szz)]
+    Sxz = [0.0; cumsum(x .* sz)]
     p = zeros(N, N)
     for i ∈ 1:N-1, j ∈ i+1:N
-        # Deviations at points k = i, ..., j-1 are α + c xₖ - zᵈₖ
+        # Deviations at the points k = i, ..., j-1 are α + c xₖ - z
         c = (zᵏ[j] - zᵏ[i]) / (x[j] - x[i])
         α = zᵏ[i] - c * x[i]
-        n = j - i
-        sx, sz = Sx[j] - Sx[i], Sz[j] - Sz[i]
-        sxx, szz, sxz = Sxx[j] - Sxx[i], Szz[j] - Szz[i], Sxz[j] - Sxz[i]
-        r² =
-            n * α^2 + c^2 * sxx + szz + 2α * c * sx - 2α * sz - 2c * sxz
+        m, sx, sz₁ = Sn[j] - Sn[i], Sx[j] - Sx[i], Sz[j] - Sz[i]
+        sxx, szz₁, sxz = Sxx[j] - Sxx[i], Szz[j] - Szz[i], Sxz[j] - Sxz[i]
+        r² = m * α^2 + c^2 * sxx + szz₁ + 2α * c * sx - 2α * sz₁ - 2c * sxz
         p[i, j] = max(r², 0.0)
     end
     return p
@@ -291,10 +343,11 @@ end
 # are not rejected due to rounding
 _leq(a, b) = a ≤ b + 1e-12 * max(abs(a), abs(b), 1.0)
 
-# Function values closest to z (in metric) such that the points (x, z) are
-# convex, i.e. with nondecreasing slopes between consecutive points
-function _convexify_values(x, z, metric, optimizer)
-    N = length(x)
+# Function values v at the points of d closest to the measurements (in
+# metric) such that the points (x, v) are convex, i.e. with nondecreasing
+# slopes between consecutive points
+function _convexify_values(d::_Data1D, metric, optimizer)
+    x, N = d.x, length(d)
     m = Model(optimizer)
     set_silent(m)
     @variable(m, v[1:N])
@@ -305,21 +358,7 @@ function _convexify_values(x, z, metric, optimizer)
             (v[i+1] - v[i]) / (x[i+1] - x[i])
         )
     end
-    if metric == :l2
-        @objective(m, Min, sum((v[i] - z[i])^2 for i ∈ 1:N))
-    elseif metric == :l1
-        @variable(m, t[1:N])
-        @constraint(m, t .≥ v .- z)
-        @constraint(m, t .≥ z .- v)
-        @objective(m, Min, sum(t))
-    elseif metric == :max
-        @variable(m, t)
-        @constraint(m, t .≥ v .- z)
-        @constraint(m, t .≥ z .- v)
-        @objective(m, Min, t)
-    else
-        error("Unrecognized/unsupported metric $(metric)")
-    end
+    _deviation_objective!(m, v, d, metric)
     optimize!(m)
     if !is_solved_and_feasible(m; allow_local = true)
         error(
@@ -329,68 +368,114 @@ function _convexify_values(x, z, metric, optimizer)
     end
     return value.(v)
 end
+function _convexify_values(x::AbstractVector, z::AbstractVector, metric, opt)
+    return _convexify_values(_Data1D(x, z), metric, opt)
+end
+
+# Sets the objective of the model to the deviation of the function values f
+# (expressions or variables, one per point of d) from all the measurements, in
+# the given metric
+function _deviation_objective!(m, f, d::_Data1D, metric)
+    N = length(d)
+    if metric == :l2
+        # Σ (f - z)² over the measurements, up to a constant
+        @objective(
+            m,
+            Min,
+            sum(d.n[g] * f[g]^2 - 2 * sum(d.vals[g]) * f[g] for g ∈ 1:N)
+        )
+    elseif metric == :l1
+        @variable(m, t[g = 1:N, k = 1:d.n[g]])
+        @constraint(m, [g = 1:N, k = 1:d.n[g]], t[g, k] ≥ f[g] - d.vals[g][k])
+        @constraint(m, [g = 1:N, k = 1:d.n[g]], t[g, k] ≥ d.vals[g][k] - f[g])
+        @objective(m, Min, sum(t))
+    elseif metric == :max
+        @variable(m, t)
+        @constraint(m, [g = 1:N], t ≥ f[g] - minimum(d.vals[g]))
+        @constraint(m, [g = 1:N], t ≥ maximum(d.vals[g]) - f[g])
+        @objective(m, Min, t)
+    else
+        error("Unrecognized/unsupported metric $(metric)")
+    end
+    return
+end
+
+# Absolute deviations of the function values f at the points of d from all
+# the measurements, and their aggregation in a metric
+function _deviations(d::_Data1D, f)
+    return [abs(f[g] - zₖ) for g ∈ eachindex(f) for zₖ ∈ d.vals[g]]
+end
+function _aggregate(r, metric)
+    return metric == :max ? maximum(r) : metric == :l2 ? sum(abs2, r) : sum(r)
+end
 
 # Deviation of a convex pwa function from the data in the given metric
-function _ipol_error(pwa, x, z, metric)
-    r = [abs(evaluate(pwa, (x[k],)) - z[k]) for k ∈ eachindex(x)]
-    return metric == :max ? maximum(r) : metric == :l2 ? sum(abs2, r) : sum(r)
+function _ipol_error(pwa, d::_Data1D, metric)
+    f = [evaluate(pwa, (xg,)) for xg ∈ d.x]
+    return _aggregate(_deviations(d, f), metric)
+end
+function _ipol_error(pwa, x::AbstractVector, z::AbstractVector, metric)
+    return _ipol_error(pwa, _Data1D(x, z), metric)
 end
 
 # The three methods below return the knots of a convex interpolant.
 
 # A: Interpolate the data, then adjust the knot values to make it convex
-function _ipol_knots(x, z, options)
-    return _convexify1D(_interpolatepw(x, z, options), options)
+function _ipol_knots(d::_Data1D, options)
+    return _convexify1D(_interpolatepw(d, options), options)
 end
 
 # B: Make the data convex, then interpolate. Any interpolant through convex
 # points is convex. Deviations are measured against the original data.
-function _ipol_data(x, z, options)
-    v = _convexify_values(x, z, options.metric, options.optimizer)
-    p = _segment_penalties(x, v, z, options.metric)
+function _ipol_data(d::_Data1D, options)
+    v = _convexify_values(d, options.metric, options.optimizer)
+    p = _segment_penalties(d, v, options.metric)
     minimax = options.metric == :max
     knots, _ = _shortest_path_segments(p, options.planes; minimax)
-    return PWAFunction1D(x[knots], v[knots])
+    return PWAFunction1D(d.x[knots], v[knots])
 end
 
 # C: The best convex interpolant through a subset of the data points, with at
 # most options.planes segments. A convex interpolant always exists, since the
 # line segment between the end points is convex.
-function _ipol_dp(x, z, options)
-    N = length(x)
-    σ = [i < j ? (z[j] - z[i]) / (x[j] - x[i]) : 0.0 for i ∈ 1:N, j ∈ 1:N]
-    p = _segment_penalties(x, z, options.metric)
+function _ipol_dp(d::_Data1D, options)
+    σ = _slopes(d)
+    p = _segment_penalties(d, options.metric)
     minimax = options.metric == :max
     knots = _convex_shortest_path(σ, p, options.planes; minimax)
-    return PWAFunction1D(x[knots], z[knots])
+    return PWAFunction1D(d.x[knots], d.z[knots])
+end
+
+# Slopes of the line segments between the points of d
+function _slopes(d::_Data1D)
+    x, z, N = d.x, d.z, length(d)
+    return [i < j ? (z[j] - z[i]) / (x[j] - x[i]) : 0.0 for i ∈ 1:N, j ∈ 1:N]
 end
 
 # Knots of the fits with k = 1, ..., K planes for the given convexify method,
 # computed from a single dynamic program (without the minimax tie-breaking used
 # for the final fit). Used for selecting the number of planes.
-function _ipol_candidates(x, z, options, K)
+function _ipol_candidates(d::_Data1D, options, K)
     method, metric = options.convexify, options.metric
     op = metric == :max ? max : +
     if method == :dp || (method == :auto && isnothing(options.optimizer))
-        N = length(x)
-        σ = [i < j ? (z[j] - z[i]) / (x[j] - x[i]) : 0.0 for i ∈ 1:N, j ∈ 1:N]
-        p = _segment_penalties(x, z, metric)
-        paths = _convex_dp_all_paths(σ, p, K, op)
-        return [PWAFunction1D(x[q], z[q]) for q ∈ paths]
+        p = _segment_penalties(d, metric)
+        paths = _convex_dp_all_paths(_slopes(d), p, K, op)
+        return [PWAFunction1D(d.x[q], d.z[q]) for q ∈ paths]
     elseif method == :data
-        v = _convexify_values(x, z, metric, options.optimizer)
-        p = _segment_penalties(x, v, z, metric)
-        return [PWAFunction1D(x[q], v[q]) for q ∈ _dp_all_paths(p, K, op)]
+        v = _convexify_values(d, metric, options.optimizer)
+        p = _segment_penalties(d, v, metric)
+        return [PWAFunction1D(d.x[q], v[q]) for q ∈ _dp_all_paths(p, K, op)]
     elseif method == :knots
-        p = _segment_penalties(x, z, metric)
+        p = _segment_penalties(d, metric)
         paths = _dp_all_paths(p, K, op)
-        return [_convexify1D(x[q], z[q], options) for q ∈ paths]
+        return [_convexify1D(d.x[q], d.z[q], options) for q ∈ paths]
     elseif method == :auto
-        dp = _ipol_candidates(x, z, _with(options; convexify = :dp), K)
-        _isconvex(x, z) && return dp
-        data = _ipol_candidates(x, z, _with(options; convexify = :data), K)
+        dp = _ipol_candidates(d, _with(options; convexify = :dp), K)
+        _isconvex(d.x, d.z) && return dp
+        data = _ipol_candidates(d, _with(options; convexify = :data), K)
         return map(dp, data) do a, b
-            ea, eb = (_knots_error(k, x, z, metric) for k ∈ (a, b))
+            ea, eb = (_knots_error(k, d, metric) for k ∈ (a, b))
             return eb < ea ? b : a
         end
     end
@@ -400,10 +485,10 @@ end
 # Candidate fits used for selection. If the knots are to be adjusted, the
 # function values of the candidates are refitted, as a cheaper proxy also for
 # moving the breakpoints.
-function _selection_fits(x, z, options, K)
-    fits = _ipol_candidates(x, z, options, K)
+function _selection_fits(d::_Data1D, options, K)
+    fits = _ipol_candidates(d, options, K)
     options.adjust == :none && return fits
-    return [_adjust_values(x, z, k, options) for k ∈ fits]
+    return [_adjust_values(d, k, options) for k ∈ fits]
 end
 
 # Copy of the Interpol options with some fields changed
@@ -414,25 +499,24 @@ end
 
 # Select the number of planes (at most K) according to options.selection.
 # Returns the selected number and the score for each number of planes.
-function _select_planes(x, z, options, K)
-    N, metric, selection = length(x), options.metric, options.selection
-    if selection == :cv
+function _select_planes(d::_Data1D, options, K)
+    N, metric, selection = _total(d), options.metric, options.selection
+    k, scores = if selection == :cv
         # One standard error rule: the fewest planes with a cross validation
         # error within one standard error (over the folds) of the minimum
-        E = _cv_errors(x, z, options, K)
+        E = _cv_errors(d, options, K)
         F = size(E, 1)
         scores = vec(mean(E, dims = 1))
         se = vec(std(E, dims = 1)) ./ sqrt(F)
         kᵐⁱⁿ = argmin(scores)
-        return findfirst(≤(scores[kᵐⁱⁿ] + se[kᵐⁱⁿ]), scores), scores
-    end
-    fits = _selection_fits(x, z, options, K)
-    e = [_knots_error(k, x, z, metric) for k ∈ fits]
-    if selection == :tolerance
+        findfirst(≤(scores[kᵐⁱⁿ] + se[kᵐⁱⁿ]), scores), scores
+    elseif selection == :tolerance
         options.tolerance > 0 || throw(
             ArgumentError("selection = :tolerance requires tolerance > 0"),
         )
-        # Error per data point, comparable to the tolerance
+        fits = _selection_fits(d, options, K)
+        e = [_knots_error(k, d, metric) for k ∈ fits]
+        # Error per measurement, comparable to the tolerance
         scores = metric == :l1 ? e ./ N : metric == :l2 ? sqrt.(e ./ N) : e
         k = findfirst(≤(options.tolerance), scores)
         if isnothing(k)
@@ -440,14 +524,16 @@ function _select_planes(x, z, options, K)
                   "(error $(minimum(scores)))"
             k = K
         end
-        return k, scores
+        k, scores
     elseif selection ∈ (:aic, :bic)
         metric == :max && throw(
             ArgumentError("selection = :$selection requires metric :l1 or :l2"),
         )
+        fits = _selection_fits(d, options, K)
+        e = [_knots_error(k, d, metric) for k ∈ fits]
         # Treat errors at the level of rounding errors as exact fits, so that
         # these are compared equal
-        scale = max(maximum(abs, z), floatmin())
+        scale = max(maximum(abs, d.z), floatmin())
         e = max.(e, metric == :l2 ? N * (1e-12 * scale)^2 : N * 1e-12 * scale)
         # -2 log-likelihood for Gaussian (:l2) or Laplace (:l1) errors, with
         # 2 parameters per plane (knot values and breakpoints)
@@ -459,18 +545,25 @@ function _select_planes(x, z, options, K)
         nparams = [2(length(k.x) - 1) for k ∈ fits]
         penalty = selection == :aic ? 2.0 : log(N)
         scores = m2ll .+ penalty .* nparams
-        return argmin(scores), scores
+        argmin(scores), scores
+    else
+        throw(ArgumentError("Unknown selection option :$selection"))
     end
-    throw(ArgumentError("Unknown selection option :$selection"))
+    if selection != :tolerance && k == K && K == options.planes
+        @warn "The maximum number of planes ($K) was selected by " *
+              ":$selection, consider increasing `planes`"
+    end
+    return k, scores
 end
 
 # Cross validation errors E[f, k] for fold f and k = 1, ..., K planes: the mean
 # absolute deviation (:l1), mean squared deviation (:l2) or maximum absolute
-# deviation (:max) on the held-out points. The points (sorted by x) are assigned
-# to the folds in an interleaved manner, so that all folds cover the full range
-# of the data.
-function _cv_errors(x, z, options, K)
-    N, metric = length(x), options.metric
+# deviation (:max) on the held-out measurements. The points (sorted by x) are
+# assigned to the folds in an interleaved manner, so that all folds cover the
+# full range of the data, and all measurements at a point are held out
+# together.
+function _cv_errors(d::_Data1D, options, K)
+    N, metric = length(d), options.metric
     F = min(options.folds, N)
     F ≥ 2 || throw(ArgumentError("selection = :cv requires folds ≥ 2"))
     fold = [mod(i - 1, F) + 1 for i ∈ 1:N]
@@ -480,9 +573,10 @@ function _cv_errors(x, z, options, K)
         length(train) ≥ 2 ||
             throw(ArgumentError("Too few points for $F-fold cross validation"))
         Kᶠ = min(K, length(train) - 1)
-        fits = _selection_fits(x[train], z[train], options, Kᶠ)
+        fits = _selection_fits(_subset(d, train), options, Kᶠ)
+        dtest = _subset(d, test)
         for k ∈ 1:Kᶠ
-            r = abs.(_interpolate(fits[k].x, fits[k].z, x[test]) .- z[test])
+            r = _deviations(dtest, _interpolate(fits[k].x, fits[k].z, dtest.x))
             E[f, k] =
                 metric == :max ? maximum(r) :
                 metric == :l2 ? mean(abs2, r) : mean(r)
@@ -493,8 +587,8 @@ end
 
 function _convex_linearization_ipol(x, z, options)
     @assert length(x) == length(z)
-    x, z = _sort_unique(x, z)
-    N = length(x)
+    d = _sort_unique(x, z)
+    N = length(d)
     method = options.convexify
     if method ∈ (:data, :knots) && isnothing(options.optimizer)
         error("Interpol with convexify = :$method requires an optimizer")
@@ -512,7 +606,7 @@ function _convex_linearization_ipol(x, z, options)
             throw(ArgumentError("Interpol requires planes ≥ 1 and 2 points"))
         end
         K = min(options.planes, N - 1)
-        k, scores = _select_planes(x, z, options, K)
+        k, scores = _select_planes(d, options, K)
         @debug "Interpol selected $k planes" options.selection scores
         options = _with(options; planes = k, selection = :none)
     elseif !(1 ≤ options.planes ≤ N - 1)
@@ -523,26 +617,26 @@ function _convex_linearization_ipol(x, z, options)
             ),
         )
     end
-    return _ipol_fit(x, z, options)
+    return _ipol_fit(d, options)
 end
 
-function _ipol_fit(x, z, options)
+function _ipol_fit(d::_Data1D, options)
     method = options.convexify
     knots = if method == :auto
-        _ipol_auto(x, z, options)
+        _ipol_auto(d, options)
     elseif method == :dp
-        _ipol_dp(x, z, options)
+        _ipol_dp(d, options)
     elseif method == :data
-        _ipol_data(x, z, options)
+        _ipol_data(d, options)
     elseif method == :knots
-        _ipol_knots(x, z, options)
+        _ipol_knots(d, options)
     else
         throw(ArgumentError("Unknown convexify option :$method"))
     end
     if options.adjust == :values
-        knots = _adjust_values(x, z, knots, options)
+        knots = _adjust_values(d, knots, options)
     elseif options.adjust == :breakpoints
-        knots = _adjust_breakpoints(x, z, knots, options)
+        knots = _adjust_breakpoints(d, knots, options)
     elseif options.adjust != :none
         throw(ArgumentError("Unknown adjust option :$(options.adjust)"))
     end
@@ -552,13 +646,13 @@ end
 # Use the convex dynamic program if the data is convex (where all methods give
 # the same result) or no optimizer is available. Otherwise also make the data
 # convex before interpolating, and return the best of the two.
-function _ipol_auto(x, z, options)
-    knots = _ipol_dp(x, z, options)
-    if _isconvex(x, z) || isnothing(options.optimizer)
+function _ipol_auto(d::_Data1D, options)
+    knots = _ipol_dp(d, options)
+    if _isconvex(d.x, d.z) || isnothing(options.optimizer)
         return knots
     end
-    alt = _ipol_data(x, z, options)
-    e, eₐ = (_knots_error(k, x, z, options.metric) for k ∈ (knots, alt))
+    alt = _ipol_data(d, options)
+    e, eₐ = (_knots_error(k, d, options.metric) for k ∈ (knots, alt))
     return eₐ < e ? alt : knots
 end
 
@@ -569,9 +663,12 @@ function _isconvex(x, z)
 end
 
 # Deviation of the piecewise linear function through the knots from the data
-function _knots_error(knots::PWAFunction1D, x, z, metric)
-    r = abs.(_interpolate(knots.x, knots.z, x) .- z)
-    return metric == :max ? maximum(r) : metric == :l2 ? sum(abs2, r) : sum(r)
+function _knots_error(knots::PWAFunction1D, d::_Data1D, metric)
+    f = _interpolate(knots.x, knots.z, d.x)
+    return _aggregate(_deviations(d, f), metric)
+end
+function _knots_error(knots::PWAFunction1D, x::AbstractVector, z, metric)
+    return _knots_error(knots, _Data1D(x, z), metric)
 end
 
 # Linear interpolation through (t, v) at the points x within [t[1], t[end]]
@@ -586,10 +683,10 @@ end
 # Keep the breakpoints, and refit the function values at the knots to minimize
 # the deviation from the data, subject to convexity. As the current values are
 # feasible, the deviation does not increase.
-function _adjust_values(x, z, knots, options)
-    v = _fit_values(x, z, knots.x, options.metric, options.optimizer)
+function _adjust_values(d::_Data1D, knots, options)
+    v = _fit_values(d, knots.x, options.metric, options.optimizer)
     adjusted = PWAFunction1D(knots.x, v)
-    e, eₐ = (_knots_error(k, x, z, options.metric) for k ∈ (knots, adjusted))
+    e, eₐ = (_knots_error(k, d, options.metric) for k ∈ (knots, adjusted))
     return eₐ ≤ e ? adjusted : knots
 end
 
@@ -597,14 +694,20 @@ end
 # is moved by a golden section search between its neighbours, refitting the
 # function values for each candidate position. A move is only accepted if it
 # reduces the deviation. Finds a local optimum.
-function _adjust_breakpoints(x, z, knots, options; sweeps = 10, steps = 25)
+function _adjust_breakpoints(
+    d::_Data1D,
+    knots,
+    options;
+    sweeps = 10,
+    steps = 25,
+)
     metric, optimizer = options.metric, options.optimizer
     t = copy(knots.x)
-    fit(t) = PWAFunction1D(t, _fit_values(x, z, t, metric, optimizer))
-    err(t) = _knots_error(fit(t), x, z, metric)
+    fit(t) = PWAFunction1D(t, _fit_values(d, t, metric, optimizer))
+    err(t) = _knots_error(fit(t), d, metric)
     # Start from the best of the given knots and refitted values
     refit = fit(t)
-    e, eᵣ = (_knots_error(k, x, z, metric) for k ∈ (knots, refit))
+    e, eᵣ = (_knots_error(k, d, metric) for k ∈ (knots, refit))
     best, e = eᵣ < e ? (refit, eᵣ) : (knots, e)
     φ = (sqrt(5) - 1) / 2
     for _ ∈ 1:sweeps
@@ -614,20 +717,20 @@ function _adjust_breakpoints(x, z, knots, options; sweeps = 10, steps = 25)
             δ = 1e-3 * (t[i+1] - t[i-1])
             a, b = t[i-1] + δ, t[i+1] - δ
             errᵢ(τ) = err([t[1:i-1]; τ; t[i+1:end]])
-            c, d = b - φ * (b - a), a + φ * (b - a)
-            ec, ed = errᵢ(c), errᵢ(d)
+            c, d₁ = b - φ * (b - a), a + φ * (b - a)
+            ec, ed = errᵢ(c), errᵢ(d₁)
             for _ ∈ 1:steps
                 if ec < ed
-                    b, d, ed = d, c, ec
+                    b, d₁, ed = d₁, c, ec
                     c = b - φ * (b - a)
                     ec = errᵢ(c)
                 else
-                    a, c, ec = c, d, ed
-                    d = a + φ * (b - a)
-                    ed = errᵢ(d)
+                    a, c, ec = c, d₁, ed
+                    d₁ = a + φ * (b - a)
+                    ed = errᵢ(d₁)
                 end
             end
-            τ, eτ = ec < ed ? (c, ec) : (d, ed)
+            τ, eτ = ec < ed ? (c, ec) : (d₁, ed)
             if eτ < e
                 t[i], e = τ, eτ
                 best = fit(t)
@@ -639,15 +742,16 @@ function _adjust_breakpoints(x, z, knots, options; sweeps = 10, steps = 25)
 end
 
 # Function values v at the breakpoints t (with t[1] = x[1] and t[end] = x[end])
-# of the convex piecewise linear function with minimal deviation from the data
-function _fit_values(x, z, t, metric, optimizer)
+# of the convex piecewise linear function with minimal deviation from the
+# measurements
+function _fit_values(d::_Data1D, t, metric, optimizer)
     if metric == :l2
-        return _fit_values_l2(x, z, t)
+        return _fit_values_l2(_expand(d)..., t)
     end
     isnothing(optimizer) && error(
         "Adjusting the interpolant with metric :$metric requires an optimizer",
     )
-    n, N = length(t), length(x)
+    n, N = length(t), length(d)
     m = Model(optimizer)
     set_silent(m)
     @variable(m, v[1:n])
@@ -658,24 +762,12 @@ function _fit_values(x, z, t, metric, optimizer)
             (v[i+1] - v[i]) / (t[i+1] - t[i])
         )
     end
-    # The value at x[k] is a convex combination of the values at the
+    # The value at a point is a convex combination of the values at the
     # surrounding breakpoints
-    seg = [clamp(searchsortedlast(t, x[k]), 1, n - 1) for k ∈ 1:N]
-    λ = [(x[k] - t[seg[k]]) / (t[seg[k]+1] - t[seg[k]]) for k ∈ 1:N]
-    f = [(1 - λ[k]) * v[seg[k]] + λ[k] * v[seg[k]+1] for k ∈ 1:N]
-    if metric == :l1
-        @variable(m, r[1:N])
-        @constraint(m, r .≥ f .- z)
-        @constraint(m, r .≥ z .- f)
-        @objective(m, Min, sum(r))
-    elseif metric == :max
-        @variable(m, r)
-        @constraint(m, r .≥ f .- z)
-        @constraint(m, r .≥ z .- f)
-        @objective(m, Min, r)
-    else
-        error("Unrecognized/unsupported metric $(metric)")
-    end
+    seg = [clamp(searchsortedlast(t, d.x[g]), 1, n - 1) for g ∈ 1:N]
+    λ = [(d.x[g] - t[seg[g]]) / (t[seg[g]+1] - t[seg[g]]) for g ∈ 1:N]
+    f = [(1 - λ[g]) * v[seg[g]] + λ[g] * v[seg[g]+1] for g ∈ 1:N]
+    _deviation_objective!(m, f, d, metric)
     optimize!(m)
     if !is_solved_and_feasible(m; allow_local = true)
         error(
@@ -684,6 +776,15 @@ function _fit_values(x, z, t, metric, optimizer)
         )
     end
     return value.(v)
+end
+function _fit_values(x::AbstractVector, z::AbstractVector, t, metric, opt)
+    return _fit_values(_Data1D(x, z), t, metric, opt)
+end
+
+# All measurements as vectors of points and values
+function _expand(d::_Data1D)
+    x = reduce(vcat, fill(d.x[g], d.n[g]) for g ∈ eachindex(d.x))
+    return x, reduce(vcat, d.vals)
 end
 
 # Least squares fit of a convex piecewise linear function with breakpoints t.
@@ -733,23 +834,4 @@ function _nnls(A, b; maxiter = 3size(A, 2) + 10)
         w = A' * (b - A * x)
     end
     return x
-end
-
-# Sort the points by x and merge points with identical x, using the average
-# of their function values
-function _sort_unique(x, z)
-    xs = Float64[]
-    zs = Float64[]
-    n = Int[]
-    for i ∈ sortperm(x)
-        if !isempty(xs) && x[i] == xs[end]
-            n[end] += 1
-            zs[end] += (z[i] - zs[end]) / n[end]
-        else
-            push!(xs, x[i])
-            push!(zs, z[i])
-            push!(n, 1)
-        end
-    end
-    return xs, zs
 end

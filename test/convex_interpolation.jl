@@ -31,15 +31,22 @@ end
     p = [9, 3, 16, 1, 12, 5, 14, 7, 2, 11, 17, 4, 8, 15, 6, 10, 13]
     @test same(approx(FunctionEvaluations(Tuple.(x[p]), z[p]), Convex(), alg))
 
-    # Duplicate points are merged
+    # Repeated identical measurements do not change the largest deviation, so
+    # the fit with metric = :max is unchanged (with :l1 and :l2 they count
+    # with their number)
     xd = vcat(x, x[[3, 8]])
     zd = vcat(z, z[[3, 8]])
-    @test same(approx(FunctionEvaluations(Tuple.(xd), zd), Convex(), alg))
+    algₘ = Interpol(; optimizer, planes = 4, metric = :max)
+    refₘ = approx(FunctionEvaluations(Tuple.(x), z), Convex(), algₘ)
+    dup = approx(FunctionEvaluations(Tuple.(xd), zd), Convex(), algₘ)
+    @test all(evaluate(dup, (t,)) ≈ evaluate(refₘ, (t,)) for t ∈ x)
 
     # Duplicates with different values are replaced by their average
-    xs, zs = PWA._sort_unique([2.0, 1.0, 2.0, 0.0, 2.0], [1.0, 5.0, 2.0, 7.0, 6.0])
-    @test xs == [0.0, 1.0, 2.0]
-    @test zs ≈ [7.0, 5.0, 3.0]
+    d = PWA._sort_unique([2.0, 1.0, 2.0, 0.0, 2.0], [1.0, 5.0, 2.0, 7.0, 6.0])
+    @test d.x == [0.0, 1.0, 2.0]
+    @test d.z ≈ [7.0, 5.0, 3.0]
+    @test d.n == [1, 1, 3]
+    @test d.vals[3] == [1.0, 2.0, 6.0]
 
     # Concave approximations use the same path
     cv = approx(FunctionEvaluations(Tuple.(x[p]), -z[p]), Concave(), alg)
@@ -351,4 +358,53 @@ end
         Convex(),
         Interpol(; optimizer, planes = 3, adjust = :foo),
     )
+end
+
+@testset "Interpolation with repeated measurements" begin
+    # Unequal numbers of measurements per load, as in a test campaign
+    rng = StableRNG(1)
+    counts = [1, 1, 1, 2, 3, 6, 12, 12, 12]
+    loads = reduce(vcat, fill(l, c) for (l, c) ∈ zip(0.2:0.1:1.0, counts))
+    z = [155 + 12 / l + 60(l - 0.7)^2 + 3randn(rng) for l ∈ loads]
+    d = PWA._sort_unique(loads, z)
+    @test d.n == counts
+
+    # Penalties and errors are measured against every measurement
+    for metric ∈ (:l1, :l2, :max)
+        p = PWA._segment_penalties(d, metric)
+        for (i, j) ∈ ((1, 9), (3, 7), (6, 9))
+            c = (d.z[j] - d.z[i]) / (d.x[j] - d.x[i])
+            r = [abs(d.z[i] + c * (d.x[g] - d.x[i]) - v) for g ∈ i:j-1 for v ∈ d.vals[g]]
+            @test p[i, j] ≈ PWA._aggregate(r, metric)
+        end
+        knots = PWA.PWAFunction1D(d.x[[1, 5, 9]], d.z[[1, 5, 9]])
+        f = PWA._interpolate(knots.x, knots.z, loads)
+        @test PWA._knots_error(knots, d, metric) ≈ PWA._aggregate(abs.(f .- z), metric)
+    end
+
+    # The fit is better on the measurements than a fit to the means per load
+    fe = FunctionEvaluations(tuple.(loads), z)
+    means = FunctionEvaluations(tuple.(d.x), d.z)
+    sse(pwa) = sum((evaluate(pwa, x) - v)^2 for (x, v) ∈ fe)
+    maxdev(pwa) = maximum(abs(evaluate(pwa, x) - v) for (x, v) ∈ fe)
+    for (metric, err) ∈ ((:l2, sse), (:max, maxdev))
+        alg = Interpol(; optimizer, planes = 3, metric, convexify = :dp, adjust = :values)
+        @test err(approx(fe, Convex(), alg)) < err(approx(means, Convex(), alg))
+    end
+
+    # Convexifying the data and refitting values account for all measurements
+    v = PWA._convexify_values(d, :l2, optimizer)
+    @test all(diff(diff(v) ./ diff(d.x)) .≥ -1e-8)
+    vfit = PWA._fit_values(d, d.x[[1, 5, 9]], :l1, optimizer)
+    @test length(vfit) == 3
+end
+
+@testset "Interpolation selection at the maximum" begin
+    x = collect(range(-1, 1, length = 40))
+    truth = max.(-x, 0.3x .+ 0.2, 1.5x .- 0.8, 3x .- 2.5, -2x .- 1.2)
+    fe = FunctionEvaluations(tuple.(x), truth .+ 0.005 .* randn(StableRNG(3), 40))
+    alg(planes) = Interpol(; optimizer, planes, metric = :l2, selection = :bic)
+    @test_logs (:warn, r"maximum number of planes") approx(fe, Convex(), alg(4))
+    pwa = @test_logs min_level = Logging.Warn approx(fe, Convex(), alg(10))
+    @test length(pwa.planes) > 4
 end
