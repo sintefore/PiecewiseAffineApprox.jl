@@ -37,19 +37,25 @@ _total(d::_Data1D) = sum(d.n)
 # The data at the points with the given indices
 _subset(d::_Data1D, idx) = _Data1D(d.x[idx], d.z[idx], d.n[idx], d.vals[idx])
 
-# Sort the points by x and group points with identical x
-function _sort_unique(x, z)
+# Sort the points by x and group points with the same x. Points closer than
+# a small fraction of the range of x are also grouped, as the slopes between
+# them are not meaningful, and the group is placed at their mean.
+function _sort_unique(x, z; rtol = 1e-6)
     xs = Float64[]
     vals = Vector{Float64}[]
+    sums = Float64[]
+    tol = rtol * (maximum(x) - minimum(x))
     for i ∈ sortperm(x)
-        if !isempty(xs) && x[i] == xs[end]
+        if !isempty(xs) && x[i] - xs[end] ≤ tol
             push!(vals[end], z[i])
+            sums[end] += x[i]
         else
             push!(xs, x[i])
             push!(vals, [z[i]])
+            push!(sums, x[i])
         end
     end
-    return _Data1D(xs, mean.(vals), length.(vals), vals)
+    return _Data1D(sums ./ length.(vals), mean.(vals), length.(vals), vals)
 end
 
 function _asconvex(pwa::PWAFunction1D)
@@ -71,25 +77,17 @@ function _convexify1D(pwa::PWAFunction1D, options)
     x = pwa.x
     z = pwa.z
 
-    m = Model()
+    m = Model(options.optimizer)
+    set_silent(m)
 
     δ⁺ = @variable(m, [𝒩], lower_bound = 0)
     δ⁻ = @variable(m, [𝒩], lower_bound = 0)
 
     @objective(m, Min, sum(δ⁺[i] + δ⁻[i] for i ∈ 𝒩))
-    for i ∈ 2:(N-1)
-        @constraint(
-            m,
-            (z[i] + δ⁺[i] - δ⁻[i] - z[i-1] - δ⁺[i-1] + δ⁻[i-1]) /
-            (x[i] - x[i-1]) <=
-            (z[i+1] + δ⁺[i+1] - δ⁻[i+1] - z[i] - δ⁺[i] + δ⁻[i]) /
-            (x[i+1] - x[i])
-        )
-    end
+    _slope_constraints!(m, x, z .+ δ⁺ .- δ⁻)
 
-    set_optimizer(m, options.optimizer)
     optimize!(m)
-    if !is_solved_and_feasible(m)
+    if !is_solved_and_feasible(m; allow_local = true)
         error(
             "Optimization failed: $(termination_status(m)) " *
             "($(raw_status(m)))",
@@ -351,13 +349,7 @@ function _convexify_values(d::_Data1D, metric, optimizer)
     m = Model(optimizer)
     set_silent(m)
     @variable(m, v[1:N])
-    for i ∈ 2:N-1
-        @constraint(
-            m,
-            (v[i] - v[i-1]) / (x[i] - x[i-1]) ≤
-            (v[i+1] - v[i]) / (x[i+1] - x[i])
-        )
-    end
+    _slope_constraints!(m, x, v)
     _deviation_objective!(m, v, d, metric)
     optimize!(m)
     if !is_solved_and_feasible(m; allow_local = true)
@@ -370,6 +362,23 @@ function _convexify_values(d::_Data1D, metric, optimizer)
 end
 function _convexify_values(x::AbstractVector, z::AbstractVector, metric, opt)
     return _convexify_values(_Data1D(x, z), metric, opt)
+end
+
+# Constraints that the values v (variables or expressions) at the increasing
+# points x are convex, i.e. have nondecreasing slopes between consecutive
+# points. The slope condition is multiplied by the lengths of the two intervals
+# and scaled by the longer one, so that the coefficients lie in (0, 1] instead
+# of growing as the inverse of the interval lengths.
+function _slope_constraints!(m, x, v)
+    for i ∈ 2:length(x)-1
+        h₋, h₊ = x[i] - x[i-1], x[i+1] - x[i]
+        h = max(h₋, h₊)
+        @constraint(
+            m,
+            (v[i] - v[i-1]) * (h₊ / h) ≤ (v[i+1] - v[i]) * (h₋ / h)
+        )
+    end
+    return
 end
 
 # Sets the objective of the model to the deviation of the function values f
@@ -587,6 +596,7 @@ end
 
 function _convex_linearization_ipol(x, z, options)
     @assert length(x) == length(z)
+    options = _validate(options)
     d = _sort_unique(x, z)
     N = length(d)
     method = options.convexify
@@ -618,6 +628,28 @@ function _convex_linearization_ipol(x, z, options)
         )
     end
     return _ipol_fit(d, options)
+end
+
+# Check the options, and return them with :rms replaced by :l2
+function _validate(options::Interpol)
+    valid(name, value, values) =
+        value ∈ values || throw(
+            ArgumentError(
+                "Unsupported $name = :$value for Interpol, use one of " *
+                join(":" .* string.(values), ", "),
+            ),
+        )
+    valid("metric", options.metric, (:l1, :l2, :rms, :max))
+    valid("convexify", options.convexify, (:auto, :dp, :data, :knots))
+    valid("selection", options.selection, (:none, :tolerance, :aic, :bic, :cv))
+    valid("adjust", options.adjust, (:none, :values, :breakpoints))
+    options.planes ≥ 1 ||
+        throw(ArgumentError("Interpol requires planes ≥ 1"))
+    options.selection == :cv && options.folds < 2 &&
+        throw(ArgumentError("selection = :cv requires folds ≥ 2"))
+    options.selection == :tolerance && options.tolerance ≤ 0 &&
+        throw(ArgumentError("selection = :tolerance requires tolerance > 0"))
+    return options.metric == :rms ? _with(options; metric = :l2) : options
 end
 
 function _ipol_fit(d::_Data1D, options)
@@ -755,13 +787,7 @@ function _fit_values(d::_Data1D, t, metric, optimizer)
     m = Model(optimizer)
     set_silent(m)
     @variable(m, v[1:n])
-    for i ∈ 2:n-1
-        @constraint(
-            m,
-            (v[i] - v[i-1]) / (t[i] - t[i-1]) ≤
-            (v[i+1] - v[i]) / (t[i+1] - t[i])
-        )
-    end
+    _slope_constraints!(m, t, v)
     # The value at a point is a convex combination of the values at the
     # surrounding breakpoints
     seg = [clamp(searchsortedlast(t, d.x[g]), 1, n - 1) for g ∈ 1:N]

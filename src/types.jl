@@ -80,7 +80,7 @@ the unadjusted fits.
 """
 @kwdef struct Interpol{T} <: Algorithm
     planes::Int = defaultplanes()
-    metric = defaultmetric()
+    metric::Symbol = defaultmetric()
     optimizer::T = nothing
     convexify::Symbol = :auto
     selection::Symbol = :none

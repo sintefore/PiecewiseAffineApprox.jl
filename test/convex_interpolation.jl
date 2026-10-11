@@ -408,3 +408,42 @@ end
     pwa = @test_logs min_level = Logging.Warn approx(fe, Convex(), alg(10))
     @test length(pwa.planes) > 4
 end
+
+@testset "Interpolation validation and near-duplicate points" begin
+    x = collect(range(-1, 1, length = 20))
+    fe = FunctionEvaluations(Tuple.(x), x .^ 2)
+    for kw ∈ (
+        (metric = :foo,),
+        (convexify = :foo,),
+        (selection = :foo,),
+        (adjust = :foo,),
+        (planes = 0,),
+        (selection = :cv, folds = 1),
+        (selection = :tolerance,),
+    )
+        @test_throws ArgumentError approx(fe, Convex(), Interpol(; optimizer, kw...))
+    end
+    # :rms is accepted as :l2
+    a = approx(fe, Convex(), Interpol(; planes = 3, metric = :rms))
+    b = approx(fe, Convex(), Interpol(; planes = 3, metric = :l2))
+    @test a.planes == b.planes
+
+    # Measurements at indistinguishably close points (within 1e-6 of the
+    # range) are grouped, giving the same result as exact repetitions, and
+    # points above the grouping tolerance are solved with well scaled
+    # constraints
+    rng = StableRNG(1)
+    loads = repeat(collect(0.2:0.1:1.0), inner = 5)
+    zl = [155 + 12 / l + 60(l - 0.7)^2 + 2randn(rng) for l ∈ loads]
+    exact = FunctionEvaluations(tuple.(loads), zl)
+    for metric ∈ (:l2, :l1, :max)
+        alg = Interpol(; optimizer, planes = 3, metric, convexify = :data, adjust = :values)
+        p1 = approx(exact, Convex(), alg)
+        close = FunctionEvaluations(tuple.(loads .+ 1e-9 .* repeat(0:4, outer = 9)), zl)
+        p2 = approx(close, Convex(), alg)
+        @test all(evaluate(p1, (t,)) ≈ evaluate(p2, (t,)) for t ∈ 0.2:0.1:1.0)
+        apart = FunctionEvaluations(tuple.(loads .+ 1e-5 .* repeat(0:4, outer = 9)), zl)
+        p3 = approx(apart, Convex(), alg)
+        @test length(p3.planes) ≤ 3
+    end
+end
