@@ -6,20 +6,47 @@ struct Convex <: Curvature end
 abstract type Algorithm end
 """
     Cluster
-Compute affine approximation using the method proposed by Mangani & Boyd.
+Compute affine approximation using the method proposed by Magnani & Boyd.
 
 Note that this algoritm computes multiple approximations and selects the best.
 If julia is started with multiple threads, these are computed in parallel. Consider
  how many threads will be beneficial, particularly when using a commercial solver where
  the license may restrict the number of simultanous solver instances.
+
+The random initial partitions are generated from `rng`. Pass a seeded generator,
+e.g. `rng = StableRNG(123)` from StableRNGs.jl, to get reproducible results that are
+independent of the number of threads. Note that `rng` is advanced by each call to
+`approx`, so reusing the same `Cluster` object gives a different (but still
+reproducible) sequence of results.
+
+With `metric = :l2` (the default, or `:rms`) and `strict = :none`, each plane is
+fitted with closed form least squares as in the original method. This is much
+faster and does not require an `optimizer`. Other metrics, and
+`strict = :inner`/`:outer`, solve an optimization problem for each fit and require
+an `optimizer`.
+
+!!! warning "Use a robust QP solver for `:l2` with `strict`"
+    With `metric = :l2` and `strict = :inner` or `:outer`, each fit is a convex
+    quadratic program. The QP solver in HiGHS (tested with HiGHS 1.15.1) fails on
+    some of these problems: it either reports the problem as non-convex or does not
+    terminate. Use another QP solver for this combination, e.g. Ipopt or Xpress
+    (both tested), and consider setting a time limit. HiGHS works well for the
+    linear programs solved with `metric = :l1` and `:max`.
+
+Each trial returns the best approximation found during its iterations, and the best
+over all trials is selected, both as measured by `metric`. For the fits that solve
+an optimization problem, each trial first refines its partition of the points with
+closed form least squares, and then for at most five iterations with the requested
+fit, which is both faster and better than the requested fit alone.
 """
-@kwdef struct Cluster{T} <: Algorithm
+@kwdef struct Cluster{T,R<:AbstractRNG} <: Algorithm
     planes::Int = defaultplanes()
-    metric::Symbol = defaultmetric()
+    metric::Symbol = :l2
     trials::Int = 20
     itlim::Int = 50
     strict::Symbol = :none
-    optimizer::T
+    optimizer::T = nothing
+    rng::R = Random.default_rng()
 end
 
 """
@@ -115,39 +142,60 @@ function Base.show(
 end
 
 """
-    Plane{D}
+    Plane{D,T<:Real}
 
-A D-dimensional hyperplane (αᵀx = β).
+A D-dimensional affine function z = αᵀx + β, with coefficients of type `T`.
 """
-struct Plane{D}
-    α::NTuple{D,Number}
-    β::Number
+struct Plane{D,T<:Real}
+    α::NTuple{D,T}
+    β::T
 end
-Plane(a::NTuple{D}, b) where {D} = Plane{D}(a, b)
-Plane(a::Vector, b) = Plane(Tuple(a), b)
-Plane(a::Number, b::Number) = Plane{1}(Tuple(a), b)
+function Plane(a::Tuple{Vararg{Real,D}}, b::Real) where {D}
+    T = promote_type(typeof(b), map(typeof, a)...)
+    return Plane{D,T}(a, b)
+end
+Plane{D}(a::Tuple{Vararg{Real,D}}, b::Real) where {D} = Plane(a, b)
+Plane(a::AbstractVector{<:Real}, b::Real) = Plane(Tuple(a), b)
+Plane(a::Real, b::Real) = Plane((a,), b)
+
+Base.convert(::Type{Plane{D,T}}, p::Plane{D}) where {D,T} = Plane{D,T}(p.α, p.β)
+function Base.promote_rule(::Type{Plane{D,S}}, ::Type{Plane{D,T}}) where {D,S,T}
+    return Plane{D,promote_type(S, T)}
+end
+
 evaluate(p::Plane, x, c = Convex) = dot(p.α, x) + p.β # Planes defined for convex functions
 evaluate(p::Plane, x, c::Type{Concave}) = -evaluate(p, x, Convex) # Flip for concave functions
 
 """
-    PWAFunc{C<:Curvature,D}
+    PWAFunc{C<:Curvature,D,T<:Real}
 
 A piecewise linear function that can be either convex and concave
-represented by a set of (hyper)planes.
+represented by a set of (hyper)planes with coefficients of type `T`.
 
 If the curvature of the function is convex, the piecewise linear Function
 is defined as the pointwise maximum over the planes. A concave pwa function
 is handled by storing its negative and negating when evaluting.
+
+`PWAFunc{C,D}(planes)` infers `T` from the planes, and `PWAFunc{C,D}()` creates
+an empty function with `T = Float64`.
 """
-struct PWAFunc{C<:Curvature,D}
-    planes::Vector{Plane{D}}
+struct PWAFunc{C<:Curvature,D,T<:Real}
+    planes::Vector{Plane{D,T}}
 end
-function PWAFunc(planes::Vector{Plane{D}}, C::Curvature) where {D}
+function PWAFunc{C,D}(planes::AbstractVector{<:Plane{D}}) where {C<:Curvature,D}
+    T = isempty(planes) ? _numtype(eltype(planes)) :
+        mapreduce(p -> typeof(p.β), promote_type, planes)
+    return PWAFunc{C,D,T}(convert(Vector{Plane{D,T}}, planes))
+end
+PWAFunc{C,D}() where {C<:Curvature,D} = PWAFunc{C,D,Float64}(Plane{D,Float64}[])
+function PWAFunc(planes::AbstractVector{<:Plane{D}}, C::Curvature) where {D}
     return PWAFunc{typeof(C),D}(planes)
 end
-PWAFunc{C,D}() where {C,D} = PWAFunc{C,D}(Vector{Plane{D}}())
 
-function _write_planes(io::IO, C::Curvature, planes::Vector{Plane{D}}) where {D}
+_numtype(::Type{Plane{D,T}}) where {D,T} = T
+_numtype(::Type) = Float64
+
+function _write_planes(io::IO, C::Curvature, planes::AbstractVector{<:Plane})
     for p ∈ planes
         println(io, " ", _write_plane(C, p))
     end
@@ -169,12 +217,13 @@ function Base.summary(io::IO, pwa::PWAFunc)
     n = _planes(pwa)
     return print(io, "$(typeof(pwa)) with $n planes")
 end
-function Base.show(io::IO, ::MIME"text/plain", pwa::PWAFunc{C,D}) where {C,D}
+function Base.show(io::IO, ::MIME"text/plain", pwa::PWAFunc{C}) where {C}
     summary(io, pwa)
     println(io, ":")
     if length(pwa.planes) > 10
         _write_planes(io, C(), first(pwa.planes, 5))
-        print(io, " ⋮\n")
+        print(io, " ⋮
+")
         _write_planes(io, C(), last(pwa.planes, 5))
     else
         _write_planes(io, C(), pwa.planes)
@@ -196,7 +245,7 @@ end
 Evaluate the concave piecewise linear function at the point x.
 """
 function evaluate(pwa::PWAFunc{Concave,D}, x) where {D}
-    return -evaluate(PWAFunc{Convex,D}(pwa.planes), x)
+    return -maximum(dot(p.α, x) + p.β for p ∈ pwa.planes)
 end
 
 # The number of planes defining the piecewise linar function

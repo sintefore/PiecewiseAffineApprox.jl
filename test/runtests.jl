@@ -3,9 +3,11 @@ using HiGHS
 using JuMP
 using JSON
 using JSON3
+using LinearAlgebra
 using Logging
 using Pajarito
 using PiecewiseAffineApprox
+using Random
 using StableRNGs
 using Test
 rng = StableRNG(123)
@@ -36,6 +38,7 @@ const qp_optimizer = optimizer_with_attributes(
         include("testconvexapprox.jl")
         include("test_2D_convexapprox.jl")
         include("test_big_M.jl")
+        include("test_cluster.jl")
         include("test_structtype.jl")
         include("test_kazda_li.jl")
     end
