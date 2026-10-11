@@ -26,11 +26,65 @@ end
     Interpol
 
 Compute affine approximation by method proposed by Flatberg. Only available for 1D.
+
+The points do not need to be sorted, and points with the same x-value are merged
+using the average of their function values. The number of `planes` must be less
+than the number of distinct points.
+
+The knots of the interpolant are chosen among the data points to minimize the
+deviation from the data, measured by `metric`: the sum of absolute deviations
+(`:l1`), the sum of squared deviations (`:l2`) or the maximum absolute deviation
+(`:max`). Convexity of the interpolant is ensured by `convexify`:
+
+- `:dp`: the best convex interpolant through (a subset of) the data points,
+  found by dynamic programming. Exact, and does not need an `optimizer`, but
+  may give a poor fit for data that is far from convex.
+- `:data`: the data is first made convex by changing the function values as
+  little as possible (measured by `metric`), and then interpolated. Handles
+  non-convex and noisy data well. Requires an `optimizer`.
+- `:auto` (default): uses `:dp` if the data is convex or no `optimizer` is
+  given. Otherwise both `:dp` and `:data` are computed, and the one with the
+  smallest deviation from the data is returned.
+
+The number of planes is given by `planes`, or selected automatically by
+`selection`, with `planes` as the maximum number of planes considered (capped at
+the number of distinct points minus one):
+
+- `:none` (default): use `planes` planes.
+- `:tolerance`: the fewest planes with an error of at most `tolerance`, where the
+  error is the mean absolute deviation (`:l1`), the root mean square deviation
+  (`:l2`) or the maximum absolute deviation (`:max`).
+- `:aic`, `:bic`: minimize the Akaike or Bayesian information criterion,
+  assuming normally (`:l2`) or Laplace (`:l1`) distributed errors, with two
+  parameters per plane. Not available for `:max`.
+- `:cv`: `folds`-fold cross validation, with the points assigned to folds by
+  interleaving them in sorted order. Uses the one standard error rule: the
+  fewest planes with an error on the held-out points within one standard error
+  of the minimum.
+
+The knots of the interpolant are data points, or adjusted after fitting by
+`adjust`:
+
+- `:none` (default): keep the knots.
+- `:values`: keep the breakpoints, and refit the function values at the knots to
+  minimize the deviation from the data, subject to convexity.
+- `:breakpoints`: also move the interior breakpoints by a local search, refitting
+  the function values for each candidate position.
+
+Adjusting never increases the deviation from the data. For `:l2` it is solved as
+a nonnegative least squares problem, while `:l1` and `:max` require an
+`optimizer`. When the number of planes is selected, the selection is based on
+the unadjusted fits.
 """
 @kwdef struct Interpol{T} <: Algorithm
     planes::Int = defaultplanes()
-    metric = defaultmetric()
-    optimizer::T
+    metric::Symbol = defaultmetric()
+    optimizer::T = nothing
+    convexify::Symbol = :auto
+    selection::Symbol = :none
+    tolerance::Float64 = 0.0
+    folds::Int = 5
+    adjust::Symbol = :none
 end
 
 """

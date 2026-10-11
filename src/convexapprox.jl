@@ -34,6 +34,20 @@ function approx(
     )
 end
 
+function approx(
+    input::FunctionEvaluations{D},
+    c::Convex,
+    a::Interpol,
+    ::Val,
+) where {D}
+    throw(
+        ArgumentError(
+            "Interpol only supports 1D data, got $D dimensions. " *
+            "Use another algorithm, e.g. Cluster.",
+        ),
+    )
+end
+
 """
     approx(input::FunctionEvaluations, c::Convex, a::Cluster)
 
