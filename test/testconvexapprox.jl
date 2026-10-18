@@ -24,7 +24,7 @@
         x -> x[1]^2,
         [(-1, 1)],
         Convex(),
-        MILP(optimizer = optimizer, metric = :l1, planes = 5, strict = :strict),
+        MILP(optimizer = optimizer, metric = :l1, planes = 5, strict = :outer),
     )
     @test length(pwa2.planes) == 5
     @test isapprox(PWA.evaluate(pwa3, 0.4), 0.16, atol = 0.03)
@@ -110,5 +110,66 @@ end
         )
         err = maximum(abs(PWA.evaluate(pwa, p) - zᵢ) for (p, zᵢ) ∈ zip(pts, z))
         @test err ≈ 0.03125 * (maximum(z) - minimum(z)) rtol = 1e-4
+    end
+
+    @testset "Strict and warm start" begin
+        z = x .^ 2
+        fe = FunctionEvaluations(Tuple.(x), z)
+        for metric ∈ (:l1, :max), strict ∈ (:none, :outer, :inner)
+            obj = map((false, true)) do warmstart
+                pwa = approx(
+                    fe,
+                    Convex(),
+                    MILP(; optimizer, planes = 3, metric, strict, warmstart),
+                )
+                e = [PWA.evaluate(pwa, xᵢ) - zᵢ for (xᵢ, zᵢ) ∈ zip(x, z)]
+                strict == :outer && @test maximum(e) ≤ 1e-6
+                strict == :inner && @test minimum(e) ≥ -1e-6
+                return metric == :l1 ? sum(abs, e) : maximum(abs, e)
+            end
+            @test obj[1] ≈ obj[2] atol = 1e-6
+        end
+    end
+
+    @testset "Inner as good as outer for symmetric data" begin
+        # The approximation, not each plane, should lie above the data
+        e = map((:outer, :inner)) do strict
+            pwa = approx(
+                FunctionEvaluations(Tuple.(x), x .^ 2),
+                Convex(),
+                MILP(; optimizer, planes = 3, metric = :max, strict),
+            )
+            return maximum(abs(PWA.evaluate(pwa, xᵢ) - xᵢ^2) for xᵢ ∈ x)
+        end
+        @test e[1] ≈ e[2] atol = 1e-6
+    end
+
+    @testset "Three dimensions" begin
+        g = range(-1, 1; length = 3)
+        pts = vec([(a, b, c) for a ∈ g, b ∈ g, c ∈ g])
+        z = [sum(abs2, p) for p ∈ pts]
+        fe = FunctionEvaluations(pts, z)
+        pwa = approx(fe, Convex(), MILP(; optimizer, planes = 2))
+        @test length(pwa.planes) == 2
+        @test_throws ArgumentError approx(
+            fe,
+            Convex(),
+            MILP(; optimizer, planes = 2, warmstart = false),
+        )
+    end
+
+    @testset "Validation" begin
+        fe = FunctionEvaluations(Tuple.(x), x .^ 2)
+        @test_throws ArgumentError approx(
+            fe,
+            Convex(),
+            MILP(; optimizer, strict = :strict),
+        )
+        @test_throws ArgumentError approx(
+            fe,
+            Convex(),
+            MILP(; optimizer, metric = :rms),
+        )
+        @test_throws ArgumentError approx(fe, Convex(), MILP(; optimizer, planes = 0))
     end
 end

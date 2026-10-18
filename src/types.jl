@@ -118,6 +118,16 @@ end
     MILP
 Compute affine approximation using a variation of the method proposed by Toriello & Vielma.
 
+The deviation from the data is measured by `metric` (`:l1`, `:l2` or `:max`), and
+`strict` restricts the approximation to lie below the data (`:outer`), above the
+data (`:inner`) or neither (`:none`, default). For concave approximations, below
+and above are interchanged.
+
+With `warmstart = true` (default), a heuristic solution from [`Cluster`](@ref) is
+passed to the solver as a start. It is also used to bound the deviation from
+the data in each point, and to make sure the big-M values do not cut it off.
+The warm start is required for more than two dimensions.
+
 Note that the resulting approximation is sensitive to the selection of the Big-M value used when
 solving the optimization problem.
 """
@@ -127,6 +137,7 @@ solving the optimization problem.
     strict::Symbol = :none
     maxtime::Int = defaulttimelimit()
     optimizer::T
+    warmstart::Bool = true
 end
 
 """

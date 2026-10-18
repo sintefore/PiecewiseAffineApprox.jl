@@ -94,13 +94,34 @@ function approx(
     c::Convex,
     options::MILP,
 ) where {D}
+    _validate(options)
     x = input.points
     z = input.values
     𝒫 = eachindex(x)
     𝒦 = 1:options.planes
     ℐₚ = 1:D
 
-    Mᵇⁱᵍ = _linear_big_M(input)
+    # A heuristic solution is used as a start for the solver, to bound the
+    # deviation of the approximation from the data, and to make sure that the
+    # big-M values do not cut it off
+    start = options.warmstart ? _milp_start(input, options) : nothing
+
+    # Big-M for each point, bounding the distance from the approximation down to
+    # the planes that are not active in the point
+    Mᵖ = if D ≤ 2
+        2 .* _linear_big_M_points(input)
+    elseif !isnothing(start)
+        fill(2 * maximum(start.gap), length(x))
+    else
+        throw(
+            ArgumentError(
+                "MILP without warmstart only supports 1D and 2D, got $D dimensions",
+            ),
+        )
+    end
+    if !isnothing(start)
+        Mᵖ = max.(Mᵖ, start.gap)
+    end
 
     m = Model()
 
@@ -115,21 +136,19 @@ function approx(
     if options.metric == :l2
         @objective(m, Min, sum((z[p] - 𝑧̂[p])^2 for p ∈ 𝒫))
     elseif options.metric == :max
-        𝑡 = @variable(m)
+        𝑡 = m[:𝑡] = @variable(m)
         @objective(m, Min, 𝑡)
         for p ∈ 𝒫
             @constraint(m, 𝑡 ≥ (z[p] - 𝑧̂[p]))
             @constraint(m, 𝑡 ≥ (𝑧̂[p] - z[p]))
         end
     elseif options.metric == :l1
-        𝑡 = @variable(m, [𝒫])
+        𝑡 = m[:𝑡] = @variable(m, [𝒫])
         @objective(m, Min, sum(𝑡))
         for p ∈ 𝒫
             @constraint(m, 𝑡[p] ≥ (z[p] - 𝑧̂[p]))
             @constraint(m, 𝑡[p] ≥ (𝑧̂[p] - z[p]))
         end
-    else
-        error("Unrecognized/unsupported metric type $(options.metric)")
     end
 
     for p ∈ 𝒫, k ∈ 𝒦
@@ -137,29 +156,39 @@ function approx(
         @constraint(
             m,
             𝑧̂[p] ≤
-            sum(a[j, k] * x[p][j] for j ∈ ℐₚ) + b[k] + 2 * Mᵇⁱᵍ * (1 - 𝑢[p, k])
+            sum(a[j, k] * x[p][j] for j ∈ ℐₚ) + b[k] + Mᵖ[p] * (1 - 𝑢[p, k])
         )
     end
 
-    # Workaround for infeasibility (really unbounded?) when options.strict == :none.
-    # The bound is relative to the range of z to be invariant to shifts in z.
-    𝑧ᵐᵃˣ = maximum(z) + (maximum(z) - minimum(z))
-    for p ∈ 𝒫
-        @constraint(m, 𝑧̂[p] <= 𝑧ᵐᵃˣ)
+    if isnothing(start)
+        # Workaround for infeasibility (really unbounded?) when options.strict == :none.
+        # The bound is relative to the range of z to be invariant to shifts in z.
+        𝑧ᵐᵃˣ = maximum(z) + (maximum(z) - minimum(z))
+        for p ∈ 𝒫
+            @constraint(m, 𝑧̂[p] <= 𝑧ᵐᵃˣ)
+        end
+    else
+        # An optimal solution deviates at most r from the data in each point
+        for p ∈ 𝒫
+            set_lower_bound(𝑧̂[p], z[p] - start.r)
+            set_upper_bound(𝑧̂[p], z[p] + start.r)
+        end
     end
 
     if options.strict == :outer
+        # All planes below the data, i.e. the approximation is below the data
         for p ∈ 𝒫, k ∈ 𝒦
             @constraint(m, z[p] ≥ sum(a[j, k] * x[p][j] for j ∈ ℐₚ) + b[k])
         end
     elseif options.strict == :inner
-        for p ∈ 𝒫, k ∈ 𝒦
-            @constraint(m, z[p] ≤ sum(a[j, k] * x[p][j] for j ∈ ℐₚ) + b[k])
+        # The approximation is above the data
+        for p ∈ 𝒫
+            @constraint(m, 𝑧̂[p] ≥ z[p])
         end
     end
 
     for p ∈ 𝒫
-        @constraint(m, sum(𝑢[p, k] for k ∈ 𝒦) ≥ 1)
+        @constraint(m, sum(𝑢[p, k] for k ∈ 𝒦) == 1)
     end
 
     if D == 1
@@ -171,17 +200,119 @@ function approx(
         end
     end
 
+    if !isnothing(start)
+        _set_milp_start(m, start, options.metric)
+    end
+
     set_optimizer(m, options.optimizer)
     optimize!(m)
 
-    if termination_status(m) ∉ [MOI.OPTIMAL, MOI.TIME_LIMIT]
-        error("Optimization failed $(termination_status(m))\n$(raw_status(m))")
+    status = termination_status(m)
+    if status ∉ (MOI.OPTIMAL, MOI.TIME_LIMIT)
+        error("Optimization failed $status\n$(raw_status(m))")
+    end
+    if primal_status(m) != MOI.FEASIBLE_POINT
+        error("No feasible solution found within the time limit")
+    end
+    if status == MOI.TIME_LIMIT
+        @warn "MILP reached the time limit, the approximation may not be optimal" maxlog =
+            1
     end
 
     aᴼᵖᵗ = value.(a)
     bᴼᵖᵗ = value.(b)
 
     return PWAFunc{Convex,D}([Plane(Tuple(aᴼᵖᵗ.data[:, k]), bᴼᵖᵗ[k]) for k ∈ 𝒦])
+end
+
+function _validate(options::MILP)
+    valid(name, value, values) =
+        value ∈ values || throw(
+            ArgumentError(
+                "Unsupported $name = :$value for MILP, use one of " *
+                join(":" .* string.(values), ", "),
+            ),
+        )
+    valid("metric", options.metric, (:l1, :l2, :max))
+    valid("strict", options.strict, (:none, :inner, :outer))
+    options.planes ≥ 1 || throw(ArgumentError("MILP requires planes ≥ 1"))
+    options.maxtime > 0 || throw(ArgumentError("MILP requires maxtime > 0"))
+    return options
+end
+
+# Heuristic start for the MILP from a least squares Cluster fit, adjusted to
+# satisfy options.strict. Returns the plane coefficients a and b, the values of
+# the approximation ẑ, the active plane in each point, the distance gap from the
+# approximation down to the lowest plane in each point, the deviations e = ẑ - z,
+# and the bound r on the deviation from the data in each point for an optimal
+# solution.
+function _milp_start(input::FunctionEvaluations{D}, options::MILP) where {D}
+    x = input.points
+    z = input.values
+    K = options.planes
+    X = [p[i] for i ∈ 1:D, p ∈ x]
+    heuristic = Cluster(; planes = K, rng = Random.Xoshiro(42))
+    planes = _convex_linearization_mb(X, z, heuristic).planes
+    if D == 1
+        sort!(planes; by = p -> p.α[1])
+    end
+    # Fill up with copies of the last plane if the heuristic found fewer planes
+    while length(planes) < K
+        push!(planes, planes[end])
+    end
+    a = [planes[k].α[j] for j ∈ 1:D, k ∈ 1:K]
+    b = [planes[k].β for k ∈ 1:K]
+
+    planevalues() = [
+        sum(a[j, k] * x[p][j] for j ∈ 1:D) + b[k] for p ∈ eachindex(x), k ∈ 1:K
+    ]
+    if options.strict == :outer
+        b .-= max.(0, vec(maximum(planevalues() .- z; dims = 1)))
+    elseif options.strict == :inner
+        b .+= max(0, maximum(z .- vec(maximum(planevalues(); dims = 2))))
+    end
+
+    v = planevalues()
+    ẑ = vec(maximum(v; dims = 2))
+    active = [argmax(v[p, :]) for p ∈ eachindex(x)]
+    gap = ẑ .- vec(minimum(v; dims = 2))
+
+    e = ẑ .- z
+    r = if options.metric == :l1
+        sum(abs, e)
+    elseif options.metric == :l2
+        sqrt(sum(abs2, e))
+    else
+        maximum(abs, e)
+    end
+    # Small margin to keep the start feasible despite rounding
+    r = r * (1 + 1e-6) + 1e-9 * (1 + maximum(abs, z))
+
+    return (; a, b, ẑ, active, gap, e, r)
+end
+
+function _set_milp_start(m, start, metric)
+    a, b, 𝑧̂, 𝑢 = m[:a], m[:b], m[:𝑧̂], m[:𝑢]
+    for k ∈ axes(start.a, 2)
+        for j ∈ axes(start.a, 1)
+            set_start_value(a[j, k], start.a[j, k])
+        end
+        set_start_value(b[k], start.b[k])
+    end
+    for (p, ẑₚ) ∈ enumerate(start.ẑ)
+        set_start_value(𝑧̂[p], ẑₚ)
+        for k ∈ axes(start.a, 2)
+            set_start_value(𝑢[p, k], k == start.active[p] ? 1.0 : 0.0)
+        end
+    end
+    if metric == :max
+        set_start_value(m[:𝑡], maximum(abs, start.e))
+    elseif metric == :l1
+        for (p, eₚ) ∈ enumerate(start.e)
+            set_start_value(m[:𝑡][p], abs(eₚ))
+        end
+    end
+    return
 end
 
 # Sample the function on a uniform grid within the given bounding box using nsamples in each dimension
@@ -250,8 +381,12 @@ function _sliver_parameter(v1, v2, v3)
     return 2 * area / perimeter
 end
 
-function _linear_big_M(input::FunctionEvaluations{D}) where {D}
-    Mᵇⁱᵍ = 0
+_linear_big_M(input::FunctionEvaluations) = maximum(_linear_big_M_points(input))
+
+# Big-M for each data point: the largest distance from the point down to the
+# candidate planes
+function _linear_big_M_points(input::FunctionEvaluations{D}) where {D}
+    Mᵖ = zeros(length(input))
     if D == 1
         # For one dimensional problems calculate a big M by
         # checking all segments not having another data point in the interior
@@ -276,8 +411,7 @@ function _linear_big_M(input::FunctionEvaluations{D}) where {D}
                 if empty
                     a = (z2 - z1) / (x2 - x1)
                     b = z1 - a * x1
-                    M = maximum(z .- a .* x .- b)
-                    Mᵇⁱᵍ = max(M, Mᵇⁱᵍ)
+                    Mᵖ .= max.(Mᵖ, z .- a .* x .- b)
                 end
             end
         end
@@ -312,10 +446,7 @@ function _linear_big_M(input::FunctionEvaluations{D}) where {D}
             if empty && _sliver_parameter(v1, v2, v3) > 0.025
                 normal = cross(collect(t[1] .- t[2]), collect(t[1] .- t[3]))
                 d = dot(normal, t[1])
-                M = maximum(
-                    z[i] - _plane_f(x[i], normal, d) for i ∈ 1:length(x)
-                )
-                Mᵇⁱᵍ = max(M, Mᵇⁱᵍ)
+                Mᵖ .= max.(Mᵖ, [z[i] - _plane_f(x[i], normal, d) for i ∈ 1:length(x)])
             end
         end
     else
@@ -323,5 +454,5 @@ function _linear_big_M(input::FunctionEvaluations{D}) where {D}
     end
 
     # Increase slightly to avoid rounding errors
-    return 1.1 * Mᵇⁱᵍ
+    return 1.1 .* Mᵖ
 end
