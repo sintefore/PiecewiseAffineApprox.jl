@@ -12,6 +12,7 @@ using Base.Threads: @spawn
 
 include("types.jl")
 include("convexapprox.jl")
+include("milp.jl")
 include("linopt.jl")
 include("magnani_boyd.jl")
 include("kazda_li.jl")
