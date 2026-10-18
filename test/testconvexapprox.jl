@@ -172,4 +172,42 @@ end
         )
         @test_throws ArgumentError approx(fe, Convex(), MILP(; optimizer, planes = 0))
     end
+
+    @testset "Invariance to scaling of the data" begin
+        maxerr(pwa, fe) = maximum(
+            abs(PWA.evaluate(pwa, p) - zᵢ) for (p, zᵢ) ∈ zip(fe.points, fe.values)
+        )
+        g = range(-1, 1; length = 4)
+        pts = vec([(a, b) for a ∈ g, b ∈ g])
+        for (points, f) ∈ ((Tuple.(x), p -> p[1]^2), (pts, p -> p[1]^2 + p[2]^2))
+            err = map(((1.0, 0.0, 0.0), (1e-3, 5.0, 0.0), (1e3, 0.0, 1e6))) do (s, c, d)
+                fe = FunctionEvaluations(
+                    [c .+ s .* p for p ∈ points],
+                    [d + s^2 * f(p) for p ∈ points],
+                )
+                pwa = approx(fe, Convex(), MILP(; optimizer, planes = 3, metric = :max))
+                return maxerr(pwa, fe) / s^2
+            end
+            @test err[1] ≈ err[2] rtol = 1e-4
+            @test err[1] ≈ err[3] rtol = 1e-4
+        end
+    end
+
+    @testset "Recovery from too small big-M" begin
+        fe = FunctionEvaluations(Tuple.(x), (x .^ 2 .+ 1) ./ 2)
+        options = MILP(; optimizer, planes = 4, metric = :max, warmstart = false)
+        pwaᵒᵖᵗ = approx(fe, Convex(), options)
+        errᵒᵖᵗ = maximum(abs(PWA.evaluate(pwaᵒᵖᵗ, xᵢ) - zᵢ) for (xᵢ, zᵢ) ∈ fe)
+        a, b = PWA._milp(fe, options; Mᵖ = fill(1e-3, length(x)))
+        pwa = PWAFunc{Convex,1}([Plane((a[1, k],), b[k]) for k ∈ eachindex(b)])
+        err = maximum(abs(PWA.evaluate(pwa, xᵢ) - zᵢ) for (xᵢ, zᵢ) ∈ fe)
+        @test err ≈ errᵒᵖᵗ atol = 1e-6
+        # Warns if the big-M may still be too small after the last doubling
+        @test_logs (:warn, r"big-M") match_mode = :any PWA._milp(
+            fe,
+            options;
+            Mᵖ = fill(1e-3, length(x)),
+            rounds = 0,
+        )
+    end
 end

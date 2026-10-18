@@ -95,6 +95,44 @@ function approx(
     options::MILP,
 ) where {D}
     _validate(options)
+    # Solve on data normalized to the unit box, to make the solver tolerances,
+    # big-M values and margins independent of the scale of the data
+    lo = ntuple(i -> minimum(p[i] for p ∈ input.points), D)
+    w = ntuple(D) do i
+        hi = maximum(p[i] for p ∈ input.points)
+        return hi > lo[i] ? hi - lo[i] : 1.0
+    end
+    zᵐⁱⁿ, zᵐᵃˣ = extrema(input.values)
+    zʷ = zᵐᵃˣ > zᵐⁱⁿ ? zᵐᵃˣ - zᵐⁱⁿ : 1.0
+    normalized = FunctionEvaluations(
+        [ntuple(i -> (p[i] - lo[i]) / w[i], D) for p ∈ input.points],
+        (input.values .- zᵐⁱⁿ) ./ zʷ,
+    )
+
+    a, b = _milp(normalized, options)
+
+    # Transform the planes back: z = zᵐⁱⁿ + zʷ (Σⱼ aⱼ (xⱼ - loⱼ) / wⱼ + b)
+    return PWAFunc{Convex,D}([
+        Plane(
+            ntuple(j -> zʷ * a[j, k] / w[j], D),
+            zᵐⁱⁿ + zʷ * (b[k] - sum(a[j, k] * lo[j] / w[j] for j ∈ 1:D)),
+        ) for k ∈ axes(a, 2)
+    ])
+end
+
+# Maximum number of times the big-M values are doubled when they may cut off
+# the optimal solution
+const _MILP_BIG_M_ROUNDS = 3
+
+# Solve the MILP for the (normalized) input, returning the plane coefficients
+# as a D × K matrix a and a vector b. The initial big-M values Mᵖ and the
+# maximum number of times they are doubled can be given for testing.
+function _milp(
+    input::FunctionEvaluations{D},
+    options::MILP;
+    Mᵖ = nothing,
+    rounds = _MILP_BIG_M_ROUNDS,
+) where {D}
     x = input.points
     z = input.values
     𝒫 = eachindex(x)
@@ -108,7 +146,9 @@ function approx(
 
     # Big-M for each point, bounding the distance from the approximation down to
     # the planes that are not active in the point
-    Mᵖ = if D ≤ 2
+    Mᵖ = if !isnothing(Mᵖ)
+        copy(Mᵖ)
+    elseif D ≤ 2
         2 .* _linear_big_M_points(input)
     elseif !isnothing(start)
         fill(2 * maximum(start.gap), length(x))
@@ -124,8 +164,6 @@ function approx(
     end
 
     m = Model()
-
-    set_time_limit_sec(m, options.maxtime)
 
     @variable(m, 𝑧̂[𝒫])
     @variable(m, a[ℐₚ, 𝒦])
@@ -153,12 +191,13 @@ function approx(
 
     for p ∈ 𝒫, k ∈ 𝒦
         @constraint(m, 𝑧̂[p] ≥ sum(a[j, k] * x[p][j] for j ∈ ℐₚ) + b[k])
-        @constraint(
-            m,
-            𝑧̂[p] ≤
-            sum(a[j, k] * x[p][j] for j ∈ ℐₚ) + b[k] + Mᵖ[p] * (1 - 𝑢[p, k])
-        )
     end
+    @constraint(
+        m,
+        bigM[p ∈ 𝒫, k ∈ 𝒦],
+        𝑧̂[p] ≤
+        sum(a[j, k] * x[p][j] for j ∈ ℐₚ) + b[k] + Mᵖ[p] * (1 - 𝑢[p, k])
+    )
 
     if isnothing(start)
         # Workaround for infeasibility (really unbounded?) when options.strict == :none.
@@ -205,24 +244,74 @@ function approx(
     end
 
     set_optimizer(m, options.optimizer)
-    optimize!(m)
 
-    status = termination_status(m)
-    if status ∉ (MOI.OPTIMAL, MOI.TIME_LIMIT)
-        error("Optimization failed $status\n$(raw_status(m))")
-    end
-    if primal_status(m) != MOI.FEASIBLE_POINT
-        error("No feasible solution found within the time limit")
-    end
-    if status == MOI.TIME_LIMIT
-        @warn "MILP reached the time limit, the approximation may not be optimal" maxlog =
-            1
+    # The big-M values are heuristic. If a big-M constraint is tight for a
+    # plane that is not active, the big-M may cut off better solutions. Then
+    # the big-M values are doubled and the problem is solved again, as long as
+    # this improves the objective.
+    t₀ = time()
+    objᵖʳᵉᵛ = Inf
+    for iteration ∈ 0:rounds
+        set_time_limit_sec(m, max(options.maxtime - (time() - t₀), 0.1))
+        optimize!(m)
+
+        status = termination_status(m)
+        if status ∉ (MOI.OPTIMAL, MOI.TIME_LIMIT)
+            error("Optimization failed $status\n$(raw_status(m))")
+        end
+        if primal_status(m) != MOI.FEASIBLE_POINT
+            error("No feasible solution found within the time limit")
+        end
+        if status == MOI.TIME_LIMIT
+            @warn "MILP reached the time limit, the approximation may not be optimal" maxlog =
+                1
+            break
+        end
+
+        # Stop when the last increase of the big-M values did not improve the
+        # objective (beyond the default relative MIP gap)
+        obj = objective_value(m)
+        iteration == 0 || obj < objᵖʳᵉᵛ - 1e-4 * abs(objᵖʳᵉᵛ) - 1e-9 || break
+        objᵖʳᵉᵛ = obj
+
+        tight = _tight_big_M_points(m, x, Mᵖ)
+        isempty(tight) && break
+        if iteration == rounds || time() - t₀ ≥ options.maxtime
+            @warn "The big-M values in MILP may cut off the optimal solution"
+            break
+        end
+
+        # Increase the big-M values for all points, since a cut off solution
+        # usually needs larger values also in the points that are not (yet)
+        # tight. Start from the current solution, which is kept first since it
+        # is invalidated by modifying the model.
+        solution = Dict(v => value(v) for v ∈ all_variables(m))
+        for p ∈ 𝒫
+            Mᵖ[p] = max(2 * Mᵖ[p], 1.0)
+            for k ∈ 𝒦
+                set_normalized_coefficient(bigM[p, k], 𝑢[p, k], Mᵖ[p])
+                set_normalized_rhs(bigM[p, k], Mᵖ[p])
+            end
+        end
+        for (v, val) ∈ solution
+            set_start_value(v, val)
+        end
     end
 
-    aᴼᵖᵗ = value.(a)
-    bᴼᵖᵗ = value.(b)
+    return [value(a[j, k]) for j ∈ ℐₚ, k ∈ 𝒦], [value(b[k]) for k ∈ 𝒦]
+end
 
-    return PWAFunc{Convex,D}([Plane(Tuple(aᴼᵖᵗ.data[:, k]), bᴼᵖᵗ[k]) for k ∈ 𝒦])
+# Points where a big-M constraint is tight for a plane that is not active
+function _tight_big_M_points(m, x, Mᵖ; tol = 1e-6)
+    a, b, 𝑧̂, 𝑢 = value.(m[:a]), value.(m[:b]), value.(m[:𝑧̂]), value.(m[:𝑢])
+    D, K = size(a)
+    return [
+        p for p ∈ eachindex(x) if any(
+            𝑢[p, k] < 0.5 &&
+            𝑧̂[p] - sum(a[j, k] * x[p][j] for j ∈ 1:D) - b[k] ≥ Mᵖ[p] - tol for
+            k ∈ 1:K
+        )
+    ]
 end
 
 function _validate(options::MILP)

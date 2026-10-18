@@ -128,8 +128,11 @@ passed to the solver as a start. It is also used to bound the deviation from
 the data in each point, and to make sure the big-M values do not cut it off.
 The warm start is required for more than two dimensions.
 
-Note that the resulting approximation is sensitive to the selection of the Big-M value used when
-solving the optimization problem.
+The problem is solved on data scaled to the unit box, so the result does not
+depend on the units of the data. The big-M values in the formulation are
+heuristic. If they may cut off the optimal solution, i.e. a big-M constraint is
+tight for a plane that is not active, they are doubled and the problem is solved
+again as long as this improves the objective, within the total time `maxtime`.
 """
 @kwdef struct MILP{T} <: Algorithm
     planes::Int = defaultplanes()
