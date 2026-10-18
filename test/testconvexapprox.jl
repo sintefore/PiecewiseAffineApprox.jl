@@ -252,3 +252,29 @@ end
         end
     end
 end
+
+@testset "Sampling of functions" begin
+    milp(K) = MILP(; optimizer, planes = K)
+    # MILP: about 3 D K points in total, unchanged in 1D
+    @test PWA._default_samples(milp(5), 1) == 15
+    @test PWA._default_samples(milp(6), 2) == 6
+    @test PWA._default_samples(milp(4), 3) == 4
+    @test PWA._default_samples(Cluster(; planes = 4), 2) == 12
+    # Algorithms without a number of planes: about 100 points in total
+    progressive = Progressive(; optimizer, tolerance = 0.01)
+    @test PWA._default_samples(progressive, 1) == 100
+    @test PWA._default_samples(progressive, 2) == 10
+
+    f(x) = x[1]^2 + x[2]^2
+    bbox = [(-1, 1), (-1, 1)]
+    pwa = approx(f, bbox, Convex(), MILP(; optimizer, planes = 3, metric = :max))
+    @test length(pwa.planes) == 3
+    pwa = approx(x -> x[1]^2, [(-1, 1)], Convex(), progressive)
+    @test PWA.evaluate(pwa, 0.5) ≈ 0.25 atol = 0.02
+
+    # The number of samples can be given; with 2 samples in each dimension the
+    # corners are interpolated
+    pwa = approx(f, bbox, Convex(), Cluster(; planes = 1); nsamples = 2)
+    @test PWA.evaluate(pwa, (1.0, 1.0)) ≈ 2.0 atol = 1e-8
+    @test_throws ArgumentError approx(f, bbox, Convex(), milp(3); nsamples = 1)
+end

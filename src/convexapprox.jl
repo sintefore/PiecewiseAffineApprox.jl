@@ -105,15 +105,33 @@ function _sample_uniform(f::Function, bbox::Vector{<:Tuple}, nsamples)
 end
 
 """
-    approx(f::Function, bbox::Vector{<:Tuple}, c::Curvature, a::Algorithm;  kwargs...)
+    approx(f::Function, bbox::Vector{<:Tuple}, c::Curvature, a::Algorithm; nsamples)
 
-Approximate the function using a uniform sampling over the bounding box `bbox`
+Approximate the function using a uniform sampling over the bounding box `bbox`,
+with one `(lower, upper)` tuple for each dimension.
 
 Additional keyword arguments:
-- `nsample`: the number of points used in each dimension (default = 10)
+- `nsamples`: the number of points used in each dimension. The default depends
+  on the algorithm and the number of dimensions D:
+  - [`MILP`](@ref): about `3 * D * planes` points in total, i.e.
+    `ceil((3 * D * planes)^(1 / D))` in each dimension, since the size of
+    the optimization problem grows with the number of points,
+  - [`Cluster`](@ref) and [`Interpol`](@ref): `3 * planes` in each dimension,
+  - other algorithms: about 100 points in total.
 """
-function approx(f::Function, bbox::Vector{<:Tuple}, c::Curvature, a::Algorithm;)
-    samples = 3 * a.planes
-
-    return approx(_sample_uniform(f, bbox, samples), c, a)
+function approx(
+    f::Function,
+    bbox::Vector{<:Tuple},
+    c::Curvature,
+    a::Algorithm;
+    nsamples = _default_samples(a, length(bbox)),
+)
+    nsamples ≥ 2 || throw(ArgumentError("nsamples must be at least 2"))
+    return approx(_sample_uniform(f, bbox, nsamples), c, a)
 end
+
+# Default number of samples in each of D dimensions
+function _default_samples(a::Algorithm, D)
+    return hasproperty(a, :planes) ? 3 * a.planes : max(3, round(Int, 100^(1 / D)))
+end
+_default_samples(a::MILP, D) = max(2, ceil(Int, (3 * D * a.planes)^(1 / D)))
