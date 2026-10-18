@@ -70,4 +70,18 @@
         M² = PWA._linear_big_M(FunctionEvaluations(tuple.(x2), z2))
         @test M² ≈ 3.911 atol = 0.001
     end
+
+    @testset "Scale invariance 2D" begin
+        # big-M should scale with the data, not drop to zero for small domains
+        g = range(-1, 1; length = 4)
+        pts = vec([(a, b) for a ∈ g, b ∈ g])
+        z = [a^2 + b^2 for (a, b) ∈ pts]
+        M = PWA._linear_big_M(FunctionEvaluations(pts, z))
+        for s ∈ (10.0, 0.1, 0.01)
+            Mˢ = PWA._linear_big_M(
+                FunctionEvaluations([s .* p for p ∈ pts], s^2 .* z),
+            )
+            @test Mˢ ≈ s^2 * M
+        end
+    end
 end

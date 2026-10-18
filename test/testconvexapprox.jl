@@ -72,3 +72,43 @@
     )
     @test PWA.evaluate(pwa, (0, 0)) ≈ 10_000.0 atol = 0.1
 end
+
+@testset "MILP robustness" begin
+    x = collect(range(-1, 1; length = 10))
+
+    @testset "Invariance to shift in function values" begin
+        for strict ∈ (:none, :outer, :inner)
+            err = map((0.0, 10.0)) do c
+                pwa = approx(
+                    FunctionEvaluations(Tuple.(x), c .- x .^ 2),
+                    Concave(),
+                    MILP(; optimizer, planes = 3, strict, metric = :l1),
+                )
+                return sum(abs(PWA.evaluate(pwa, xᵢ) - (c - xᵢ^2)) for xᵢ ∈ x)
+            end
+            @test err[1] ≈ err[2] atol = 1e-6
+        end
+    end
+
+    @testset "Duplicate points" begin
+        pwa = approx(
+            FunctionEvaluations(Tuple.([0.0, 0.5, 0.5, 1.0]), [0.0, 0.25, 0.3, 1.0]),
+            Convex(),
+            MILP(; optimizer, planes = 2, metric = :l1),
+        )
+        @test length(pwa.planes) == 2
+    end
+
+    @testset "Small domain 2D" begin
+        g = range(0, 0.1; length = 5)
+        pts = vec([(a, b) for a ∈ g, b ∈ g])
+        z = [a^2 + b^2 for (a, b) ∈ pts]
+        pwa = approx(
+            FunctionEvaluations(pts, z),
+            Convex(),
+            MILP(; optimizer, planes = 4, metric = :max),
+        )
+        err = maximum(abs(PWA.evaluate(pwa, p) - zᵢ) for (p, zᵢ) ∈ zip(pts, z))
+        @test err ≈ 0.03125 * (maximum(z) - minimum(z)) rtol = 1e-4
+    end
+end

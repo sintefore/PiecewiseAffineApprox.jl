@@ -94,9 +94,9 @@ function approx(
     c::Convex,
     options::MILP,
 ) where {D}
-    𝒫 = input.points
+    x = input.points
     z = input.values
-    zᵖ = Dict(zip(𝒫, z))
+    𝒫 = eachindex(x)
     𝒦 = 1:options.planes
     ℐₚ = 1:D
 
@@ -113,46 +113,48 @@ function approx(
     @variable(m, 𝑢[𝒫, 𝒦], Bin)
 
     if options.metric == :l2
-        @objective(m, Min, sum((zᵖ[p] - 𝑧̂[p])^2 for p ∈ 𝒫))
+        @objective(m, Min, sum((z[p] - 𝑧̂[p])^2 for p ∈ 𝒫))
     elseif options.metric == :max
         𝑡 = @variable(m)
         @objective(m, Min, 𝑡)
         for p ∈ 𝒫
-            @constraint(m, 𝑡 ≥ (zᵖ[p] - 𝑧̂[p]))
-            @constraint(m, 𝑡 ≥ (𝑧̂[p] - zᵖ[p]))
+            @constraint(m, 𝑡 ≥ (z[p] - 𝑧̂[p]))
+            @constraint(m, 𝑡 ≥ (𝑧̂[p] - z[p]))
         end
     elseif options.metric == :l1
         𝑡 = @variable(m, [𝒫])
         @objective(m, Min, sum(𝑡))
         for p ∈ 𝒫
-            @constraint(m, 𝑡[p] ≥ (zᵖ[p] - 𝑧̂[p]))
-            @constraint(m, 𝑡[p] ≥ (𝑧̂[p] - zᵖ[p]))
+            @constraint(m, 𝑡[p] ≥ (z[p] - 𝑧̂[p]))
+            @constraint(m, 𝑡[p] ≥ (𝑧̂[p] - z[p]))
         end
     else
         error("Unrecognized/unsupported metric type $(options.metric)")
     end
 
     for p ∈ 𝒫, k ∈ 𝒦
-        @constraint(m, 𝑧̂[p] ≥ sum(a[j, k] * p[j] for j ∈ ℐₚ) + b[k])
+        @constraint(m, 𝑧̂[p] ≥ sum(a[j, k] * x[p][j] for j ∈ ℐₚ) + b[k])
         @constraint(
             m,
             𝑧̂[p] ≤
-            sum(a[j, k] * p[j] for j ∈ ℐₚ) + b[k] + 2 * Mᵇⁱᵍ * (1 - 𝑢[p, k])
+            sum(a[j, k] * x[p][j] for j ∈ ℐₚ) + b[k] + 2 * Mᵇⁱᵍ * (1 - 𝑢[p, k])
         )
     end
 
-    # Workaround for infeasibility (really unbounded?) when options.strict == :none
+    # Workaround for infeasibility (really unbounded?) when options.strict == :none.
+    # The bound is relative to the range of z to be invariant to shifts in z.
+    𝑧ᵐᵃˣ = maximum(z) + (maximum(z) - minimum(z))
     for p ∈ 𝒫
-        @constraint(m, 𝑧̂[p] <= maximum(z) * 1.1)
+        @constraint(m, 𝑧̂[p] <= 𝑧ᵐᵃˣ)
     end
 
     if options.strict == :outer
         for p ∈ 𝒫, k ∈ 𝒦
-            @constraint(m, zᵖ[p] ≥ sum(a[j, k] * p[j] for j ∈ ℐₚ) + b[k])
+            @constraint(m, z[p] ≥ sum(a[j, k] * x[p][j] for j ∈ ℐₚ) + b[k])
         end
     elseif options.strict == :inner
         for p ∈ 𝒫, k ∈ 𝒦
-            @constraint(m, zᵖ[p] ≤ sum(a[j, k] * p[j] for j ∈ ℐₚ) + b[k])
+            @constraint(m, z[p] ≤ sum(a[j, k] * x[p][j] for j ∈ ℐₚ) + b[k])
         end
     end
 
@@ -284,7 +286,15 @@ function _linear_big_M(input::FunctionEvaluations{D}) where {D}
         # is tangential to a triangle formed by three
         # of the points, avoiding triangles that have data points
         # in the interior or those that are very elongated.
-        x = input.points
+        # The points are scaled to the unit square to make the elongation
+        # and vertical plane thresholds independent of the scale of the data.
+        # The scaling is affine, so the values of the planes at the points
+        # are unchanged. The elongation threshold of 0.025 on the unit square
+        # corresponds to 0.05 on [-1, 1]².
+        lo = [minimum(p[i] for p ∈ input.points) for i ∈ 1:2]
+        hi = [maximum(p[i] for p ∈ input.points) for i ∈ 1:2]
+        w = [hi[i] > lo[i] ? hi[i] - lo[i] : 1.0 for i ∈ 1:2]
+        x = [Tuple((p[i] - lo[i]) / w[i] for i ∈ 1:2) for p ∈ input.points]
         z = input.values
         x₊ = [(x[i]..., z[i]) for i ∈ 1:length(x)]
         triangles = collect(combinations(x₊, 3))
@@ -299,7 +309,7 @@ function _linear_big_M(input::FunctionEvaluations{D}) where {D}
                 end
             end
 
-            if empty && _sliver_parameter(v1, v2, v3) > 0.05
+            if empty && _sliver_parameter(v1, v2, v3) > 0.025
                 normal = cross(collect(t[1] .- t[2]), collect(t[1] .- t[3]))
                 d = dot(normal, t[1])
                 M = maximum(
