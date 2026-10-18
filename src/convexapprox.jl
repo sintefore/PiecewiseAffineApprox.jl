@@ -475,73 +475,95 @@ _linear_big_M(input::FunctionEvaluations) = maximum(_linear_big_M_points(input))
 # Big-M for each data point: the largest distance from the point down to the
 # candidate planes
 function _linear_big_M_points(input::FunctionEvaluations{D}) where {D}
-    Mᵖ = zeros(length(input))
-    if D == 1
-        # For one dimensional problems calculate a big M by
-        # checking all segments not having another data point in the interior
-        x = [p[1] for p ∈ input.points]
-        z = input.values
-        x₊ = collect(zip(x, z))
-
-        # Consider points that are closer than 1/100 of the average distance
-        # to be so close that they are not considered as a segment
-        δ = (maximum(x) - minimum(x)) / (100 * length(x))
-
-        segments = collect(combinations(x₊, 2))
-        for s ∈ segments
-            x1, z1 = s[1]
-            x2, z2 = s[2]
-            # Avoid points that are too close
-            if abs(x1 - x2) > δ
-                # Check for datapoints in the interior
-                empty = (
-                    count(p -> p > min(x1, x2) + δ && p < max(x1, x2) - δ, x) == 0
-                )
-                if empty
-                    a = (z2 - z1) / (x2 - x1)
-                    b = z1 - a * x1
-                    Mᵖ .= max.(Mᵖ, z .- a .* x .- b)
-                end
-            end
-        end
+    Mᵖ = if D == 1
+        _linear_big_M_points_1d(input)
     elseif D == 2
-        # For two dimensions, chcck all planes that
-        # is tangential to a triangle formed by three
-        # of the points, avoiding triangles that have data points
-        # in the interior or those that are very elongated.
-        # The points are scaled to the unit square to make the elongation
-        # and vertical plane thresholds independent of the scale of the data.
-        # The scaling is affine, so the values of the planes at the points
-        # are unchanged. The elongation threshold of 0.025 on the unit square
-        # corresponds to 0.05 on [-1, 1]².
-        lo = [minimum(p[i] for p ∈ input.points) for i ∈ 1:2]
-        hi = [maximum(p[i] for p ∈ input.points) for i ∈ 1:2]
-        w = [hi[i] > lo[i] ? hi[i] - lo[i] : 1.0 for i ∈ 1:2]
-        x = [Tuple((p[i] - lo[i]) / w[i] for i ∈ 1:2) for p ∈ input.points]
-        z = input.values
-        x₊ = [(x[i]..., z[i]) for i ∈ 1:length(x)]
-        triangles = collect(combinations(x₊, 3))
-        for t ∈ triangles
-            v1 = t[1][1:2]
-            v2 = t[2][1:2]
-            v3 = t[3][1:2]
-            empty = true
-            for pt ∈ x
-                if !(pt in [v1, v2, v3]) && _point_in_triangle(pt, v1, v2, v3)
-                    empty = false
-                end
-            end
-
-            if empty && _sliver_parameter(v1, v2, v3) > 0.025
-                normal = cross(collect(t[1] .- t[2]), collect(t[1] .- t[3]))
-                d = dot(normal, t[1])
-                Mᵖ .= max.(Mᵖ, [z[i] - _plane_f(x[i], normal, d) for i ∈ 1:length(x)])
-            end
-        end
+        _linear_big_M_points_2d(input)
     else
         error("linear big M only supported for 1D and 2D")
     end
 
     # Increase slightly to avoid rounding errors
     return 1.1 .* Mᵖ
+end
+
+# For one dimensional problems the candidates are the lines through all
+# segments not having another data point in the interior
+function _linear_big_M_points_1d(input)
+    x = [p[1] for p ∈ input.points]
+    z = input.values
+    N = length(x)
+    Mᵖ = zeros(N)
+
+    # Consider points that are closer than 1/100 of the average distance
+    # to be so close that they are not considered as a segment
+    δ = (maximum(x) - minimum(x)) / (100 * N)
+
+    # With the points sorted, the segments from point i without a point in the
+    # interior (more than δ from the end points) go to the points j with
+    # x[i] + δ < x[j] ≤ x[j₀] + δ, where j₀ is the first point beyond x[i] + δ
+    order = sortperm(x)
+    xˢ = x[order]
+    j₀ = 1
+    for i ∈ 1:N
+        while j₀ ≤ N && !(xˢ[j₀] > xˢ[i] + δ)
+            j₀ += 1
+        end
+        j = j₀
+        while j ≤ N && !(xˢ[j₀] < xˢ[j] - δ)
+            if xˢ[j] - xˢ[i] > δ
+                x1, z1 = xˢ[i], z[order[i]]
+                x2, z2 = xˢ[j], z[order[j]]
+                a = (z2 - z1) / (x2 - x1)
+                b = z1 - a * x1
+                for p ∈ 1:N
+                    Mᵖ[p] = max(Mᵖ[p], z[p] - a * x[p] - b)
+                end
+            end
+            j += 1
+        end
+    end
+    return Mᵖ
+end
+
+# For two dimensions, the candidates are the planes through all triangles
+# formed by three of the points, avoiding triangles that have data points in
+# the interior or on the boundary, and those that are very elongated.
+# The points are scaled to the unit square to make the elongation and vertical
+# plane thresholds independent of the scale of the data. The scaling is affine,
+# so the values of the planes at the points are unchanged. The elongation
+# threshold of 0.025 on the unit square corresponds to 0.05 on [-1, 1]².
+function _linear_big_M_points_2d(input)
+    lo = [minimum(p[i] for p ∈ input.points) for i ∈ 1:2]
+    hi = [maximum(p[i] for p ∈ input.points) for i ∈ 1:2]
+    w = [hi[i] > lo[i] ? hi[i] - lo[i] : 1.0 for i ∈ 1:2]
+    x = [((p[1] - lo[1]) / w[1], (p[2] - lo[2]) / w[2]) for p ∈ input.points]
+    z = input.values
+    N = length(x)
+    Mᵖ = zeros(N)
+
+    # Whether there is a point, other than the vertices, in the triangle
+    function nonempty(v1, v2, v3)
+        xᵐⁱⁿ, xᵐᵃˣ = extrema((v1[1], v2[1], v3[1]))
+        yᵐⁱⁿ, yᵐᵃˣ = extrema((v1[2], v2[2], v3[2]))
+        for pt ∈ x
+            xᵐⁱⁿ ≤ pt[1] ≤ xᵐᵃˣ && yᵐⁱⁿ ≤ pt[2] ≤ yᵐᵃˣ || continue
+            (pt == v1 || pt == v2 || pt == v3) && continue
+            _point_in_triangle(pt, v1, v2, v3) && return true
+        end
+        return false
+    end
+
+    for i ∈ 1:N, j ∈ i+1:N, k ∈ j+1:N
+        v1, v2, v3 = x[i], x[j], x[k]
+        _sliver_parameter(v1, v2, v3) > 0.025 || continue
+        nonempty(v1, v2, v3) && continue
+        t1, t2, t3 = (v1..., z[i]), (v2..., z[j]), (v3..., z[k])
+        normal = cross(collect(t1 .- t2), collect(t1 .- t3))
+        d = dot(normal, collect(t1))
+        for p ∈ 1:N
+            Mᵖ[p] = max(Mᵖ[p], z[p] - _plane_f(x[p], normal, d))
+        end
+    end
+    return Mᵖ
 end

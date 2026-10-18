@@ -84,4 +84,49 @@
             @test Mˢ ≈ s^2 * M
         end
     end
+
+    @testset "Same as brute force" begin
+        # Direct implementation of the definitions: all segments (1D) or
+        # triangles (2D) without data points in the interior
+        function brute_force_1d(x, z)
+            δ = (maximum(x) - minimum(x)) / (100 * length(x))
+            M = zeros(length(x))
+            for i ∈ eachindex(x), j ∈ eachindex(x)
+                x[j] - x[i] > δ || continue
+                any(p -> x[i] + δ < p < x[j] - δ, x) && continue
+                a = (z[j] - z[i]) / (x[j] - x[i])
+                M .= max.(M, z .- a .* x .- (z[i] - a * x[i]))
+            end
+            return 1.1 .* M
+        end
+        function brute_force_2d(pts, z)
+            lo, hi = minimum.(zip(pts...)), maximum.(zip(pts...))
+            x = [(p .- lo) ./ (hi .- lo) for p ∈ pts]
+            M = zeros(length(x))
+            for i ∈ eachindex(x), j ∈ i+1:length(x), k ∈ j+1:length(x)
+                v = (x[i], x[j], x[k])
+                any(p -> p ∉ v && PWA._point_in_triangle(p, v...), x) && continue
+                PWA._sliver_parameter(v...) > 0.025 || continue
+                t = [(x[l]..., z[l]) for l ∈ (i, j, k)]
+                n = cross(collect(t[1] .- t[2]), collect(t[1] .- t[3]))
+                M .= max.(M, z .- [PWA._plane_f(p, n, dot(n, t[1])) for p ∈ x])
+            end
+            return 1.1 .* M
+        end
+
+        rng = StableRNG(1)
+        for n ∈ (2, 5, 20)
+            x = rand(rng, n)
+            x = vcat(x, x[1], x[2] + 1e-6)
+            z = x .^ 2 .+ 0.1 .* randn(rng, length(x))
+            M = PWA._linear_big_M_points(FunctionEvaluations(tuple.(x), z))
+            @test M ≈ brute_force_1d(x, z)
+
+            pts = [(rand(rng), rand(rng)) for _ ∈ 1:n+1]
+            pts = vcat(pts, pts[1:1], [(0.5, 0.5), (0.5, 0.25), (0.5, 0.75)])
+            z = [a^2 + b^2 + 0.1 * randn(rng) for (a, b) ∈ pts]
+            M = PWA._linear_big_M_points(FunctionEvaluations(pts, z))
+            @test M ≈ brute_force_2d(pts, z)
+        end
+    end
 end
