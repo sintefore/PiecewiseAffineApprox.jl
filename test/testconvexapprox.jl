@@ -210,4 +210,45 @@ end
             rounds = 0,
         )
     end
+
+    @testset "Symmetry breaking and warm start" begin
+        function objective(a, b, fe, metric)
+            e = [
+                maximum(sum(a[:, k] .* p) + b[k] for k ∈ eachindex(b)) - zᵢ for
+                (p, zᵢ) ∈ fe
+            ]
+            return metric == :l1 ? sum(abs, e) : maximum(abs, e)
+        end
+        rng = StableRNG(3)
+        g = range(0, 1; length = 4)
+        pts = vec([(a, b) for a ∈ g, b ∈ g])
+        noisy = [abs(xᵢ) + 0.05 * randn(rng) for xᵢ ∈ x]
+        cases = (
+            FunctionEvaluations(Tuple.(x), noisy),
+            FunctionEvaluations(pts, [(a - 0.4)^2 + (b - 0.5)^2 for (a, b) ∈ pts]),
+        )
+        for fe ∈ cases, metric ∈ (:l1, :max)
+            options = MILP(; optimizer, planes = 3, metric)
+            start = PWA._milp_start(fe, options)
+            if length(fe.points[1]) == 1
+                # The symmetry breaking constraints do not cut off optimal
+                # solutions, and are satisfied by the start
+                obj = map((false, true)) do symmetry
+                    a, b = PWA._milp(fe, options; symmetry)
+                    return objective(a, b, fe, metric)
+                end
+                @test obj[1] ≈ obj[2] rtol = 1e-3
+                order = sortperm(eachindex(fe.points); by = p -> fe.points[p][1])
+                @test issorted(start.active[order])
+            end
+
+            # The start is the best of the heuristic fits
+            objᴴ = [
+                PWA._milp_start(fe, options, planes).obj for
+                planes ∈ PWA._heuristic_fits(fe, options)
+            ]
+            e = start.ẑ .- fe.values
+            @test (metric == :l1 ? sum(abs, e) : maximum(abs, e)) ≈ minimum(objᴴ)
+        end
+    end
 end

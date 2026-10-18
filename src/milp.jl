@@ -35,13 +35,15 @@ end
 const _MILP_BIG_M_ROUNDS = 3
 
 # Solve the MILP for the (normalized) input, returning the plane coefficients
-# as a D × K matrix a and a vector b. The initial big-M values Mᵖ and the
-# maximum number of times they are doubled can be given for testing.
+# as a D × K matrix a and a vector b. The initial big-M values Mᵖ, the
+# maximum number of times they are doubled and whether to add symmetry
+# breaking constraints can be given for testing.
 function _milp(
     input::FunctionEvaluations{D},
     options::MILP;
     Mᵖ = nothing,
     rounds = _MILP_BIG_M_ROUNDS,
+    symmetry = true,
 ) where {D}
     x = input.points
     z = input.values
@@ -149,6 +151,23 @@ function _milp(
         end
     end
 
+    if symmetry && D == 1
+        # With the planes sorted by gradient, the lowest numbered of the
+        # planes that are maximal in a point is nondecreasing along x. Hence
+        # the active plane can be required to be nondecreasing along x, i.e.
+        # the points of each plane are consecutive.
+        order = sortperm(𝒫; by = p -> x[p][1])
+        for i ∈ 2:length(order), k ∈ 1:options.planes-1
+            @constraint(
+                m,
+                sum(𝑢[order[i], l] for l ∈ 1:k) ≤ sum(𝑢[order[i-1], l] for l ∈ 1:k)
+            )
+        end
+    end
+    # Breaking the symmetry between the planes in more dimensions, by labeling
+    # them in the order of their first use, did not reduce solution times with
+    # HiGHS in tests, and is not done.
+
     if !isnothing(start)
         _set_milp_start(m, start, options.metric)
     end
@@ -239,19 +258,54 @@ function _validate(options::MILP)
     return options
 end
 
-# Heuristic start for the MILP from a least squares Cluster fit, adjusted to
+# Heuristic start for the MILP: the best of the heuristic fits, adjusted to
 # satisfy options.strict. Returns the plane coefficients a and b, the values of
 # the approximation ẑ, the active plane in each point, the distance gap from the
 # approximation down to the lowest plane in each point, the deviations e = ẑ - z,
 # and the bound r on the deviation from the data in each point for an optimal
-# solution.
+# solution. In 1D the active plane is nondecreasing along x, as required by the
+# symmetry breaking constraints of the MILP.
 function _milp_start(input::FunctionEvaluations{D}, options::MILP) where {D}
     x = input.points
     z = input.values
+
+    starts = [
+        _milp_start(input, options, planes) for
+        planes ∈ _heuristic_fits(input, options)
+    ]
+    start = starts[argmin([s.obj for s ∈ starts])]
+    active = start.active
+
+    if D == 1
+        # The planes are sorted by slope, so the first maximal plane is
+        # nondecreasing along x, except for rounding errors in ties
+        order = sortperm(eachindex(x); by = p -> x[p][1])
+        for (i, p) ∈ enumerate(order)
+            i > 1 && (active[p] = max(active[p], active[order[i-1]]))
+        end
+    end
+
+    e = start.ẑ .- z
+    r = if options.metric == :l1
+        sum(abs, e)
+    elseif options.metric == :l2
+        sqrt(sum(abs2, e))
+    else
+        maximum(abs, e)
+    end
+    # Small margin to keep the start feasible despite rounding
+    r = r * (1 + 1e-6) + 1e-9 * (1 + maximum(abs, z))
+
+    return (; start.a, start.b, start.ẑ, active, start.gap, e, r)
+end
+
+# The start from the given planes, adjusted to satisfy options.strict, with its
+# objective value obj
+function _milp_start(input::FunctionEvaluations{D}, options::MILP, planes) where {D}
+    x = input.points
+    z = input.values
     K = options.planes
-    X = [p[i] for i ∈ 1:D, p ∈ x]
-    heuristic = Cluster(; planes = K, rng = Random.Xoshiro(42))
-    planes = _convex_linearization_mb(X, z, heuristic).planes
+    planes = copy(planes)
     if D == 1
         sort!(planes; by = p -> p.α[1])
     end
@@ -277,17 +331,34 @@ function _milp_start(input::FunctionEvaluations{D}, options::MILP) where {D}
     gap = ẑ .- vec(minimum(v; dims = 2))
 
     e = ẑ .- z
-    r = if options.metric == :l1
+    obj = if options.metric == :l1
         sum(abs, e)
     elseif options.metric == :l2
-        sqrt(sum(abs2, e))
+        sum(abs2, e)
     else
         maximum(abs, e)
     end
-    # Small margin to keep the start feasible despite rounding
-    r = r * (1 + 1e-6) + 1e-9 * (1 + maximum(abs, z))
+    return (; a, b, ẑ, active, gap, obj)
+end
 
-    return (; a, b, ẑ, active, gap, e, r)
+# Heuristic fits used as candidates for the start of the MILP: a least squares
+# Cluster fit, and in 1D a fit by Interpol in the metric of the MILP
+function _heuristic_fits(input::FunctionEvaluations{D}, options::MILP) where {D}
+    x = input.points
+    z = input.values
+    K = options.planes
+    X = [p[i] for i ∈ 1:D, p ∈ x]
+    cluster = Cluster(; planes = K, rng = Random.Xoshiro(42))
+    fits = [_convex_linearization_mb(X, z, cluster).planes]
+    if D == 1 && length(unique(p[1] for p ∈ x)) ≥ 2
+        interpol = Interpol(;
+            planes = K,
+            metric = options.metric,
+            optimizer = options.optimizer,
+        )
+        push!(fits, _convex_linearization_ipol([p[1] for p ∈ x], z, interpol).planes)
+    end
+    return fits
 end
 
 function _set_milp_start(m, start, metric)

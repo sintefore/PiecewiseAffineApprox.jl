@@ -123,10 +123,15 @@ The deviation from the data is measured by `metric` (`:l1`, `:l2` or `:max`), an
 data (`:inner`) or neither (`:none`, default). For concave approximations, below
 and above are interchanged.
 
-With `warmstart = true` (default), a heuristic solution from [`Cluster`](@ref) is
-passed to the solver as a start. It is also used to bound the deviation from
-the data in each point, and to make sure the big-M values do not cut it off.
-The warm start is required for more than two dimensions.
+With `warmstart = true` (default), a heuristic solution is passed to the solver
+as a start: the best of a least squares [`Cluster`](@ref) fit and, in one
+dimension, an [`Interpol`](@ref) fit in the same metric. It is also used to
+bound the deviation from the data in each point, and to make sure the big-M
+values do not cut it off. The warm start is required for more than two
+dimensions.
+
+In one dimension, the points of each plane are required to be consecutive,
+which removes equivalent solutions and speeds up the solver considerably.
 
 The problem is solved on data scaled to the unit box, so the result does not
 depend on the units of the data. The big-M values in the formulation are
