@@ -26,6 +26,19 @@
         Convex(),
         Alternating(convex = Cluster()),
     )
+
+    # Alternating is printed in keyword form
+    a = Alternating(
+        convex = Interpol(planes = 3),
+        concave = Interpol(planes = 2),
+    )
+    @test repr(a) ==
+          "Alternating(convex = $(repr(Interpol(planes = 3))), " *
+          "concave = $(repr(Interpol(planes = 2))), iterations = 5)"
+    @test occursin(
+        "optimizer = ",
+        repr(Alternating(convex = Cluster(); optimizer)),
+    )
 end
 
 @testset "DC serialization" begin

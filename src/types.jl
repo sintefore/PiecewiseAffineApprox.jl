@@ -252,6 +252,14 @@ default is its `planes`.
     iterations::Int = min(_dc_iterations(convex), _dc_iterations(concave))
 end
 
+# Printed in keyword form, as the nested algorithm types make the default
+# output very long
+function Base.show(io::IO, a::Alternating)
+    print(io, "Alternating(convex = ", a.convex, ", concave = ", a.concave)
+    isnothing(a.optimizer) || print(io, ", optimizer = ", a.optimizer)
+    return print(io, ", iterations = ", a.iterations, ")")
+end
+
 """
     FunctionEvaluations{D}
 
