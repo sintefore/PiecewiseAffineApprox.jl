@@ -100,15 +100,28 @@ function _sample_uniform(f::Function, bbox::Vector{<:Tuple}, nsamples)
         )
         x = vec(collect(it))
     end
-    y = [f(xx) for xx ∈ x]
+    y = _evaluate_points(f, x)
     return FunctionEvaluations(x, y)
+end
+
+# The values of f at the points, given as tuples: f is called with the tuple
+# if it accepts one, and otherwise with the coordinates as separate arguments
+function _evaluate_points(f::Function, x)
+    isempty(x) && return Float64[]
+    if applicable(f, first(x))
+        return [f(xx) for xx ∈ x]
+    end
+    return [f(xx...) for xx ∈ x]
 end
 
 """
     approx(f::Function, bbox::Vector{<:Tuple}, c::Curvature, a::Algorithm; nsamples)
 
 Approximate the function using a uniform sampling over the bounding box `bbox`,
-with one `(lower, upper)` tuple for each dimension.
+with one `(lower, upper)` tuple for each dimension. The function is called with
+the point as a tuple, e.g. `x -> x[1]^2 + x[2]^2`, if it accepts one, and
+otherwise with the coordinates as separate arguments, e.g. `sin` or
+`(x, y) -> x^2 + y^2`.
 
 Additional keyword arguments:
 - `nsamples`: the number of points used in each dimension. The default depends

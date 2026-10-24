@@ -39,7 +39,7 @@ value(z) # 0.2653
 A non-convex function is approximated as a difference of convex functions, and added to a model in the same way. Here `z` is only minimized, so with `direction = :epigraph` only the concave part needs binary variables:
 
 ```julia
-dc = approx(x -> sin(x[1]), [(0, 2π)], DC(), Interpol(optimizer = HiGHS.Optimizer, planes = 3))
+dc = approx(sin, [(0, 2π)], DC(), Interpol(optimizer = HiGHS.Optimizer, planes = 3))
 @variable(m, 0 ≤ y ≤ 2π)
 w = pwaffine(m, (y,), dc; direction = :epigraph)
 ```

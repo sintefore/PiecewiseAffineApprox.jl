@@ -33,3 +33,39 @@ end
     PiecewiseAffineApprox._addplane!(pwa, [1, 1], 0)
     @test pwa.planes[end] === Plane((1.0, 1.0), 0.0)
 end
+
+@testset "FunctionEvaluations construction" begin
+    f = FunctionEvaluations([(1.0,), (2.0,)], [1.0, 4.0])
+    @test FunctionEvaluations([1.0, 2.0], [1.0, 4.0]) == f
+    @test FunctionEvaluations(1:2, [1, 4]) isa
+          FunctionEvaluations{1,Tuple{Int},Int}
+    @test FunctionEvaluations(1:2, (1:2) .^ 2).values == [1, 4]
+    # Points as rows (default) or columns of a matrix
+    X = [1.0 2.0; 3.0 4.0; 5.0 6.0]
+    z = [1.0, 2.0, 3.0]
+    @test FunctionEvaluations(X, z).points ==
+          [(1.0, 2.0), (3.0, 4.0), (5.0, 6.0)]
+    @test FunctionEvaluations(X', z; dims = 2).points ==
+          [(1.0, 2.0), (3.0, 4.0), (5.0, 6.0)]
+    @test FunctionEvaluations(X, z) isa
+          FunctionEvaluations{2,Tuple{Float64,Float64},Float64}
+    @test_throws ArgumentError FunctionEvaluations(X, z; dims = 3)
+    @test_throws ArgumentError FunctionEvaluations(X, [1.0, 2.0])
+    @test_throws ArgumentError FunctionEvaluations([1.0, 2.0], [1.0])
+    @test_throws ArgumentError FunctionEvaluations([(1.0,), (2.0,)], [1.0])
+end
+
+@testset "Function conventions" begin
+    # The function is called with the point as a tuple if it accepts one, and
+    # otherwise with the coordinates as separate arguments
+    s = PiecewiseAffineApprox._sample_uniform
+    @test s(sin, [(0, 1)], 5).values ≈ s(x -> sin(x[1]), [(0, 1),], 5).values
+    @test s(sin, [(0, 1)], 5).values ≈ sin.(range(0, 1; length = 5))
+    g(x, y) = x^2 + 2y
+    @test s(g, [(0, 1), (0, 1)], 3).values ≈
+          s(x -> x[1]^2 + 2x[2], [(0, 1), (0, 1)], 3).values
+    @test s(g, [(0, 1), (0, 1)], 3).values ==
+          [g(p...) for p ∈ s(g, [(0, 1), (0, 1)], 3).points]
+    pwa = approx(sin, [(0, 2π)], DC(), Interpol(planes = 3); nsamples = 20)
+    @test pwa isa DCFunc{1,Float64}
+end

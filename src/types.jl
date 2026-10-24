@@ -265,12 +265,45 @@ end
 
 A structure holding a set of points and the associated
 function values for a function f:ℜᴰ → ℜ.
+
+    FunctionEvaluations(points::Vector{<:NTuple{D}}, values)
+    FunctionEvaluations(x::AbstractVector{<:Real}, values)
+    FunctionEvaluations(X::AbstractMatrix{<:Real}, values; dims = 1)
+
+The points are given as a vector of tuples, as a vector of numbers for a
+function of one variable, or as a matrix with one point per row (`dims = 1`,
+the default) or per column (`dims = 2`).
 """
 struct FunctionEvaluations{D,P<:NTuple{D,Number},V<:Number}
     points::Vector{P}
     values::Vector{V}
+    function FunctionEvaluations(
+        points::Vector{P},
+        values::Vector{V},
+    ) where {D,P<:NTuple{D,Number},V<:Number}
+        length(points) == length(values) || throw(
+            ArgumentError(
+                "Got $(length(points)) points and $(length(values)) values",
+            ),
+        )
+        return new{D,P,V}(points, values)
+    end
+end
+function FunctionEvaluations(points::AbstractVector{<:Tuple}, values)
+    return FunctionEvaluations(collect(points), collect(values))
+end
+function FunctionEvaluations(x::AbstractVector{<:Real}, values)
+    return FunctionEvaluations([(xᵢ,) for xᵢ ∈ x], collect(values))
+end
+function FunctionEvaluations(X::AbstractMatrix{<:Real}, values; dims = 1)
+    dims ∈ (1, 2) || throw(ArgumentError("dims must be 1 (points as rows) or 2 (points as columns)"))
+    points = dims == 1 ? [Tuple(r) for r ∈ eachrow(X)] : [Tuple(c) for c ∈ eachcol(X)]
+    return FunctionEvaluations(points, collect(values))
 end
 Base.length(feval::FunctionEvaluations) = length(feval.points)
+function Base.:(==)(f::FunctionEvaluations, g::FunctionEvaluations)
+    return f.points == g.points && f.values == g.values
+end
 function Base.iterate(feval::FunctionEvaluations, state = 0)
     state == length(feval) && return nothing
     return (feval.points[state+1], feval.values[state+1]), state + 1

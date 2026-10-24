@@ -32,7 +32,7 @@ concave part is the expensive one to model, so it usually gets fewer planes.
 using PiecewiseAffineApprox, HiGHS, JuMP
 optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
 
-dc = approx(x -> sin(x[1]), [(0, 2π)], DC(), Interpol(; optimizer, planes = 4, concave_planes = 2); nsamples = 30)
+dc = approx(sin, [(0, 2π)], DC(), Interpol(; optimizer, planes = 4, concave_planes = 2); nsamples = 30)
 length(dc.convex.planes), length(dc.concave.planes)
 
 # output

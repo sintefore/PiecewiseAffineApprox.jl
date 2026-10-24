@@ -65,6 +65,9 @@ into a convex and a concave part by `dc_decomposition`, each part is fitted,
 and the parts are then refitted alternately, each to the data minus the other
 part.
 
+The points can be given as a vector of tuples, as a vector of numbers for a
+function of one variable, or as a matrix with one point per row.
+
 ```jldoctest
 using PiecewiseAffineApprox, JuMP, HiGHS, StableRNGs
 optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
@@ -73,7 +76,7 @@ x = collect(range(-1, 1; length = 30))
 z = sin.(3x)
 
 dc = approx(
-    FunctionEvaluations(Tuple.(x), z),
+    FunctionEvaluations(x, z),
     DC(),
     Cluster(planes = 4, rng = StableRNG(1)),
 )

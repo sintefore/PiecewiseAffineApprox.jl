@@ -95,7 +95,7 @@ optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
 m = Model(optimizer)
 @variable(m, 0 ≤ x ≤ 2π)
 # A difference of convex approximation of sin(x) on [0, 2π]
-dc = approx(x -> sin(x[1]), [(0, 2π)], DC(), Interpol(; optimizer, planes = 3))
+dc = approx(sin, [(0, 2π)], DC(), Interpol(; optimizer, planes = 3))
 # Only minimized, so binary variables are needed for the concave part only
 z = pwaffine(m, (x,), dc; direction = :epigraph)
 @constraint(m, x ≥ 4)
