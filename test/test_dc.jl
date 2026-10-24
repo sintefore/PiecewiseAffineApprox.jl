@@ -155,3 +155,105 @@ end
         @test err(f2, dc) < 0.25 * err(f2, approx(f2, Convex(), alg))
     end
 end
+
+@testset "DC in JuMP" begin
+    x = collect(range(0, 2π; length = 40))
+    f = FunctionEvaluations(tuple.(x), sin.(x))
+    dc = approx(f, DC(), Interpol(planes = 3; optimizer))
+    @test PWA._planes(dc.convex) == 3 && PWA._planes(dc.concave) == 3
+
+    # The value of z at fixed points, in both directions of optimization
+    function solve(dc, x̂, sense; kwargs...)
+        m = Model(optimizer)
+        @variable(m, 0 ≤ xv ≤ 2π)
+        z = pwaffine(m, (xv,), dc; kwargs...)
+        @constraint(m, xv == x̂)
+        @objective(m, sense, z)
+        optimize!(m)
+        @test is_solved_and_feasible(m)
+        return value(z)
+    end
+    for x̂ ∈ (0.3, 1.5, π, 4.4, 6.0)
+        v = evaluate(dc, (x̂,))
+        @test solve(dc, x̂, MOI.MIN_SENSE) ≈ v atol = 1e-6
+        @test solve(dc, x̂, MOI.MAX_SENSE) ≈ v atol = 1e-6
+        @test solve(dc, x̂, MOI.MIN_SENSE; direction = :epigraph) ≈ v atol = 1e-6
+        @test solve(dc, x̂, MOI.MAX_SENSE; direction = :hypograph) ≈ v atol =
+            1e-6
+    end
+
+    # Binary variables only for the parts that need them
+    nbin(; kwargs...) = begin
+        m = Model()
+        @variable(m, 0 ≤ xv ≤ 2π)
+        pwaffine(m, (xv,), dc; kwargs...)
+        return count(is_binary, all_variables(m))
+    end
+    @test nbin() == 6
+    @test nbin(direction = :epigraph) == 3
+    @test nbin(direction = :hypograph) == 3
+    @test nbin(formulation = :indicator) == 6
+    m = Model()
+    @variable(m, xv)
+    pwaffine(m, (xv,), dc; formulation = :indicator)
+    @test num_constraints(m, VariableRef, MOI.ZeroOne) == 6
+    @test num_constraints(
+        m,
+        Vector{AffExpr},
+        MOI.Indicator{MOI.ACTIVATE_ON_ONE,MOI.LessThan{Float64}},
+    ) == 3
+
+    # Bounds are required for big-M, from the variables or the keyword
+    m = Model()
+    @variable(m, xv)
+    @test_throws ArgumentError pwaffine(m, (xv,), dc)
+    @test_throws ArgumentError pwaffine(m, (xv,), dc; bounds = [(0, Inf)])
+    @test_throws ArgumentError pwaffine(m, (xv,), dc; bounds = [(0, 1), (0, 1)])
+    @test_throws ArgumentError pwaffine(m, (xv,), dc; direction = :none)
+    @test_throws ArgumentError pwaffine(m, (xv,), dc; formulation = :sos)
+    @test_throws ArgumentError pwaffine(m, (xv, xv), dc)
+    # Expressions as inputs with explicit bounds, and a given z
+    m = Model(optimizer)
+    @variable(m, 0 ≤ t ≤ π)
+    @variable(m, zv)
+    z = pwaffine(m, (2t,), dc; z = zv, bounds = [(0, 2π)])
+    @test z === zv
+    @constraint(m, t == 0.75)
+    @objective(m, Min, zv)
+    optimize!(m)
+    @test value(zv) ≈ evaluate(dc, (1.5,)) atol = 1e-6
+
+    # Parts with a single plane or no planes need no binary variables
+    g = PWAFunc{Convex,1}([Plane((1.0,), 0.0)])
+    h = PWAFunc{Concave,1}([Plane((0.5,), -1.0), Plane((-1.0,), 0.0)])
+    for dc₁ ∈ (
+        DCFunc(g, h),
+        DCFunc(PWAFunc{Convex,1}(), h),
+        DCFunc(g, PWAFunc{Concave,1}()),
+    )
+        m = Model(optimizer)
+        @variable(m, -2 ≤ xv ≤ 2)
+        z = pwaffine(m, (xv,), dc₁)
+        @test count(is_binary, all_variables(m)) ==
+              (isempty(dc₁.concave.planes) ? 0 : 2)
+        @constraint(m, xv == 0.5)
+        @objective(m, Max, z)
+        optimize!(m)
+        @test value(z) ≈ evaluate(dc₁, (0.5,)) atol = 1e-6
+    end
+
+    # Two dimensions, with the fit from data through pwaffine
+    s(x) = x[1]^2 - x[2]^2
+    f2 = PWA._sample_uniform(s, [(-1, 1), (-1, 1)], 8)
+    m = Model(optimizer)
+    @variable(m, -1 ≤ xv[1:2] ≤ 1)
+    z = pwaffine(m, xv, f2, DC(), Cluster(planes = 3, rng = StableRNG(1)))
+    dc2 = approx(f2, DC(), Cluster(planes = 3, rng = StableRNG(1)))
+    for x̂ ∈ ((0.3, -0.7), (-0.9, 0.9), (0.0, 0.0))
+        c = @constraint(m, xv .== collect(x̂))
+        @objective(m, Min, z)
+        optimize!(m)
+        @test value(z) ≈ evaluate(dc2, x̂) atol = 1e-6
+        delete.(m, c)
+    end
+end

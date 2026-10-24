@@ -72,3 +72,37 @@ round(value.(y))
 # output
 1.0
 ```
+
+## Non-convex functions
+
+A difference of convex approximation, see [`DC`](@ref), is added to a model in
+the same way. The function is modelled as the sum of its convex and concave
+parts, and the part that is bounded against the direction of its curvature
+needs one binary variable per plane to select the active plane. The binary
+variables select the active plane with big-M constraints computed from the
+bounds on the variables, so the variables must be bounded, or the bounds given
+with the `bounds` keyword. With `formulation = :indicator`, indicator
+constraints are used instead for solvers that support them.
+
+By default `z` equals the approximation. If `z` is only minimized, pass
+`direction = :epigraph`, and if it is only maximized `direction = :hypograph`.
+Then only the concave or the convex part, respectively, needs binary variables.
+
+```jldoctest; output = false
+using JuMP, PiecewiseAffineApprox, HiGHS
+optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
+
+m = Model(optimizer)
+@variable(m, 0 ≤ x ≤ 2π)
+# A difference of convex approximation of sin(x) on [0, 2π]
+dc = approx(x -> sin(x[1]), [(0, 2π)], DC(), Interpol(; optimizer, planes = 3))
+# Only minimized, so binary variables are needed for the concave part only
+z = pwaffine(m, (x,), dc; direction = :epigraph)
+@constraint(m, x ≥ 4)
+@objective(m, Min, z)
+optimize!(m)
+round(value(z); digits = 2)
+
+# output
+-1.0
+```
