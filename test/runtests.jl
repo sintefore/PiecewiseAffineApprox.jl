@@ -41,5 +41,6 @@ const qp_optimizer = optimizer_with_attributes(
         include("test_cluster.jl")
         include("test_structtype.jl")
         include("test_kazda_li.jl")
+        include("test_dc.jl")
     end
 end

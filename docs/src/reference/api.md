@@ -18,9 +18,12 @@ CurrentModule = PiecewiseAffineApprox
 
 #Convex     # Missing docstring
 #Concave    # Missing docstring
+DC
+Alternating
 Plane
 FunctionEvaluations
 PWAFunc
+DCFunc
 ```
 
 ## Functions
@@ -28,6 +31,7 @@ PWAFunc
 ```@docs
 approx
 enforce_curvature
+dc_decomposition
 evaluate
 pwaffine
 ```

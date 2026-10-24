@@ -528,7 +528,7 @@ end
 # Approximation error per data point, compared with the tolerance: the mean
 # absolute deviation (:l1), the root mean square deviation (:l2, :rms) or the
 # maximum absolute deviation (:max)
-function _tolerance_error(f::FunctionEvaluations, pwa::PWAFunc, metric)
+function _tolerance_error(f::FunctionEvaluations, pwa::AbstractPWAFunc, metric)
     r = [abs(evaluate(pwa, x) - z) for (x, z) ∈ f]
     if metric == :l1
         return mean(r)
@@ -896,24 +896,40 @@ function _add_violated_convexity!(
     bf;
     maxadd = 10,
 )
+    new = _violated_convexity(lc, value.(v), value.(af), value.(bf); maxadd)
+    _add_convexity_pairs!(m, lc, v, af, bf, new)
+    return length(new)
+end
+
+# The violated pairs (k, l) for the values v̂ and planes (â, b̂), at most maxadd
+# per plane, with the largest violations first
+function _violated_convexity(lc::_LazyConvexity, v̂, â, b̂; maxadd = 10)
     D, N = size(lc.X)
-    v̂ = value.(v)
     # P[k, l]: value of plane k at point l, compared with the value of l
-    P = value.(af) * lc.X .+ value.(bf)
+    P = â * lc.X .+ b̂
     τ = 1e-7 * max(1.0, maximum(abs, v̂))
-    added = 0
+    new = Tuple{Int,Int}[]
     for k ∈ 1:N
         viol = [
             (P[k, l] - v̂[l], l) for
             l ∈ 1:N if l != k && P[k, l] - v̂[l] > τ && (k, l) ∉ lc.pairs
         ]
-        for (_, l) ∈ first(sort!(viol; rev = true), maxadd)
-            push!(lc.pairs, (k, l))
-            @constraint(m, sum(af[k, i] * lc.X[i, l] for i ∈ 1:D) + bf[k] ≤ v[l])
-            added += 1
-        end
+        append!(
+            new,
+            ((k, l) for (_, l) ∈ first(sort!(viol; rev = true), maxadd)),
+        )
     end
-    return added
+    return new
+end
+
+# Adds the convexity constraints for the pairs to the model
+function _add_convexity_pairs!(m, lc::_LazyConvexity, v, af, bf, pairs)
+    D = size(lc.X, 1)
+    for (k, l) ∈ pairs
+        push!(lc.pairs, (k, l))
+        @constraint(m, sum(af[k, i] * lc.X[i, l] for i ∈ 1:D) + bf[k] ≤ v[l])
+    end
+    return
 end
 
 # The indices of the n nearest neighbours of each point (columns of X), with

@@ -10,5 +10,11 @@ end
 function JSON.parsefile(s::AbstractString, ::Type{PWAFunc})
     return PWAFunc(JSON.parsefile(s, PiecewiseAffineApprox.STFunc))
 end
+function JSON.json(fn::String, f::DCFunc)
+    return JSON.json(fn, PiecewiseAffineApprox.STDCFunc(f))
+end
+function JSON.parsefile(s::AbstractString, ::Type{DCFunc})
+    return DCFunc(JSON.parsefile(s, PiecewiseAffineApprox.STDCFunc))
+end
 
 end

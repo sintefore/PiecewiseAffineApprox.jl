@@ -10,5 +10,11 @@ end
 function JSON3.read(s::AbstractString, ::Type{PWAFunc})
     return PWAFunc(JSON3.read(s, PiecewiseAffineApprox.STFunc))
 end
+function JSON3.write(fn::String, f::DCFunc)
+    return JSON3.write(fn, PiecewiseAffineApprox.STDCFunc(f))
+end
+function JSON3.read(s::AbstractString, ::Type{DCFunc})
+    return DCFunc(JSON3.read(s, PiecewiseAffineApprox.STDCFunc))
+end
 
 end

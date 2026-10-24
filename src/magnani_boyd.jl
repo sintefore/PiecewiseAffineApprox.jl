@@ -1,7 +1,7 @@
 
 # Approximation error using the value of the pwa function
 # in the given points. Support for multiple metrics (l1, l2, max).
-function _approx_error(X::Matrix, z::Vector, pwa::PWAFunc, metric = :l1)
+function _approx_error(X::Matrix, z::Vector, pwa::AbstractPWAFunc, metric = :l1)
     err = 0.0
     for (i, x̄) ∈ enumerate(eachcol(X))
         v = evaluate(pwa, x̄)

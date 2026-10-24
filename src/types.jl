@@ -2,6 +2,14 @@
 abstract type Curvature end
 struct Concave <: Curvature end
 struct Convex <: Curvature end
+"""
+    DC
+
+Curvature for a difference of convex functions, f = g - h with g and h convex.
+Any piecewise linear function can be written in this form. `approx(input, DC(), a)`
+returns a [`DCFunc`](@ref).
+"""
+struct DC <: Curvature end
 
 abstract type Algorithm end
 """
@@ -200,6 +208,32 @@ function. Use [`enforce_curvature`](@ref) first for noisy or non-convex data.
 end
 
 """
+    Alternating
+
+Compute a difference of convex approximation, see [`DC`](@ref), by fitting the
+convex part with the algorithm `convex` and the concave part with the algorithm
+`concave`. The two algorithms may have different numbers of planes, e.g. fewer
+for the concave part. Only used with `DC()`.
+
+The data is first split into a convex and a concave part by
+[`dc_decomposition`](@ref), using `optimizer` or, if it is `nothing`, the
+optimizer of the algorithms if any. Without an optimizer, the convex part is
+instead fitted to the data directly, and the concave part to the remaining
+error. The two parts are then refitted alternately, each to the data minus the
+other part, for at most `iterations` rounds as long as the error decreases. The
+error is measured by the metric of `convex`, if it has one, and otherwise by the
+sum of absolute deviations. Algorithms that require convex data, i.e.
+[`Progressive`](@ref) and [`FullOrder`](@ref), are not refitted, and the
+default number of iterations is zero for these.
+"""
+@kwdef struct Alternating{A<:Algorithm,B<:Algorithm,T} <: Algorithm
+    convex::A
+    concave::B = convex
+    optimizer::T = nothing
+    iterations::Int = min(_dc_iterations(convex), _dc_iterations(concave))
+end
+
+"""
     FunctionEvaluations{D}
 
 A structure holding a set of points and the associated
@@ -268,6 +302,14 @@ evaluate(p::Plane, x, c = Convex) = dot(p.α, x) + p.β # Planes defined for con
 evaluate(p::Plane, x, c::Type{Concave}) = -evaluate(p, x, Convex) # Flip for concave functions
 
 """
+    AbstractPWAFunc{D}
+
+A piecewise linear function of `D` variables, [`PWAFunc`](@ref) or
+[`DCFunc`](@ref).
+"""
+abstract type AbstractPWAFunc{D} end
+
+"""
     PWAFunc{C<:Curvature,D,T<:Real}
 
 A piecewise linear function that can be either convex and concave
@@ -280,7 +322,7 @@ is handled by storing its negative and negating when evaluting.
 `PWAFunc{C,D}(planes)` infers `T` from the planes, and `PWAFunc{C,D}()` creates
 an empty function with `T = Float64`.
 """
-struct PWAFunc{C<:Curvature,D,T<:Real}
+struct PWAFunc{C<:Curvature,D,T<:Real} <: AbstractPWAFunc{D}
     planes::Vector{Plane{D,T}}
 end
 function PWAFunc{C,D}(planes::AbstractVector{<:Plane{D}}) where {C<:Curvature,D}
@@ -296,13 +338,24 @@ end
 _numtype(::Type{Plane{D,T}}) where {D,T} = T
 _numtype(::Type) = Float64
 
-function _write_planes(io::IO, C::Curvature, planes::AbstractVector{<:Plane})
+Base.:(==)(f::PWAFunc{C,D}, g::PWAFunc{C,D}) where {C,D} = f.planes == g.planes
+
+function _write_planes(
+    io::IO,
+    C::Curvature,
+    planes::AbstractVector{<:Plane},
+    name = "z",
+)
     for p ∈ planes
-        println(io, " ", _write_plane(C, p))
+        println(io, " ", _write_plane(C, p, name))
     end
 end
-_write_plane(c::Convex, plane) = "z ≥ $(_xepr(plane.α))$(plane.β)"
-_write_plane(c::Concave, plane) = "z ≤ $(_xepr(-1 .* plane.α))$(-plane.β)"
+function _write_plane(c::Convex, plane, name = "z")
+    return "$name ≥ $(_xepr(plane.α))$(plane.β)"
+end
+function _write_plane(c::Concave, plane, name = "z")
+    return "$name ≤ $(_xepr(-1 .* plane.α))$(-plane.β)"
+end
 function _xepr(α)
     x = ["x₁", "x₂", "x₃", "x₄", "x₅"]
     expr = ""
@@ -351,6 +404,67 @@ end
 
 # The number of planes defining the piecewise linar function
 _planes(pwa) = length(pwa.planes)
+
+"""
+    DCFunc{D,T<:Real}
+
+A piecewise linear function of `D` variables represented as the sum of a convex
+and a concave piecewise linear function, z = z₁ + z₂, with coefficients of type
+`T`. The convex part `convex` is a `PWAFunc{Convex,D,T}` and the concave part
+`concave` a `PWAFunc{Concave,D,T}`. Either part may be empty, in which case it is
+zero.
+
+`DCFunc(convex, concave)` promotes the coefficients of the two parts to a common
+type.
+"""
+struct DCFunc{D,T<:Real} <: AbstractPWAFunc{D}
+    convex::PWAFunc{Convex,D,T}
+    concave::PWAFunc{Concave,D,T}
+end
+function DCFunc(g::PWAFunc{Convex,D,S}, h::PWAFunc{Concave,D,R}) where {D,S,R}
+    T = promote_type(S, R)
+    return DCFunc{D,T}(
+        PWAFunc{Convex,D,T}(convert(Vector{Plane{D,T}}, g.planes)),
+        PWAFunc{Concave,D,T}(convert(Vector{Plane{D,T}}, h.planes)),
+    )
+end
+
+_planes(f::DCFunc) = _planes(f.convex) + _planes(f.concave)
+
+function Base.:(==)(f::DCFunc{D}, g::DCFunc{D}) where {D}
+    return f.convex == g.convex && f.concave == g.concave
+end
+
+"""
+    evaluate(f::DCFunc, x)
+
+Evaluate the piecewise linear function at the point x, i.e. the sum of its
+convex and concave parts.
+"""
+function evaluate(f::DCFunc, x)
+    return _value_or_zero(f.convex, x) + _value_or_zero(f.concave, x)
+end
+# The value of the function, or zero of the same type for an empty function
+function _value_or_zero(pwa::PWAFunc{C,D,T}, x) where {C,D,T}
+    isempty(pwa.planes) && return dot(ntuple(_ -> zero(T), D), x) + zero(T)
+    return evaluate(pwa, x)
+end
+
+function Base.summary(io::IO, f::DCFunc)
+    return print(
+        io,
+        "$(typeof(f)) with $(_planes(f.convex)) convex and " *
+        "$(_planes(f.concave)) concave planes",
+    )
+end
+function Base.show(io::IO, ::MIME"text/plain", f::DCFunc)
+    summary(io, f)
+    println(io, ":")
+    println(io, " z = z₁ + z₂")
+    _write_planes(io, Convex(), f.convex.planes, "z₁")
+    _write_planes(io, Concave(), f.concave.planes, "z₂")
+    return
+end
 
 _addplane!(pwa::PWAFunc{C,D}, p::Plane{D}) where {C,D} = push!(pwa.planes, p)
 _addplane!(pwa::PWAFunc, α, β) = push!(pwa.planes, Plane(α, β))
