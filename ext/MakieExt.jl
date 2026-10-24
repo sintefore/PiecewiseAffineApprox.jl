@@ -105,7 +105,17 @@ function Makie.plot(x, y, f::DCFunc{1}; parts = true)
     lines!(ax, x̄, [evaluate(f, (i,)) for i ∈ x̄], color = :black)
 
     if parts
-        ax2 = Axis(fig[2, 1], title = "Convex and concave parts")
+        # The planes of the parts extend far beyond the parts themselves, so
+        # the axis is limited to the range of the parts
+        v = [
+            PiecewiseAffineApprox._value_or_zero(part, (i,)) for
+            part ∈ (f.convex, f.concave), i ∈ x̄
+        ]
+        ax2 = Axis(
+            fig[2, 1],
+            title = "Convex and concave parts",
+            limits = (nothing, ylims(vec(v))),
+        )
         _plot_planes!(ax2, x̄, f.convex; color = :blue, label = "z₁ (convex)")
         _plot_planes!(
             ax2,
