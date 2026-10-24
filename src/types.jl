@@ -46,9 +46,13 @@ over all trials is selected, both as measured by `metric`. For the fits that sol
 an optimization problem, each trial first refines its partition of the points with
 closed form least squares, and then for at most five iterations with the requested
 fit, which is both faster and better than the requested fit alone.
+
+For a difference of convex approximation, see [`DC`](@ref), the concave part
+has `concave_planes` planes (default: the same as `planes`).
 """
 @kwdef struct Cluster{T,R<:AbstractRNG} <: Algorithm
     planes::Int = defaultplanes()
+    concave_planes::Int = planes
     metric::Symbol = :l2
     trials::Int = 20
     itlim::Int = 50
@@ -110,9 +114,13 @@ Adjusting never increases the deviation from the data. For `:l2` it is solved as
 a nonnegative least squares problem, while `:l1` and `:max` require an
 `optimizer`. When the number of planes is selected, the selection is based on
 the unadjusted fits.
+
+For a difference of convex approximation, see [`DC`](@ref), the concave part
+has `concave_planes` planes (default: the same as `planes`).
 """
 @kwdef struct Interpol{T} <: Algorithm
     planes::Int = defaultplanes()
+    concave_planes::Int = planes
     metric::Symbol = defaultmetric()
     optimizer::T = nothing
     convexify::Symbol = :auto
@@ -146,9 +154,13 @@ depend on the units of the data. The big-M values in the formulation are
 heuristic. If they may cut off the optimal solution, i.e. a big-M constraint is
 tight for a plane that is not active, they are doubled and the problem is solved
 again as long as this improves the objective, within the total time `maxtime`.
+
+For a difference of convex approximation, see [`DC`](@ref), the concave part
+has `concave_planes` planes (default: the same as `planes`).
 """
 @kwdef struct MILP{T} <: Algorithm
     planes::Int = defaultplanes()
+    concave_planes::Int = planes
     metric::Symbol = defaultmetric()
     strict::Symbol = :none
     maxtime::Int = defaulttimelimit()
@@ -225,6 +237,13 @@ error is measured by the metric of `convex`, if it has one, and otherwise by the
 sum of absolute deviations. Algorithms that require convex data, i.e.
 [`Progressive`](@ref) and [`FullOrder`](@ref), are not refitted, and the
 default number of iterations is zero for these.
+
+The `strict` option of the algorithms applies to the approximation as a whole:
+with `:outer` it lies below the data and with `:inner` above it. For the
+concave part, this means the opposite of what the option means for a concave
+approximation on its own, and the option is interchanged internally. The
+concave part has `concave_planes` planes of the algorithm `concave`, which by
+default is its `planes`.
 """
 @kwdef struct Alternating{A<:Algorithm,B<:Algorithm,T} <: Algorithm
     convex::A

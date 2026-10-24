@@ -19,3 +19,24 @@ typeof(z)
 # output
 VariableRef (alias for GenericVariableRef{Float64})
 ```
+
+## Non-convex functions
+
+A function that is neither convex nor concave is approximated with `DC()` as a
+difference of convex functions: the sum of a convex and a concave piecewise
+affine function. Any of the algorithms can be used, and fits both parts, with
+`planes` planes in the convex part and `concave_planes` in the concave part. The
+concave part is the expensive one to model, so it usually gets fewer planes.
+
+```jldoctest
+using PiecewiseAffineApprox, HiGHS, JuMP
+optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
+
+dc = approx(x -> sin(x[1]), [(0, 2π)], DC(), Interpol(; optimizer, planes = 4, concave_planes = 2); nsamples = 30)
+length(dc.convex.planes), length(dc.concave.planes)
+
+# output
+(4, 2)
+```
+
+Use `Alternating` to fit the two parts with different algorithms.

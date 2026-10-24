@@ -30,9 +30,12 @@ as the sum of a convex and a concave piecewise linear function. Any function
 can be approximated in this way, so the points do not need to be convex or
 concave.
 
-The algorithm `a` is used for both parts, with the same number of planes in
-each, as described for [`Alternating`](@ref). Use `Alternating` to fit the parts
-with different algorithms or numbers of planes.
+The algorithm `a` is used for both parts, as described for
+[`Alternating`](@ref), with `a.planes` planes in the convex part and
+`a.concave_planes` in the concave part for the algorithms that have these
+options. Use `Alternating` to fit the parts with different algorithms. The
+`strict` option of the algorithm applies to the approximation as a whole: with
+`:outer` it lies below the data and with `:inner` above it.
 """
 function approx(input::FunctionEvaluations{D}, c::DC, a::Algorithm) where {D}
     return _dc_approx(input, a, a, _dc_optimizer(a), _dc_iterations(a))
@@ -70,7 +73,39 @@ function _default_samples(a::Alternating, D)
     return max(_default_samples(a.convex, D), _default_samples(a.concave, D))
 end
 
-# Fit the convex part with ag and the concave part with ah, alternately
+# The algorithm for fitting the concave part: strict = :outer and :inner are
+# interchanged, and the number of planes is concave_planes
+function _dc_concave_algorithm(a::Algorithm)
+    a = _dc_swap_strict(a)
+    hasproperty(a, :concave_planes) || return a
+    return _dc_with(a, :planes, a.concave_planes)
+end
+
+# The algorithm with strict = :outer and :inner interchanged, for fitting the
+# concave part. Algorithms without strictness are returned as they are.
+function _dc_swap_strict(a::Algorithm)
+    hasproperty(a, :strict) || return a
+    swapped =
+        a.strict == :outer ? :inner : a.strict == :inner ? :outer : a.strict
+    return _dc_with(a, :strict, swapped)
+end
+
+# A copy of the algorithm with the field set to the value, through its
+# keyword constructor
+function _dc_with(a::Algorithm, field::Symbol, value)
+    getfield(a, field) == value && return a
+    fields = (
+        name => (name == field ? value : getfield(a, name)) for
+        name ∈ fieldnames(typeof(a))
+    )
+    return typeof(a).name.wrapper(; fields...)
+end
+
+# Fit the convex part with ag and the concave part with ah, alternately. The
+# strictness of the algorithms refers to the sum of the parts: with :outer,
+# the sum lies below the data. Each part is fitted to the data minus the other
+# part, so the convex part must then lie below these values, and the concave
+# part as well, which for a concave approximation is strict = :inner.
 function _dc_approx(
     f::FunctionEvaluations{D},
     ag::Algorithm,
@@ -78,6 +113,7 @@ function _dc_approx(
     optimizer,
     iterations,
 ) where {D}
+    ah = _dc_concave_algorithm(ah)
     metric = _dc_metric(ag)
     x = f.points
     z = f.values
@@ -92,7 +128,9 @@ function _dc_approx(
         g = approx(f, Convex(), ag)
         h = approx(residual(g), Concave(), ah)
     else
-        parts = dc_decomposition(f, optimizer; metric)
+        # The split uses the default metric (a linear program), independent
+        # of the metric of the fits
+        parts = dc_decomposition(f, optimizer)
         g = approx(parts.convex, Convex(), ag)
         h = approx(parts.concave, Concave(), ah)
     end

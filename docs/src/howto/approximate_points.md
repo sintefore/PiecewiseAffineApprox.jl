@@ -56,3 +56,29 @@ length(pwa.planes)
 # output
 17
 ```
+
+## Non-convex data
+
+Data that is neither convex nor concave is approximated with `DC()` as the sum
+of a convex and a concave piecewise affine function. The data is first split
+into a convex and a concave part by `dc_decomposition`, each part is fitted,
+and the parts are then refitted alternately, each to the data minus the other
+part.
+
+```jldoctest
+using PiecewiseAffineApprox, JuMP, HiGHS, StableRNGs
+optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
+
+x = collect(range(-1, 1; length = 30))
+z = sin.(3x)
+
+dc = approx(
+    FunctionEvaluations(Tuple.(x), z),
+    DC(),
+    Cluster(planes = 4, rng = StableRNG(1)),
+)
+typeof(dc)
+
+# output
+DCFunc{1, Float64}
+```

@@ -257,3 +257,121 @@ end
         delete.(m, c)
     end
 end
+
+@testset "DC strict" begin
+    x = collect(range(-1, 1; length = 25))
+    f = FunctionEvaluations(tuple.(x), sin.(3x))
+    s(x) = sin(3x[1]) * cos(2x[2])
+    f2 = PWA._sample_uniform(s, [(-1, 1), (-1, 1)], 10)
+    gap(fe, pwa) = extrema(evaluate(pwa, p) - v for (p, v) ∈ fe)
+    err(fe, pwa) = PWA._tolerance_error(fe, pwa, :l1)
+
+    # strict applies to the sum of the parts, below (:outer) or above (:inner)
+    # the data, and is interchanged for the concave part
+    @test PWA._dc_swap_strict(Cluster(strict = :outer)).strict == :inner
+    @test PWA._dc_swap_strict(Cluster(strict = :inner)).strict == :outer
+    @test PWA._dc_swap_strict(Cluster(strict = :none)).strict == :none
+    @test PWA._dc_swap_strict(Interpol()) === Interpol()
+    # The concave part has concave_planes planes
+    @test PWA._dc_concave_algorithm(Cluster(planes = 5)).planes == 5
+    @test PWA._dc_concave_algorithm(Cluster(planes = 5, concave_planes = 2)).planes ==
+          2
+    a = PWA._dc_concave_algorithm(
+        MILP(planes = 5, concave_planes = 2, strict = :outer; optimizer),
+    )
+    @test a == MILP(planes = 2, concave_planes = 2, strict = :inner; optimizer)
+    @test PWA._dc_concave_algorithm(FullOrder(; optimizer)) ===
+          FullOrder(; optimizer)
+    for alg ∈ (
+        Cluster(planes = 5, concave_planes = 2, rng = StableRNG(1)),
+        Interpol(planes = 5, concave_planes = 2),
+        MILP(planes = 3, concave_planes = 2; optimizer),
+    )
+        dc = approx(f, DC(), alg)
+        @test PWA._planes(dc.convex) == alg.planes
+        @test PWA._planes(dc.concave) == 2
+        @test err(f, dc) < 0.15
+    end
+    a = MILP(strict = :outer; optimizer, planes = 3)
+    @test PWA._dc_swap_strict(a) == MILP(strict = :inner; optimizer, planes = 3)
+
+    for (fe, alg) ∈ (
+        (
+            f,
+            Cluster(
+                planes = 4,
+                metric = :l1,
+                strict = :outer;
+                optimizer,
+                rng = StableRNG(1),
+            ),
+        ),
+        (
+            f,
+            Cluster(
+                planes = 4,
+                metric = :l1,
+                strict = :inner;
+                optimizer,
+                rng = StableRNG(1),
+            ),
+        ),
+        (
+            f,
+            Cluster(
+                planes = 4,
+                metric = :max,
+                strict = :outer;
+                optimizer,
+                rng = StableRNG(1),
+            ),
+        ),
+        (
+            f2,
+            Cluster(
+                planes = 4,
+                metric = :l1,
+                strict = :outer;
+                optimizer,
+                rng = StableRNG(1),
+            ),
+        ),
+        (
+            f2,
+            Cluster(
+                planes = 4,
+                metric = :l1,
+                strict = :inner;
+                optimizer,
+                rng = StableRNG(1),
+            ),
+        ),
+        (f, MILP(planes = 2, strict = :outer; optimizer)),
+        (f, MILP(planes = 2, strict = :inner; optimizer)),
+        (f, Progressive(; optimizer, tolerance = 0.1, strict = :outer)),
+        (f, Progressive(; optimizer, tolerance = 0.1, strict = :inner)),
+    )
+        dc = approx(fe, DC(), alg)
+        lo, hi = gap(fe, dc)
+        if alg.strict == :outer
+            @test hi ≤ 1e-6
+        else
+            @test lo ≥ -1e-6
+        end
+        @test err(fe, dc) < 0.3
+    end
+    # Also with different algorithms for the parts
+    alg = Alternating(
+        convex = Cluster(
+            planes = 4,
+            metric = :l1,
+            strict = :outer;
+            optimizer,
+            rng = StableRNG(1),
+        ),
+        concave = MILP(planes = 2, strict = :outer; optimizer),
+    )
+    dc = approx(f, DC(), alg)
+    @test gap(f, dc)[2] ≤ 1e-6
+    @test PWA._planes(dc.convex) == 4 && PWA._planes(dc.concave) == 2
+end

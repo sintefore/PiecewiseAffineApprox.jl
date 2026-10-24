@@ -7,7 +7,7 @@
 
 
 
-Add convex (or concave) piecewise linear approximations of functions or a set of points to optimization models modelled in [JuMP](https://jump.dev/). 
+Add convex, concave or general (difference of convex) piecewise linear approximations of functions or a set of points to optimization models modelled in [JuMP](https://jump.dev/). 
 
 This package provides three main methods to fit a set of points: 
 
@@ -15,7 +15,7 @@ This package provides three main methods to fit a set of points:
 2. uses a heuristic to fit the set of points. This method is based on [Magnani & Boyd, 2009](https://doi.org/10.1007/s11081-008-9045-3).
 3. a progressive heuristic to add planes until a certain accuracy is met. This method is based on [Kazda & Li, 2024](https://doi.org/10.1016/j.ejor.2023.07.026)
 
-For non-convex functions, consider using [PiecewiseLinearOpt.jl](https://github.com/joehuchette/PiecewiseLinearOpt.jl).
+Non-convex functions are approximated as a difference of convex functions with `DC()`: the sum of a convex and a concave piecewise linear function, fitted with any of the methods above. The resulting `DCFunc` is added to a JuMP model with binary variables selecting the active plane of the concave part.
 
 ## Usage
 
@@ -34,6 +34,14 @@ z = pwaffine(m, x, pwa)
 @constraint(m, x >= 0.5)
 optimize!(m)
 value(z) # 0.2653
+```
+
+A non-convex function is approximated as a difference of convex functions, and added to a model in the same way. Here `z` is only minimized, so with `direction = :epigraph` only the concave part needs binary variables:
+
+```julia
+dc = approx(x -> sin(x[1]), [(0, 2π)], DC(), Interpol(optimizer = HiGHS.Optimizer, planes = 3))
+@variable(m, 0 ≤ y ≤ 2π)
+w = pwaffine(m, (y,), dc; direction = :epigraph)
 ```
 
 To keep dependencies light, PiecewiseAffineApprox does not include plotting by default. If the `Makie` or `Plots` package is loaded
