@@ -51,23 +51,124 @@ function Makie.plot(input::FunctionEvaluations{2}, pwa::PWAFunc{C,2}) where {C}
 end
 
 function Makie.plot(x, y, pwa::PWAFunc{C,1}) where {C}
-    active = getactive(C)
-    inactive = getinactive(C)
     fig = Figure(size = (600, 400))
     ax = Axis(fig[1, 1], limits = (nothing, ylims(y)))
 
     x̄ = LinRange(minimum(x), maximum(x), 100)
 
     scatter!(ax, x, y, color = :red, markersize = 8)
+    _plot_planes!(ax, x̄, pwa)
+
+    return fig
+end
+
+# Plot the planes of a one-dimensional pwa function (dashed) and the function
+# itself (solid) on the axis, returning the plot of the function
+function _plot_planes!(
+    ax,
+    x̄,
+    pwa::PWAFunc{C,1};
+    color = nothing,
+    planes = true,
+    label = nothing,
+) where {C}
+    active = getactive(C)
+    inactive = getinactive(C)
     en = [inactive(Inf, -Inf) for _ ∈ x̄]
     for plane ∈ pwa.planes
         f = [evaluate(plane, i, C) for i ∈ x̄]
-        lines!(ax, x̄, f, linestyle = :dash)
+        if planes && isnothing(color)
+            lines!(ax, x̄, f, linestyle = :dash)
+        elseif planes
+            lines!(ax, x̄, f, linestyle = :dash, color = (color, 0.5))
+        end
         en = active.(en, f)
     end
-    lines!(ax, x̄, en, color = :black)
+    return lines!(ax, x̄, en; color = something(color, :black), label)
+end
+
+"""
+    plot(x, y, f::DCFunc{1}; parts = true)
+    plot(x, z, f::DCFunc{2}; parts = true)
+    plot(input::FunctionEvaluations, f::DCFunc; parts = true)
+
+Plot a difference of convex approximation together with the data points. With
+`parts = true` (default), the convex part z₁ and the concave part z₂ of the
+function z = z₁ + z₂ are shown in separate axes, with their planes.
+"""
+function Makie.plot(x, y, f::DCFunc{1}; parts = true)
+    fig = Figure(size = (600, parts ? 700 : 400))
+    ax = Axis(fig[1, 1], limits = (nothing, ylims(y)))
+    x̄ = LinRange(minimum(x), maximum(x), 200)
+
+    scatter!(ax, x, y, color = :red, markersize = 8)
+    lines!(ax, x̄, [evaluate(f, (i,)) for i ∈ x̄], color = :black)
+
+    if parts
+        ax2 = Axis(fig[2, 1], title = "Convex and concave parts")
+        _plot_planes!(ax2, x̄, f.convex; color = :blue, label = "z₁ (convex)")
+        _plot_planes!(
+            ax2,
+            x̄,
+            f.concave;
+            color = :orange,
+            label = "z₂ (concave)",
+        )
+        axislegend(ax2, position = :ct)
+    end
 
     return fig
+end
+
+function Makie.plot(x, z, f::DCFunc{2}; parts = true)
+    xmin, xmax = extrema(x[1, :])
+    ymin, ymax = extrema(x[2, :])
+    x̄ = LinRange(xmin, xmax, 40)
+    ȳ = LinRange(ymin, ymax, 40)
+    fig = Figure(size = (1000, 1000))
+    ax1 = Axis3(fig[1:(parts ? 3 : 2), 1:2])
+    ax2 = Axis(fig[1, 3], title = "Error at the data points")
+
+    v = [evaluate(f, (x̄[i], ȳ[j])) for i ∈ eachindex(x̄), j ∈ eachindex(ȳ)]
+    surface!(ax1, x̄, ȳ, v)
+    scatter!(ax1, x[1, :], x[2, :], z, color = :red, markersize = 8)
+
+    l1 = PiecewiseAffineApprox._approx_error(x, z, f, :l1)
+    l2 = PiecewiseAffineApprox._approx_error(x, z, f, :l2)
+    lmax = PiecewiseAffineApprox._approx_error(x, z, f, :max)
+    ax1.title = "l1 = $(round(l1, digits=2)), l2 = $(round(l2, digits=2)), max = $(round(lmax, digits=2))"
+    z̄ = [abs(evaluate(f, x[:, i]) - z[i]) for i ∈ eachindex(z)]
+    θ = 20 / max(maximum(z̄), eps())
+    ax2.title = "Max error = $(round(maximum(z̄),digits=2))"
+    scatter!(ax2, x[1, :], x[2, :]; markersize = θ * z̄)
+
+    if parts
+        x̄ = LinRange(xmin, xmax, 20)
+        ȳ = LinRange(ymin, ymax, 20)
+        for (k, (part, C, name)) ∈ enumerate((
+            (f.convex, Convex, "z₁ (convex)"),
+            (f.concave, Concave, "z₂ (concave)"),
+        ))
+            ax = Axis3(fig[1+k, 3], title = name)
+            for p ∈ part.planes
+                v = [
+                    evaluate(p, [x̄[i], ȳ[j]], C) for i ∈ eachindex(x̄),
+                    j ∈ eachindex(ȳ)
+                ]
+                surface!(ax, x̄, ȳ, v)
+            end
+        end
+    end
+
+    return fig
+end
+
+function Makie.plot(input::FunctionEvaluations{2}, f::DCFunc{2}; kwargs...)
+    x = [p[i] for i ∈ 1:2, p ∈ input.points]
+    return Makie.plot(x, input.values, f; kwargs...)
+end
+function Makie.plot(input::FunctionEvaluations{1}, f::DCFunc{1}; kwargs...)
+    return Makie.plot(first.(input.points), input.values, f; kwargs...)
 end
 
 getactive(::Type{Convex}) = max

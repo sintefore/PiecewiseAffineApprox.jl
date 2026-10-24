@@ -52,3 +52,20 @@ end
 ```
 ![](../assets/approx_3D.png)
 
+### Difference of convex functions
+
+A `DCFunc` is plotted in the same way. By default the convex and concave parts
+are shown in separate axes together with their planes; pass `parts = false` to
+show only the approximation and the data.
+
+```julia
+using PiecewiseAffineApprox, CairoMakie, HiGHS, JuMP
+optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
+
+x = LinRange(-1, 1, 25)
+f(x) = sin(3 * first(x))
+dc = approx(f, [(-1, 1)], DC(), Interpol(; optimizer, planes = 4))
+p = plot(x, f.(x), dc)
+plot(x, f.(x), dc; parts = false)
+```
+
