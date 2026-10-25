@@ -26,6 +26,16 @@ PWAFunc
 DCFunc
 ```
 
+## Formulations
+
+```@docs
+PWAFormulation
+PsiFormulation
+LambdaFormulation
+DeltaFormulation
+PhiFormulation
+```
+
 ## Functions
 
 ```@docs

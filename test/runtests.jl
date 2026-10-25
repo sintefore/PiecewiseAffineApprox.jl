@@ -42,5 +42,7 @@ const qp_optimizer = optimizer_with_attributes(
         include("test_structtype.jl")
         include("test_kazda_li.jl")
         include("test_dc.jl")
+        include("test_vertex_enum.jl")
+        include("test_linopt.jl")
     end
 end

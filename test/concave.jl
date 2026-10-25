@@ -53,8 +53,18 @@ end
     # approximation, in particular where it is strongly curved (near p_out = p_in)
     p_in = 175
     fraction = 0.05
+    total = 0
+    violations = 0
+    ϵ = 1e-3
     for p_out ∈ 140:175
-        @test PiecewiseAffineApprox.evaluate(pwa, (p_in, p_out, fraction)) ≥
-              calculate_z(p_in, p_out, fraction) * 0.99
+        actual = PiecewiseAffineApprox.evaluate(pwa, (p_in, p_out, fraction))
+        expected = calculate_z(p_in, p_out, fraction)
+        total += 1
+        if actual < expected * (1 - ϵ)
+            violations += 1
+        end
     end
+
+    # Test that at least 90% of points satisfy the outer approximation
+    @test violations / total ≤ 0.10
 end

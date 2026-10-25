@@ -205,10 +205,10 @@ end
     @test nbin() == 6
     @test nbin(direction = :epigraph) == 3
     @test nbin(direction = :hypograph) == 3
-    @test nbin(formulation = :indicator) == 6
+    @test nbin(selection = :indicator) == 6
     m = Model()
     @variable(m, xv)
-    pwaffine(m, (xv,), dc; formulation = :indicator)
+    pwaffine(m, (xv,), dc; selection = :indicator)
     @test num_constraints(m, VariableRef, MOI.ZeroOne) == 6
     @test num_constraints(
         m,
@@ -223,7 +223,14 @@ end
     @test_throws ArgumentError pwaffine(m, (xv,), dc; bounds = [(0, Inf)])
     @test_throws ArgumentError pwaffine(m, (xv,), dc; bounds = [(0, 1), (0, 1)])
     @test_throws ArgumentError pwaffine(m, (xv,), dc; direction = :none)
-    @test_throws ArgumentError pwaffine(m, (xv,), dc; formulation = :sos)
+    @test_throws ArgumentError pwaffine(
+        m,
+        (xv,),
+        dc;
+        formulation = LambdaFormulation(),
+        bounds = [(0, 1)],
+    )
+    @test_throws ArgumentError pwaffine(m, (xv,), dc; selection = :sos)
     @test_throws ArgumentError pwaffine(m, (xv, xv), dc)
     # Expressions as inputs with explicit bounds, and a given z
     m = Model(optimizer)
