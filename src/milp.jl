@@ -1,30 +1,12 @@
 # Optimal convex approximation using mixed integer optimization
 function _fit(options::MILP, input::FunctionEvaluations{D}) where {D}
     _validate(options)
-    # Solve on data normalized to the unit box, to make the solver tolerances,
-    # big-M values and margins independent of the scale of the data
-    lo = ntuple(i -> minimum(p[i] for p ∈ input.points), D)
-    w = ntuple(D) do i
-        hi = maximum(p[i] for p ∈ input.points)
-        return hi > lo[i] ? hi - lo[i] : 1.0
-    end
-    zᵐⁱⁿ, zᵐᵃˣ = extrema(input.values)
-    zʷ = zᵐᵃˣ > zᵐⁱⁿ ? zᵐᵃˣ - zᵐⁱⁿ : 1.0
-    normalized = FunctionEvaluations(
-        [ntuple(i -> (p[i] - lo[i]) / w[i], D) for p ∈ input.points],
-        (input.values .- zᵐⁱⁿ) ./ zʷ,
-    )
-
+    # Solve on normalized data, to make the solver tolerances, big-M values
+    # and margins independent of the scale of the data
+    normalized, n = _normalize(input)
     a, b, details = _milp(normalized, options)
-
-    # Transform the planes back: z = zᵐⁱⁿ + zʷ (Σⱼ aⱼ (xⱼ - loⱼ) / wⱼ + b)
-    pwa = PWAFunc{Convex,D}([
-        Plane(
-            ntuple(j -> zʷ * a[j, k] / w[j], D),
-            zᵐⁱⁿ + zʷ * (b[k] - sum(a[j, k] * lo[j] / w[j] for j ∈ 1:D)),
-        ) for k ∈ axes(a, 2)
-    ])
-    return pwa, details
+    pwa = PWAFunc{Convex,D}([Plane(Tuple(a[:, k]), b[k]) for k ∈ axes(a, 2)])
+    return _denormalize(pwa, n), details
 end
 
 supported_metrics(::MILP) = (:l1, :l2, :max)

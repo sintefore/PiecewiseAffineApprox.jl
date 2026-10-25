@@ -42,14 +42,14 @@ end
 @testset "Cluster normalization" begin
     # Normalized data has zero mean and identity covariance
     X = [1.0 2.0 4.0 7.0 3.0; 0.5 -1.0 2.0 1.0 0.0]
-    μ, T = PWA._normalization(X)
-    X̃ = T * (X .- μ)
+    nd, n = PWA._normalize(FunctionEvaluations(X, zeros(5); dims = 2); whiten = true, values = false)
+    X̃ = PWA._matrix(nd)
     @test vec(PWA.mean(X̃, dims = 2)) ≈ zeros(2) atol = 1e-12
     @test PWA.cov(X̃, dims = 2) ≈ I
 
     # Back transformation gives the same function values
     pwa = PWAFunc{Convex,2}([Plane([1.0, -2.0], 0.5), Plane([-0.5, 3.0], 1.0)])
-    pwaₒ = PWA._denormalize(pwa, μ, T)
+    pwaₒ = PWA._denormalize(pwa, n)
     @test all(evaluate(pwaₒ, x) ≈ evaluate(pwa, x̃) for (x, x̃) ∈ zip(eachcol(X), eachcol(X̃)))
 
     # Result is (close to) invariant to scaling and shifting the input
@@ -104,8 +104,7 @@ end
 @testset "Cluster refill of subsets" begin
     # Subsets must spread out in all directions spanned by the data
     X = randn(StableRNG(1), 3, 200)
-    μ, T = PWA._normalization(X)
-    X̃ = T * (X .- μ)
+    X̃ = PWA._matrix(PWA._normalize(FunctionEvaluations(X, zeros(size(X, 2)); dims = 2); whiten = true, values = false)[1])
     determined = PWA._determined_test(X̃, 1e-4)
     @test determined(collect(1:50))
     @test !determined([1, 2, 3])                    # too few points
@@ -115,8 +114,8 @@ end
 
     # For data on a line, subsets only need to spread along the line
     L = [1.0, 2.0, -1.0] * range(0, 1, length = 20)'
-    μ, T = PWA._normalization(L)
-    @test PWA._determined_test(T * (L .- μ), 1e-4)([1, 5, 9])
+    L̃ = PWA._matrix(PWA._normalize(FunctionEvaluations(L, zeros(20); dims = 2); whiten = true, values = false)[1])
+    @test PWA._determined_test(L̃, 1e-4)([1, 5, 9])
 
     # Refilling splits the subsets with the largest weight
     𝒫 = [collect(1:150), collect(151:200)]
@@ -140,8 +139,7 @@ end
     V = -5:5
     X = Float64[c[i] for i ∈ 1:3, c ∈ vec(collect(Iterators.product(V, V, V)))]
     z = [log(sum(exp, c)) for c ∈ eachcol(X)]
-    μ, T = PWA._normalization(X)
-    X̃ = T * (X .- μ)
+    X̃ = PWA._matrix(PWA._normalize(FunctionEvaluations(X, zeros(size(X, 2)); dims = 2); whiten = true, values = false)[1])
     errors = map(1:20) do i
         𝒫 = PWA._random_partition(StableRNG(i), X̃, 12)
         pwa = PWA._refine_partition(X̃, z, 𝒫, 50, :l2, nothing, :none)
@@ -159,8 +157,7 @@ end
     V = -5:5
     X = Float64[c[i] for i ∈ 1:3, c ∈ vec(collect(Iterators.product(V, V, V)))]
     z = [log(sum(exp, c)) for c ∈ eachcol(X)]
-    μ, T = PWA._normalization(X)
-    X̃ = T * (X .- μ)
+    X̃ = PWA._matrix(PWA._normalize(FunctionEvaluations(X, zeros(size(X, 2)); dims = 2); whiten = true, values = false)[1])
     for seed ∈ 1:5
         𝒫 = PWA._random_partition(StableRNG(seed), X̃, 12)
         errors = map(0:15) do itlim

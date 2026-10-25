@@ -596,8 +596,8 @@ function _progressive_band(
     δ ≥ 0 || throw(ArgumentError("The tolerance must be nonnegative"))
     # Work with data normalized to the order of one, so that the thresholds
     # below are independent of the scale and offset of the data
-    X, μx, σx = _normalize_points(f)
-    z, z̄, s = _normalize_values(f.values, δ)
+    normalized, n = _normalize(f; floor = δ)
+    X, z, s = _matrix(normalized), normalized.values, n.s
     δ̂ = δ / s
     N = length(z)
     lo = strict == :inner ? copy(z) : z .- δ̂
@@ -643,37 +643,9 @@ function _progressive_band(
         U, planes = _active_allocation(X, planes)
         v, planes, gaps = lp(U, length(planes))
     end
-    pwa = PWAFunc{Convex,D}([_denormalize(q, μx, σx, z̄, s) for q ∈ planes])
+    pwa = _denormalize(PWAFunc{Convex,D}(planes), n)
     _check_tolerance(f, pwa, :max, δ, rounds)
     return pwa, rounds
-end
-
-# The points as columns of a matrix, shifted and scaled to [-1, 1] in each
-# coordinate, together with the shift and scale
-function _normalize_points(f::FunctionEvaluations{D}) where {D}
-    X = [pt[i] for i ∈ 1:D, pt ∈ f.points]
-    lo, hi = vec(minimum(X, dims = 2)), vec(maximum(X, dims = 2))
-    μx = (lo .+ hi) ./ 2
-    σx = [h > l ? (h - l) / 2 : 1.0 for (l, h) ∈ zip(lo, hi)]
-    return (X .- μx) ./ σx, μx, σx
-end
-
-# The values shifted to mean zero and scaled to a largest absolute value of one
-# (or by the tolerance δ for constant values), together with the shift and scale
-function _normalize_values(z, δ)
-    z̄ = mean(z)
-    s = maximum(abs, z .- z̄)
-    s = s > 0 ? s : δ > 0 ? δ : 1.0
-    return (z .- z̄) ./ s, z̄, s
-end
-
-# The plane ẑ = â⋅x̂ + b̂ for normalized points x̂ = (x - μx) ./ σx and values
-# ẑ = (z - z̄) / s, in the original coordinates
-function _denormalize(q::Plane, μx, σx, z̄, s)
-    â = collect(q.α)
-    a = s .* â ./ σx
-    b = s * (q.β - sum(â .* μx ./ σx)) + z̄
-    return Plane(Tuple(a), b)
 end
 
 # Allocate each point to the plane that is active at the point, and remove the

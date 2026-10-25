@@ -525,3 +525,100 @@ function _fit(r::Restart, data::FunctionEvaluations)
     return func,
     (trials = r.trials, errors = errors, best = best, inner = inner)
 end
+
+# ---------------------------------------------------------------------------
+# Normalization of the data, shared by the algorithms so that their
+# tolerances and heuristics are independent of the scale and offset of the
+# data: points x̃ = T (x - μ) and values z̃ = (z - ν) / s.
+
+struct Normalization
+    μ::Vector{Float64}
+    T::Matrix{Float64}
+    ν::Float64
+    s::Float64
+end
+
+"""
+    _normalize(data::FunctionEvaluations; whiten = false, values = true, floor = 0.0)
+
+The data normalized, and the [`Normalization`](@ref) to transform a fit back
+with [`_denormalize`](@ref). Each coordinate of the points is shifted to its
+mid-range and scaled to [-1, 1]; constant coordinates are only shifted. With
+`whiten = true`, the points are instead centered at their mean, scaled by
+their ranges, and rotated and scaled to unit covariance (ZCA whitening), which
+makes a fit invariant to affine transformations of the points, as in Magnani
+& Boyd (Sect. 1.3). With `values = true`, the values are
+likewise shifted to their mid-range and scaled to [-1, 1]; constant values are
+scaled by `floor` if positive, e.g. a tolerance, and otherwise not scaled.
+"""
+function _normalize(
+    data::FunctionEvaluations{D};
+    whiten = false,
+    values = true,
+    floor = 0.0,
+) where {D}
+    X = [p[i] for i ∈ 1:D, p ∈ data.points]
+    lo, hi = vec(minimum(X, dims = 2)), vec(maximum(X, dims = 2))
+    # Whitened points are centered at the mean, as the whitening makes them
+    # have zero mean and unit covariance; otherwise at the mid-range
+    μ = whiten ? vec(mean(X, dims = 2)) : (lo .+ hi) ./ 2
+    if whiten
+        # Scaled by the ranges before whitening, so that coordinates with a
+        # small but genuine range are not treated as degenerate
+        S = Diagonal([h > l ? 1 / (h - l) : 1.0 for (l, h) ∈ zip(lo, hi)])
+        T = Matrix(_whitening(S * (X .- μ)) * S)
+        X̃ = T * (X .- μ)
+    else
+        σ = [h > l ? (h - l) / 2 : 1.0 for (l, h) ∈ zip(lo, hi)]
+        T = Matrix{Float64}(Diagonal(1 ./ σ))
+        X̃ = (X .- μ) ./ σ
+    end
+    ν, s = 0.0, 1.0
+    if values
+        zlo, zhi = extrema(data.values)
+        ν = (zlo + zhi) / 2
+        s = zhi > zlo ? (zhi - zlo) / 2 : floor > 0 ? floor : 1.0
+    end
+    normalized = FunctionEvaluations(
+        [ntuple(i -> X̃[i, l], D) for l ∈ axes(X̃, 2)],
+        (data.values .- ν) ./ s,
+    )
+    return normalized, Normalization(μ, T, ν, s)
+end
+
+# The whitening transform W of the centered points X (columns), such that
+# W X has identity covariance in the directions where the points vary.
+# Directions with (near) zero variance are mapped to zero. The whitening is
+# ZCA (W = Σ^(-1/2)), which is unique and leaves data that is only scaled
+# along the axes in identical coordinates.
+function _whitening(X)
+    D, N = size(X)
+    N < 2 && return Matrix{Float64}(I, D, D)
+    λ, V = eigen(Symmetric(cov(X, dims = 2)))
+    keep = λ .> 1e-10 * max(maximum(λ), 0)
+    any(keep) || return Matrix{Float64}(I, D, D)
+    Vᵣ = V[:, keep]
+    return Vᵣ * Diagonal(1 ./ sqrt.(λ[keep])) * Vᵣ'
+end
+
+# The points of the normalized data as the columns of a matrix
+function _matrix(data::FunctionEvaluations{D}) where {D}
+    return [p[i] for i ∈ 1:D, p ∈ data.points]
+end
+
+"""
+    _denormalize(pwa::PWAFunc{Convex}, n::Normalization)
+    _denormalize(plane::Plane, n::Normalization)
+
+A plane ã⋅x̃ + b̃ fitted to normalized points x̃ = T (x - μ) and values
+z̃ = (z - ν) / s, in the original coordinates: a = s Tᵀã, b = ν + s (b̃ - ãᵀTμ).
+"""
+function _denormalize(p::Plane{D}, n::Normalization) where {D}
+    ã = collect(p.α)
+    a = n.s .* (n.T' * ã)
+    b = n.ν + n.s * (p.β - dot(ã, n.T * n.μ))
+    return Plane(Tuple(a), b)
+end
+function _denormalize(pwa::PWAFunc{Convex,D}, n::Normalization) where {D}
+    return PWAFunc{Convex,D}([_denormalize(p, n) for p ∈ pwa.planes])
+end

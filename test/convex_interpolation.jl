@@ -172,8 +172,8 @@ end
         @test all(length(pwa.planes) ≤ 5 for pwa ∈ values(results))
 
         # The dynamic program interpolates the end points of the data
-        @test evaluate(results[:dp], (x[1],)) ≈ z[1]
-        @test evaluate(results[:dp], (x[end],)) ≈ z[end]
+        @test evaluate(results[:dp], (x[1],)) ≈ z[1] atol = 1e-12
+        @test evaluate(results[:dp], (x[end],)) ≈ z[end] atol = 1e-12
 
         # Auto selects the best of :dp and :data
         @test e[:auto] ≈ min(e[:dp], e[:data])

@@ -197,8 +197,8 @@ function dc_decomposition(
     end
     # Work with normalized data for the solver tolerances to be independent of
     # the scale of the data
-    X, _, _ = _normalize_points(f)
-    z, z̄, s = _normalize_values(f.values, 0.0)
+    normalized, n = _normalize(f)
+    X, z, z̄, s = _matrix(normalized), normalized.values, n.ν, n.s
     N = length(z)
 
     m = Model(optimizer)

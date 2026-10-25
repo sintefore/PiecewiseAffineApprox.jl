@@ -51,14 +51,9 @@ function _convex_linearization_mb(X::Matrix, z::Vector, options::Cluster)
 
     Nᵗʳ ≥ 1 || throw(ArgumentError("Cluster requires at least one trial"))
 
-    # Work on normalized data to make the heuristic invariant to affine
-    # transformations of the input (Magnani & Boyd, Sect. 1.3)
-    μ, T = _normalization(X)
-    X̃ = T * (X .- μ)
-
     # A single trial; several trials are run through Restart, see _fit
     e, pwa = _convex_linearization_mb_single(
-        X̃,
+        X,
         z,
         K,
         lᵐᵃˣ,
@@ -68,52 +63,23 @@ function _convex_linearization_mb(X::Matrix, z::Vector, options::Cluster)
         options.rng,
     )
     @debug "Cluster trial finished with error $e ($metric)"
-    return _denormalize(pwa, μ, T)
-end
-
-# Affine transformation x̃ = T(x - μ) giving data with zero mean and identity
-# covariance. Each coordinate is first scaled by its range, so that coordinates
-# with a small but genuine range are not treated as degenerate, and the result
-# is then whitened with T = Σ^(-1/2) (ZCA whitening), which is unique and leaves
-# data that is only scaled along the axes in identical normalized coordinates.
-# Directions with (near) zero variance are mapped to zero.
-function _normalization(X)
-    D, N = size(X)
-    μ = vec(mean(X, dims = 2))
-    N < 2 && return μ, Matrix{Float64}(I, D, D)
-    r = vec(maximum(X, dims = 2) .- minimum(X, dims = 2))
-    S = Diagonal([rᵢ > 0 ? 1 / rᵢ : 1.0 for rᵢ ∈ r])
-    λ, V = eigen(Symmetric(cov(S * (X .- μ), dims = 2)))
-    keep = λ .> 1e-10 * max(maximum(λ), 0)
-    if !any(keep)
-        # All points coincide, nothing to normalize
-        return μ, Matrix{Float64}(I, D, D)
-    end
-    Vᵣ = V[:, keep]
-    return μ, Vᵣ * Diagonal(1 ./ sqrt.(λ[keep])) * Vᵣ' * S
-end
-
-# Transform a pwa function fitted to normalized data x̃ = T(x - μ) back to the
-# original coordinates: ãᵀx̃ + b̃ = (Tᵀã)ᵀx + (b̃ - ãᵀTμ)
-function _denormalize(pwa::PWAFunc{Convex,D}, μ, T) where {D}
-    planes = map(pwa.planes) do p
-        ã = collect(p.α)
-        return Plane(T' * ã, p.β - dot(ã, T * μ))
-    end
-    return PWAFunc{Convex,D}(planes)
+    return pwa
 end
 
 # Euclidean distance between two points
 _dist(x, y) = sqrt(sum((x - y) .^ 2))
 
 # Draw K samples from a normal distribution with the same mean and covariance
-# as the columns of X. The covariance is factored with an eigendecomposition
-# rather than Cholesky so that singular covariances (e.g. collinear points) work.
+# as the columns of X. The covariance is factored by its symmetric square root
+# rather than Cholesky so that singular covariances (e.g. collinear points)
+# work. The symmetric square root does not depend on the choice of basis in
+# eigenspaces with repeated eigenvalues (e.g. the identity covariance of
+# whitened data), so the samples are robust to rounding in the data.
 function _sample_normal(rng::AbstractRNG, X, K)
     μ = vec(mean(X, dims = 2))
     size(X, 2) < 2 && return repeat(μ, 1, K)
     λ, V = eigen(Symmetric(cov(X, dims = 2)))
-    L = V * Diagonal(sqrt.(max.(λ, 0)))
+    L = V * Diagonal(sqrt.(max.(λ, 0))) * V'
     return μ .+ L * randn(rng, length(μ), K)
 end
 
@@ -385,6 +351,9 @@ function _fit(a::Cluster, input::FunctionEvaluations{D}) where {D}
         r = Restart(single; trials = a.trials, rng = a.rng, metric = a.metric)
         return _fit(r, input)
     end
-    x = [p[i] for i ∈ 1:D, p ∈ input.points]
-    return _convex_linearization_mb(x, input.values, a)
+    # Work on whitened points to make the heuristic invariant to affine
+    # transformations of the input (Magnani & Boyd, Sect. 1.3)
+    normalized, n = _normalize(input; whiten = true, values = false)
+    pwa = _convex_linearization_mb(_matrix(normalized), input.values, a)
+    return _denormalize(pwa, n)
 end

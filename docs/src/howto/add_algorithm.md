@@ -84,6 +84,10 @@ not to refit them.
 - To report diagnostics, return `(f, details)` from `_fit` with a named tuple
   `details`, which [`fit`](@ref) includes in its [`FitResult`](@ref).
 - Measure errors with [`approximation_error`](@ref).
+- Work on normalized data where tolerances or heuristics depend on the scale
+  of the data: `PiecewiseAffineApprox._normalize(data)` returns the data with
+  points and values in [-1, 1] (optionally whitened) together with the
+  transformation, and `_denormalize(pwa, n)` maps the fit back.
 - Use `rng` for randomness, and advance it so that repeated calls give
   reproducible, different results, as [`Cluster`](@ref) does.
 - The tests in `test/test_algorithms.jl` run every algorithm of the package

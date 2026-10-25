@@ -427,27 +427,10 @@ function _convex_linearization_ipol(x, z, options)
     options = _validate(options)
     # Work with points and values normalized to the order of one, so that the
     # tolerances of the algorithms are independent of the scale of the data
-    x̄, sx = _shift_scale(x)
-    z̄, sz = _shift_scale(z)
-    d = _sort_unique((x .- x̄) ./ sx, (z .- z̄) ./ sz)
+    normalized, n = _normalize(FunctionEvaluations(x, z))
+    d = _sort_unique(first.(normalized.points), normalized.values)
     knots = _fit_knots(d, options)
-    return _denormalize_1d(_asconvex(knots), x̄, sx, z̄, sz)
-end
-
-# Shift and scale mapping the values to [-1, 1]
-function _shift_scale(v)
-    lo, hi = extrema(v)
-    return (lo + hi) / 2, hi > lo ? (hi - lo) / 2 : 1.0
-end
-
-# The planes fitted to normalized points x̃ = (x - x̄) / sx and values
-# z̃ = (z - z̄) / sz, in the original coordinates
-function _denormalize_1d(pwa::PWAFunc{Convex,1}, x̄, sx, z̄, sz)
-    planes = map(pwa.planes) do q
-        a = q.α[1] * sz / sx
-        return Plane((a,), sz * q.β - a * x̄ + z̄)
-    end
-    return PWAFunc{Convex,1}(planes)
+    return _denormalize(_asconvex(knots), n)
 end
 
 # The knots of the fit to the normalized data d with options.planes planes

@@ -489,3 +489,76 @@ end
     end
     @test approx(f, Convex(), FullOrder(metric = :none; optimizer)) isa PWAFunc
 end
+
+@testset "Normalization" begin
+    rng = StableRNG(11)
+    X = [3.0 .+ 2.0 .* rand(rng, 30)'; 100.0 .+ 50.0 .* rand(rng, 30)']
+    z = 1e4 .+ 1e3 .* vec(sum(X .^ 2; dims = 1))
+    data = FunctionEvaluations(X, z; dims = 2)
+    for whiten ∈ (false, true), values ∈ (true, false)
+        nd, n = PWA._normalize(data; whiten, values)
+        Xn = PWA._matrix(nd)
+        if whiten
+            @test PWA.cov(Xn; dims = 2) ≈ I atol = 1e-8
+        else
+            @test all(-1 .≤ Xn .≤ 1)
+            @test vec(minimum(Xn; dims = 2)) ≈ [-1.0, -1.0]
+            @test vec(maximum(Xn; dims = 2)) ≈ [1.0, 1.0]
+        end
+        if values
+            @test extrema(nd.values) == (-1.0, 1.0)
+        else
+            @test nd.values == z
+        end
+        # A plane fitted to the normalized data is the same function after
+        # transforming it back
+        p = Plane((0.3, -0.7), 0.2)
+        q = PWA._denormalize(p, n)
+        @test all(
+            isapprox(evaluate(q, x), n.ν + n.s * evaluate(p, x̃); rtol = 1e-10)
+            for (x, x̃) ∈ zip(data.points, nd.points)
+        )
+        pwa =
+            PWA._denormalize(PWAFunc{Convex,2}([p, Plane((1.0, 1.0), 0.0)]), n)
+        @test pwa isa PWAFunc{Convex,2}
+    end
+    # Constant coordinates and values are shifted only, or scaled by the floor
+    c = FunctionEvaluations(
+        [(1.0, 5.0), (2.0, 5.0), (3.0, 5.0)],
+        [4.0, 4.0, 4.0],
+    )
+    nd, n = PWA._normalize(c)
+    @test PWA._matrix(nd)[2, :] == zeros(3) && nd.values == zeros(3) && n.s == 1
+    nd, n = PWA._normalize(c; floor = 0.5)
+    @test n.s == 0.5
+    # The algorithms are invariant to the scale and offset of the data
+    x = collect(range(0, 1; length = 25))
+    f = FunctionEvaluations(x, x .^ 2 .+ 0.02 .* randn(StableRNG(2), 25))
+    g = FunctionEvaluations(1e3 .* x .- 5e2, 1e-3 .* f.values .+ 7.0)
+    for a ∈ (
+        Interpol(planes = 3),
+        MILP(planes = 3; optimizer),
+        Cluster(planes = 3, rng = StableRNG(1)),
+        Progressive(; optimizer, tolerance = 0.08, strict = :none),
+    )
+        pf = approx(f, Convex(), a)
+        pg = approx(
+            g,
+            Convex(),
+            PWA.with(
+                a;
+                (hasfield(typeof(a), :rng) ? (rng = StableRNG(1),) : (;))...,
+                (
+                    hasfield(typeof(a), :tolerance) ? (tolerance = 8e-5,) : (;)
+                )...,
+            ),
+        )
+        @test all(
+            isapprox(
+                evaluate(pg, (1e3 * t - 5e2,)),
+                1e-3 * evaluate(pf, (t,)) + 7.0;
+                atol = 1e-6,
+            ) for t ∈ x
+        )
+    end
+end

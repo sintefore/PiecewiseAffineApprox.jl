@@ -330,12 +330,11 @@ end
 
     # Normalization of planes is undone exactly
     pts = FunctionEvaluations([(1.0, 10.0), (3.0, -2.0), (2.0, 4.0)], [5.0, 7.0, 6.0])
-    X, μx, σx = PWA._normalize_points(pts)
-    zn, z̄, s = PWA._normalize_values(pts.values, 0.1)
+    nd, n = PWA._normalize(pts; floor = 0.1)
     q = Plane((0.3, -0.7), 0.2)
-    qo = PWA._denormalize(q, μx, σx, z̄, s)
+    qo = PWA._denormalize(q, n)
     for (k, pt) ∈ enumerate(pts.points)
-        @test evaluate(qo, pt) ≈ s * evaluate(q, Tuple(X[:, k])) + z̄
+        @test evaluate(qo, pt) ≈ n.s * evaluate(q, nd.points[k]) + n.ν
     end
 end
 
