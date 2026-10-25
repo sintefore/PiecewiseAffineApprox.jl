@@ -361,27 +361,33 @@ end
 
 Add constraints to the JuMP model `m` for the variable `z` as the difference of
 convex piecewise linear function `f` of the `D` variables `x`, and return `z`.
-The function is modelled as z = z₁ + z₂ with z₁ its convex and z₂ its concave
-part, each with the Ψ-formulation ([`PsiFormulation`](@ref), the only
-`formulation` available for these functions). A part that is the maximum
-(minimum) of planes needs binary variables to select the active plane for the
-constraints that bound it from above (below).
+Binary variables are needed where the function is bounded against its
+curvature, depending on `direction`:
 
-- `direction = :graph` (default): z equals the function, with binary variables
-  for both parts.
+- `direction = :graph` (default): z equals the function.
 - `direction = :epigraph`: z is at least the function, which is sufficient when
-  z is minimized or only bounded from below. The convex part needs no binary
-  variables, as for a convex [`PWAFunc`](@ref).
+  z is minimized or only bounded from below. The convex part, or the convex
+  kinks, need no binary variables, as for a convex [`PWAFunc`](@ref).
 - `direction = :hypograph`: z is at most the function, which is sufficient
-  when z is maximized. The concave part needs no binary variables.
+  when z is maximized. The concave part, or the concave kinks, need no binary
+  variables.
 
-The active plane is selected by one binary variable per plane, and the
-constraints for the other planes are relaxed with `selection = :bigm` by
-big-M values computed from the bounds on `x`, or with
-`selection = :indicator` by indicator constraints, which do not need
-bounds but require solver support. The bounds are the lower and upper bounds
-of the variables `x`, or given with `bounds` as a vector of `(lower, upper)`
-tuples, e.g. when `x` are expressions.
+With the Ψ-formulation ([`PsiFormulation`](@ref), default, any dimension), the
+function is modelled as z = z₁ + z₂ with z₁ its convex and z₂ its concave part,
+and the active plane of a part is selected by one binary variable per plane.
+The constraints for the other planes are relaxed with `selection = :bigm` by
+big-M values computed from the bounds on `x`, or with `selection = :indicator`
+by indicator constraints, which do not need bounds but require solver support.
+
+With the Δ- and Φ-formulations ([`DeltaFormulation`](@ref) and
+[`PhiFormulation`](@ref), one variable only), the function is modelled by its
+breakpoints over the bounds, as for a [`PWAFunc`](@ref), with one binary
+variable at each kink of the wrong curvature for the direction: the
+formulations are then ideal and no big-M values are needed. The convex and
+concave kinks of the function are found from the vertices of its parts.
+
+The bounds are the lower and upper bounds of the variables `x`, or given with
+`bounds` as a vector of `(lower, upper)` tuples, e.g. when `x` are expressions.
 """
 function pwaffine(
     m::JuMP.Model,
@@ -398,11 +404,15 @@ function pwaffine(
             "Unsupported direction :$direction, use :graph, :epigraph or :hypograph",
         ),
     )
-    formulation isa PsiFormulation || throw(
-        ArgumentError(
-            "Only PsiFormulation is available for difference of convex functions",
-        ),
-    )
+    if formulation isa LambdaFormulation ||
+       (!(formulation isa PsiFormulation) && D != 1)
+        throw(
+            ArgumentError(
+                "$(typeof(formulation)) is not available for difference of " *
+                "convex functions of $D variables, use PsiFormulation",
+            ),
+        )
+    end
     selection ∈ (:bigm, :indicator) || throw(
         ArgumentError(
             "Unsupported selection :$selection, use :bigm or :indicator",
@@ -420,6 +430,20 @@ function pwaffine(
 
     if isnothing(z)
         z = JuMP.@variable(m, base_name = "z_$(counter)")
+    end
+    if !(formulation isa PsiFormulation)
+        xp, zp = _dc_breakpoints(f, _resolve_bounds(x, bounds, 1))
+        _dc_formulation_1d!(
+            m,
+            only(xs),
+            z,
+            counter,
+            xp,
+            zp,
+            formulation,
+            direction,
+        )
+        return z
     end
     # The box containing x, needed for the big-M values when a part has
     # binary variables
@@ -521,4 +545,160 @@ function _dc_big_M(pwa::PWAFunc{C,D}, (lo, hi)) where {C,D}
             )
         end
     end
+end
+
+# The breakpoints of a one-dimensional difference of convex function over the
+# bounds: the end points and the kinks of both parts, with the values of the
+# function, after merging the breakpoints where the slope does not change
+function _dc_breakpoints(f::DCFunc{1}, bounds)
+    lo, hi = _check_bounds(bounds, 1)
+    xp = [lo[1], hi[1]]
+    for part ∈ (f.convex, f.concave)
+        isempty(part.planes) && continue
+        append!(xp, v[1][1] for v ∈ vertices_by_subsets(part, bounds))
+    end
+    sort!(xp)
+    τ = 1e-9 * max(1.0, hi[1] - lo[1])
+    unique = [xp[1]]
+    for xᵢ ∈ xp
+        xᵢ - unique[end] > τ && push!(unique, xᵢ)
+    end
+    zp = [evaluate(f, (xᵢ,)) for xᵢ ∈ unique]
+    return _merge_segments(unique, zp)
+end
+
+# The interior breakpoints that need a binary variable: the kinks of the
+# wrong curvature for the direction, i.e. where the slope decreases for the
+# epigraph and increases for the hypograph, and all kinks for the graph
+function _dc_binary_kinks(slope, direction)
+    S̃ = 2:length(slope)
+    direction == :graph && return collect(S̃)
+    if direction == :epigraph
+        return [s for s ∈ S̃ if slope[s] < slope[s-1]]
+    end
+    return [s for s ∈ S̃ if slope[s] > slope[s-1]]
+end
+
+# Model the one-dimensional function with breakpoints xp and values zp by the
+# Φ-formulation: the first segment extended over the domain, corrected by the
+# change in slope at each breakpoint s times Φ[s] = max(x - xp[s], 0). A
+# convex kink in the epigraph direction (and a concave one in the hypograph
+# direction) only needs Φ[s] ≥ x - xp[s] and Φ[s] ≥ 0. The other kinks need a
+# binary variable y[s] = 1 if x ≥ xp[s], which makes Φ[s] exact.
+function _dc_formulation_1d!(
+    m,
+    x1,
+    z,
+    counter,
+    xp,
+    zp,
+    ::PhiFormulation,
+    direction,
+)
+    @constraint(m, xp[1] ≤ x1 ≤ xp[end], base_name = "pwa_$(counter)_bounds")
+    if length(xp) == 1
+        @constraint(m, z == zp[1], base_name = "pwa_$(counter)_z")
+        return
+    end
+    slope = diff(zp) ./ diff(xp)
+    S̃ = 2:(length(xp)-1)
+    Φ = @variable(
+        m,
+        [s ∈ S̃],
+        lower_bound = 0,
+        upper_bound = xp[end] - xp[s],
+        base_name = "_Φ_$(counter)"
+    )
+    @constraint(m, [s ∈ S̃], Φ[s] ≥ x1 - xp[s], base_name = "pwa_$(counter)_Φ")
+    @constraint(
+        m,
+        z ==
+        zp[1] +
+        slope[1] * (x1 - xp[1]) +
+        sum((slope[s] - slope[s-1]) * Φ[s] for s ∈ S̃),
+        base_name = "pwa_$(counter)_z"
+    )
+    B = _dc_binary_kinks(slope, direction)
+    isempty(B) && return
+    y = @variable(m, [s ∈ B], Bin, base_name = "_y_$(counter)")
+    @constraint(
+        m,
+        [s ∈ B],
+        Φ[s] ≤ (xp[end] - xp[s]) * y[s],
+        base_name = "pwa_$(counter)_Φup"
+    )
+    @constraint(
+        m,
+        [s ∈ B],
+        Φ[s] ≤ x1 - xp[s] + (xp[s] - xp[1]) * (1 - y[s]),
+        base_name = "pwa_$(counter)_Φx"
+    )
+    # x ≥ xp[s+1] implies x ≥ xp[s]
+    @constraint(
+        m,
+        [i ∈ 1:(length(B)-1)],
+        y[B[i]] ≥ y[B[i+1]],
+        base_name = "pwa_$(counter)_order"
+    )
+    return
+end
+
+# Model the one-dimensional function with breakpoints xp and values zp by the
+# Δ-formulation: a variable for how much of each segment is used, with x and z
+# integrating the segments. Within a run of segments with increasing slopes
+# (decreasing for the hypograph direction), the segments are used in order
+# when z is pushed towards the function. The other kinks split the segments
+# into such runs, and a binary variable y[s] = 1 if x is beyond the kink
+# forces all earlier segments to be full and all later segments to be empty.
+function _dc_formulation_1d!(
+    m,
+    x1,
+    z,
+    counter,
+    xp,
+    zp,
+    ::DeltaFormulation,
+    direction,
+)
+    if length(xp) == 1
+        @constraint(m, x1 == xp[1], base_name = "pwa_$(counter)_x")
+        @constraint(m, z == zp[1], base_name = "pwa_$(counter)_z")
+        return
+    end
+    S = 1:(length(xp)-1)
+    width = diff(xp)
+    slope = diff(zp) ./ width
+    Δ = @variable(
+        m,
+        [s ∈ S],
+        lower_bound = 0,
+        upper_bound = width[s],
+        base_name = "_Δ_$(counter)"
+    )
+    @constraint(
+        m,
+        x1 == xp[1] + sum(Δ[s] for s ∈ S),
+        base_name = "pwa_$(counter)_x"
+    )
+    @constraint(
+        m,
+        z == zp[1] + sum(slope[s] * Δ[s] for s ∈ S),
+        base_name = "pwa_$(counter)_z"
+    )
+    B = _dc_binary_kinks(slope, direction)
+    isempty(B) && return
+    y = @variable(m, [s ∈ B], Bin, base_name = "_y_$(counter)")
+    @constraint(
+        m,
+        [s ∈ B, j ∈ S; j ≥ s],
+        Δ[j] ≤ width[j] * y[s],
+        base_name = "pwa_$(counter)_Δempty"
+    )
+    @constraint(
+        m,
+        [s ∈ B, j ∈ S; j < s],
+        Δ[j] ≥ width[j] * y[s],
+        base_name = "pwa_$(counter)_Δfull"
+    )
+    return
 end

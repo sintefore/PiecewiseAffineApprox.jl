@@ -395,3 +395,109 @@ end
     @test gap(f, dc)[2] ≤ 1e-6
     @test PWA._planes(dc.convex) == 4 && PWA._planes(dc.concave) == 2
 end
+
+@testset "DC 1D formulations" begin
+    x = collect(range(0, 2π; length = 40))
+    f = FunctionEvaluations(x, sin.(x))
+    dc = approx(f, DC(), Interpol(planes = 3; optimizer))
+    @test PWA._planes(dc.convex) == 3 && PWA._planes(dc.concave) == 3
+
+    # The breakpoints over the bounds are the kinks of both parts
+    xp, zp = PWA._dc_breakpoints(dc, [(0, 2π)])
+    @test xp[1] == 0 && xp[end] ≈ 2π
+    @test length(xp) == 6
+    @test zp ≈ [evaluate(dc, (xᵢ,)) for xᵢ ∈ xp]
+    slope = diff(zp) ./ diff(xp)
+    @test length(PWA._dc_binary_kinks(slope, :graph)) == 4
+    @test length(PWA._dc_binary_kinks(slope, :epigraph)) == 2
+    @test length(PWA._dc_binary_kinks(slope, :hypograph)) == 2
+    # Narrower bounds keep only the kinks inside
+    xp₂, _ = PWA._dc_breakpoints(dc, [(1, 2)])
+    @test xp₂[1] == 1 && xp₂[end] == 2 && length(xp₂) < length(xp)
+
+    function solve(x̂, sense; kwargs...)
+        m = Model(optimizer)
+        @variable(m, 0 ≤ xv ≤ 2π)
+        z = pwaffine(m, xv, dc; kwargs...)
+        @constraint(m, xv == x̂)
+        @objective(m, sense, z)
+        optimize!(m)
+        @test is_solved_and_feasible(m)
+        return value(z)
+    end
+    nbin(; kwargs...) = begin
+        m = Model()
+        @variable(m, 0 ≤ xv ≤ 2π)
+        pwaffine(m, xv, dc; kwargs...)
+        return count(is_binary, all_variables(m))
+    end
+    for formulation ∈ (DeltaFormulation(), PhiFormulation())
+        # Exact values in both directions of optimization
+        for x̂ ∈ (0.0, 0.3, 1.5, π, 4.4, 6.0, 2π)
+            v = evaluate(dc, (x̂,))
+            @test solve(x̂, MOI.MIN_SENSE; formulation) ≈ v atol = 1e-6
+            @test solve(x̂, MOI.MAX_SENSE; formulation) ≈ v atol = 1e-6
+            @test solve(x̂, MOI.MIN_SENSE; formulation, direction = :epigraph) ≈
+                  v atol = 1e-6
+            @test solve(x̂, MOI.MAX_SENSE; formulation, direction = :hypograph) ≈
+                  v atol = 1e-6
+        end
+        # Binary variables only at the kinks against the direction
+        @test nbin(; formulation) == 4
+        @test nbin(; formulation, direction = :epigraph) == 2
+        @test nbin(; formulation, direction = :hypograph) == 2
+        # Free optimization finds the minimum and maximum of the function
+        m = Model(optimizer)
+        @variable(m, 0 ≤ xv ≤ 2π)
+        z = pwaffine(m, xv, dc; formulation, direction = :epigraph)
+        @objective(m, Min, z)
+        optimize!(m)
+        @test value(z) ≈ minimum(zp) atol = 1e-6
+        @objective(m, Max, z)
+        @test_throws ArgumentError pwaffine(
+            m,
+            xv,
+            dc;
+            formulation = LambdaFormulation(),
+        )
+    end
+    # The relaxation of the Δ-formulation never undercuts the function: a
+    # cheap segment after a concave kink cannot be reached without filling the
+    # earlier segments. With z only bounded below, every feasible z is at
+    # least f(x).
+    g = DCFunc(
+        PWAFunc{Convex,1}([Plane((5.0,), 0.0), Plane((6.0,), -1.0)]),
+        PWAFunc{Concave,1}([Plane((0.0,), 0.0), Plane((4.0,), -8.0)]),
+    )
+    xp, zp = PWA._dc_breakpoints(g, [(0, 4)])
+    for formulation ∈ (DeltaFormulation(), PhiFormulation())
+        m = Model(optimizer)
+        @variable(m, 0 ≤ xv ≤ 4)
+        z = pwaffine(m, xv, g; formulation, direction = :epigraph)
+        for x̂ ∈ range(0, 4; length = 9)
+            c = @constraint(m, xv == x̂)
+            @objective(m, Min, z)
+            optimize!(m)
+            @test value(z) ≈ evaluate(g, (x̂,)) atol = 1e-6
+            delete(m, c)
+        end
+    end
+    # Two dimensions are not supported by the one-dimensional formulations
+    s(x) = x[1]^2 - x[2]^2
+    f2 = PWA._sample_uniform(s, [(-1, 1), (-1, 1)], 6)
+    dc2 = approx(f2, DC(), Cluster(planes = 2, rng = StableRNG(1)))
+    m = Model()
+    @variable(m, -1 ≤ xv[1:2] ≤ 1)
+    @test_throws ArgumentError pwaffine(
+        m,
+        xv,
+        dc2;
+        formulation = DeltaFormulation(),
+    )
+    @test_throws ArgumentError pwaffine(
+        m,
+        xv,
+        dc2;
+        formulation = PhiFormulation(),
+    )
+end

@@ -141,8 +141,13 @@ needs one binary variable per plane to select the active plane. The binary
 variables select the active plane with big-M constraints computed from the
 bounds on the variables, so the variables must be bounded, or the bounds given
 with the `bounds` keyword. With `selection = :indicator`, indicator
-constraints are used instead for solvers that support them. Only the
-Ψ-formulation is available for these functions.
+constraints are used instead for solvers that support them.
+
+For functions of one variable, the Δ- and Φ-formulations are also available.
+They model the function by its breakpoints over the bounds, with one binary
+variable at each kink of the wrong curvature for the direction, i.e. at the
+concave kinks when `z` is minimized. These formulations are ideal and need no
+big-M values, so they are preferable to the Ψ-formulation in one dimension.
 
 By default `z` equals the approximation. If `z` is only minimized, pass
 `direction = :epigraph`, and if it is only maximized `direction = :hypograph`.
@@ -156,8 +161,8 @@ m = Model(optimizer)
 @variable(m, 0 ≤ x ≤ 2π)
 # A difference of convex approximation of sin(x) on [0, 2π]
 dc = approx(sin, [(0, 2π)], DC(), Interpol(; optimizer, planes = 3))
-# Only minimized, so binary variables are needed for the concave part only
-z = pwaffine(m, (x,), dc; direction = :epigraph)
+# Only minimized, so binary variables are needed at the concave kinks only
+z = pwaffine(m, x, dc; direction = :epigraph, formulation = DeltaFormulation())
 @constraint(m, x ≥ 4)
 @objective(m, Min, z)
 optimize!(m)
