@@ -176,13 +176,15 @@ Select the number of planes for the algorithm `inner`, which is fitted with
 - `:aic`, `:bic`: minimize the Akaike or Bayesian information criterion,
   assuming normally (`:l2`) or Laplace (`:l1`) distributed errors, with
   `D + 1` parameters per plane for functions of `D` variables.
-- `:cv`: `folds`-fold cross validation, with the points assigned to folds by
-  interleaving them, and the one standard error rule: the fewest planes with
-  an error on the held-out points within one standard error of the minimum.
+- `:cv`: `folds`-fold cross validation, with the distinct points assigned to
+  folds by interleaving them in sorted order (repeated measurements at a
+  point are held out together), and the one standard error rule: the fewest
+  planes with an error on the held-out points within one standard error of
+  the minimum.
 
-The `metric` defaults to that of `inner`, or `:l1`. [`Interpol`](@ref) has its
-own `selection` option, which computes the candidate fits more efficiently;
-`Select` works with any algorithm, e.g. `Select(Cluster(planes = 8))` or
+The `metric` defaults to that of `inner`, or `:l1`. The `selection` option of
+[`Interpol`](@ref) is a shorthand for this wrapper. `Select` works with any
+algorithm, e.g. `Select(Cluster(planes = 8))` or
 `Select(MILP(planes = 6; optimizer); criterion = :tolerance, tolerance = 0.01)`.
 A warning is given when the maximum number of planes is selected.
 """
@@ -203,11 +205,13 @@ supported_dimensions(s::Select) = supported_dimensions(s.inner)
 requires_convex_data(s::Select) = requires_convex_data(s.inner)
 function with(s::Select; options...)
     for name ∈ keys(options)
-        hasfield(typeof(s.inner), name) || hasfield(Select, name) || throw(
-            ArgumentError(
-                "Neither Select nor $(nameof(typeof(s.inner))) has an option $name",
-            ),
-        )
+        hasfield(typeof(s.inner), name) ||
+            hasfield(Select, name) ||
+            throw(
+                ArgumentError(
+                    "Neither Select nor $(nameof(typeof(s.inner))) has an option $name",
+                ),
+            )
     end
     inner = (k => v for (k, v) ∈ options if hasfield(typeof(s.inner), k))
     outer = (k => v for (k, v) ∈ options if !hasfield(typeof(s.inner), k))
@@ -295,15 +299,16 @@ function _fit(s::Select, data::FunctionEvaluations{D}) where {D}
 end
 
 # Cross validation errors E[f, p] for fold f and p = 1, ..., K planes, with
-# the points assigned to the folds in an interleaved manner (sorted along
-# the first coordinate, so that every fold covers the range of the data)
+# the distinct points assigned to the folds in an interleaved manner (sorted
+# along the first coordinate, so that every fold covers the range of the
+# data). Repeated measurements at a point are held out together.
 function _cv_errors(s::Select, data::FunctionEvaluations, K, fit)
     N = length(data)
-    F = min(s.folds, N)
+    distinct = sort!(unique(data.points))
+    F = min(s.folds, length(distinct))
     F ≥ 2 || throw(ArgumentError("criterion = :cv requires folds ≥ 2"))
-    o = sortperm(data.points; by = first)
-    fold = zeros(Int, N)
-    fold[o] = [mod(i - 1, F) + 1 for i ∈ 1:N]
+    group = Dict(p => mod(i - 1, F) + 1 for (i, p) ∈ enumerate(distinct))
+    fold = [group[p] for p ∈ data.points]
     E = fill(Inf, F, K)
     for f ∈ 1:F
         train = findall(≠(f), fold)

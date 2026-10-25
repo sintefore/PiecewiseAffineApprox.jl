@@ -87,7 +87,8 @@ deviation from the data, measured by `metric`: the sum of absolute deviations
 
 The number of planes is given by `planes`, or selected automatically by
 `selection`, with `planes` as the maximum number of planes considered (capped at
-the number of distinct points minus one):
+the number of distinct points minus one). The selection is done by
+[`Select`](@ref) with `selection` as its criterion:
 
 - `:none` (default): use `planes` planes.
 - `:tolerance`: the fewest planes with an error of at most `tolerance`, where the
@@ -112,8 +113,9 @@ The knots of the interpolant are data points, or adjusted after fitting by
 
 Adjusting never increases the deviation from the data. For `:l2` it is solved as
 a nonnegative least squares problem, while `:l1` and `:max` require an
-`optimizer`. When the number of planes is selected, the selection is based on
-the unadjusted fits.
+`optimizer`. When the number of planes is selected, the candidate fits have
+their values adjusted, but their breakpoints are only moved for the selected
+fit.
 
 For a difference of convex approximation, see [`DC`](@ref), the concave part
 has `concave_planes` planes (default: the same as `planes`).

@@ -206,29 +206,6 @@ end
 
 @testset "Interpolation selection of planes" begin
     rng = StableRNG(5)
-
-    # Paths for all numbers of edges agree with single dynamic programs
-    x = sort(rand(rng, 12))
-    z = sin.(4 .* x) .+ 0.2 .* randn(rng, 12)
-    for metric ∈ (:l1, :l2, :max)
-        p = PWA._segment_penalties(x, z, metric)
-        op = metric == :max ? max : +
-        paths = PWA._dp_all_paths(p, 6, op)
-        @test all(paths[s] == PWA._dp_segments(p, s, op)[1] for s ∈ 1:6)
-
-        # Convex paths with at most k edges improve with k, and agree with
-        # the single convex dynamic program
-        σ = [i < j ? (z[j] - z[i]) / (x[j] - x[i]) : 0.0 for i ∈ 1:12, j ∈ 1:12]
-        cpaths = PWA._convex_dp_all_paths(σ, p, 6, op)
-        cost(q) = reduce(op, p[q[k], q[k+1]] for k ∈ 1:length(q)-1)
-        @test issorted(cost.(cpaths), rev = true)
-        @test all(
-            cost(cpaths[k]) ≈ cost(PWA._convex_dp_segments(σ, p, k, op)) for
-            k ∈ 1:6
-        )
-        @test all(length(cpaths[k]) ≤ k + 1 for k ∈ 1:6)
-    end
-
     # Noise-free data from 3 planes with kinks at data points (x = 0 and x = 1)
     x = collect(range(-2, 2, length = 41))
     truth = max.(-x, 0.5 .* x, 2 .* x .- 1.5)

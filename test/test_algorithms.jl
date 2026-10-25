@@ -217,6 +217,62 @@ end
     @test dc isa DCFunc{1}
     @test PWA._planes(dc.convex) ≤ 6 && PWA._planes(dc.concave) ≤ 6
 
+    # The selection option of Interpol is the wrapper, including repeated
+    # measurements in cross validation and the adjustment of the knots
+    xd = repeat(collect(range(-1, 1; length = 20)), 2)
+    fd = FunctionEvaluations(xd, xd .^ 2 .+ 0.05 .* randn(StableRNG(7), 40))
+    for (alg, sel) ∈ (
+        (
+            Interpol(planes = 8, selection = :cv),
+            Select(Interpol(planes = 8); criterion = :cv),
+        ),
+        (
+            Interpol(
+                planes = 8,
+                selection = :aic,
+                adjust = :values,
+                metric = :l2,
+            ),
+            Select(
+                Interpol(planes = 8, adjust = :values, metric = :l2);
+                criterion = :aic,
+            ),
+        ),
+        (
+            Interpol(planes = 8, selection = :tolerance, tolerance = 0.06),
+            Select(
+                Interpol(planes = 8);
+                criterion = :tolerance,
+                tolerance = 0.06,
+            ),
+        ),
+    )
+        @test approx(fd, Convex(), alg) == approx(fd, Convex(), sel)
+    end
+    a = Interpol(
+        planes = 8,
+        selection = :aic,
+        adjust = :breakpoints,
+        metric = :l2,
+    )
+    pwa = approx(fd, Convex(), a)
+    k = PWA._planes(
+        approx(
+            fd,
+            Convex(),
+            Select(
+                Interpol(planes = 8, adjust = :values, metric = :l2);
+                criterion = :aic,
+            ),
+        ),
+    )
+    @test PWA._planes(pwa) == k
+    @test pwa == approx(
+        fd,
+        Convex(),
+        Interpol(planes = k, adjust = :breakpoints, metric = :l2),
+    )
+
     # Invalid options
     @test_throws ArgumentError approx(
         f,
