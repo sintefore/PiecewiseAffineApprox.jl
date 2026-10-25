@@ -36,8 +36,6 @@ pages = [
     "API reference" => "reference/api.md",
 ]
 
-# TODO: Enable modules
-# TODO: Enable doctests
 Documenter.makedocs(
     sitename = "PiecewiseAffineApprox",
     format = Documenter.HTML(;

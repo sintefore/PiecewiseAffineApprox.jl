@@ -139,17 +139,35 @@ end
 
 """
     approximation_error(f::AbstractPWAFunc, data::FunctionEvaluations, metric = :l1)
+    approximation_error(f::AbstractPWAFunc, X::AbstractMatrix, z, metric = :l1)
 
 The deviation of the approximation `f` from the `data` per point: the mean
 absolute deviation (`:l1`), the root mean square deviation (`:l2` or `:rms`)
-or the maximum absolute deviation (`:max`).
+or the maximum absolute deviation (`:max`). The points can also be given as
+the columns of the matrix `X` with the values `z`.
 """
 function approximation_error(
     f::AbstractPWAFunc,
     data::FunctionEvaluations,
     metric = :l1,
 )
-    r = [abs(evaluate(f, x) - z) for (x, z) ∈ data]
+    return _deviation_measure(
+        [abs(evaluate(f, x) - z) for (x, z) ∈ data],
+        metric,
+    )
+end
+function approximation_error(
+    f::AbstractPWAFunc,
+    X::AbstractMatrix,
+    z::AbstractVector,
+    metric = :l1,
+)
+    return _deviation_measure(
+        [abs(evaluate(f, x) - zᵢ) for (x, zᵢ) ∈ zip(eachcol(X), z)],
+        metric,
+    )
+end
+function _deviation_measure(r, metric)
     if metric == :l1
         return mean(r)
     elseif metric == :l2 || metric == :rms

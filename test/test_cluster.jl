@@ -146,7 +146,7 @@ end
         𝒫 = PWA._random_partition(StableRNG(i), X̃, 12)
         pwa = PWA._refine_partition(X̃, z, 𝒫, 50, :l2, nothing, :none)
         @test length(pwa.planes) == 12
-        return PWA._approx_error(X̃, z, pwa, :rms)
+        return approximation_error(pwa, X̃, z, :rms)
     end
     @test maximum(errors) < 0.1
 end
@@ -165,7 +165,7 @@ end
         𝒫 = PWA._random_partition(StableRNG(seed), X̃, 12)
         errors = map(0:15) do itlim
             pwa = PWA._refine_partition(X̃, z, 𝒫, itlim, :l2, nothing, :none)
-            return PWA._approx_error(X̃, z, pwa, :l2)
+            return approximation_error(pwa, X̃, z, :l2)
         end
         @test issorted(errors, rev = true)
     end
@@ -178,7 +178,7 @@ end
     @test_throws ArgumentError approx(fe, Convex(), Cluster(; optimizer, metric = :foo))
     @test_throws ArgumentError approx(fe, Convex(), Cluster(; optimizer, strict = :bar))
     @test_throws ArgumentError approx(fe, Convex(), Cluster(; planes = 0))
-    @test_throws ArgumentError PWA._approx_error(zeros(2, 1), [0.0], PWAFunc{Convex,2}(), :foo)
+    @test_throws ArgumentError approximation_error(PWAFunc{Convex,2}([Plane((0.0, 0.0), 0.0)]), zeros(2, 1), [0.0], :foo)
 
     # Errors in the trials are reported directly, not as failed tasks
     failing = () -> error("no solver available")
@@ -217,7 +217,7 @@ end
     vals = [exp(a) + b^2 + 0.5a * b for (a, b) ∈ pts]
     fe = FunctionEvaluations(pts, vals)
     X = [p[i] for i ∈ 1:2, p ∈ pts]
-    l1(pwa) = PWA._approx_error(X, vals, pwa, :l1)
+    l1(pwa) = approximation_error(pwa, X, vals, :l1)
     alg(metric) = Cluster(; optimizer, metric, planes = 6, trials = 4, rng = StableRNG(5))
     @test l1(approx(fe, Convex(), alg(:l1))) ≤ l1(approx(fe, Convex(), alg(:l2))) + 1e-9
 

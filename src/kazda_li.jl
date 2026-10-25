@@ -525,12 +525,6 @@ function _increase_order(f::FunctionEvaluations, pwa_red, pwa)
     return _update_allocation(f, pwa_red)
 end
 
-# Approximation error per data point, compared with the tolerance, see
-# approximation_error
-function _tolerance_error(f::FunctionEvaluations, pwa::AbstractPWAFunc, metric)
-    return approximation_error(pwa, f, metric)
-end
-
 # Main algorithm
 function _progressive_pwa(
     f::FunctionEvaluations,
@@ -564,7 +558,7 @@ function _progressive_pwa(
         _allocation_improvement(f, p, U, optimizer; support, fitter, metric)
     pwa_red = improve(U, p)
     rounds = 0
-    while _tolerance_error(f, pwa_red, metric) > δᵗᵒˡ && rounds < 2length(f)
+    while approximation_error(pwa_red, f, metric) > δᵗᵒˡ && rounds < 2length(f)
         rounds += 1
         U = _increase_order(f, pwa_red, pwa)
         pwa_red = improve(U, length(pwa_red.planes))
@@ -575,7 +569,7 @@ end
 
 # Warn if the fitting stopped without meeting the tolerance
 function _check_tolerance(f, pwa, metric, δ, rounds)
-    e = _tolerance_error(f, pwa, metric)
+    e = approximation_error(pwa, f, metric)
     p = length(pwa.planes)
     spread = maximum(f.values) - minimum(f.values)
     if e > δ + 1e-6 * (δ + spread) + 1e-12 * max(1.0, maximum(abs, f.values))

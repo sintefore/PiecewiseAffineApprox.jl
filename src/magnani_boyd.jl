@@ -1,33 +1,4 @@
 
-# Approximation error using the value of the pwa function
-# in the given points. Support for multiple metrics (l1, l2, max).
-function _approx_error(X::Matrix, z::Vector, pwa::AbstractPWAFunc, metric = :l1)
-    err = 0.0
-    for (i, x̄) ∈ enumerate(eachcol(X))
-        v = evaluate(pwa, x̄)
-
-        if metric == :l1
-            err += abs(v - z[i])
-        elseif metric == :l2 || metric == :rms
-            err += (v - z[i])^2
-        elseif metric == :max
-            err = max(err, abs(v - z[i]))
-        else
-            throw(ArgumentError("Unsupported metric :$metric"))
-        end
-    end
-
-    if metric == :rms
-        err = err / size(X, 2)
-    end
-
-    if metric == :l2 || metric == :rms
-        err = sqrt(err)
-    end
-
-    return err
-end
-
 function _convex_linearization_mb_single(
     X::Matrix,
     z::Vector,
@@ -53,7 +24,7 @@ function _convex_linearization_mb_single(
         l = min(lᵐᵃˣ, polish)
         pwa = _refine_partition(X, z, 𝒫, l, metric, optimizer, strict)
     end
-    e = _approx_error(X, z, pwa, metric)
+    e = approximation_error(pwa, X, z, metric)
     return e => pwa
 end
 
@@ -217,12 +188,12 @@ function _refine_partition(
     fit(q) = _fit_planes(X, z, q, metric, optimizer, strict)
 
     pwaᵇᵉˢᵗ = fit(𝒫)
-    eᵇᵉˢᵗ = _approx_error(X, z, pwaᵇᵉˢᵗ, metric)
+    eᵇᵉˢᵗ = approximation_error(pwaᵇᵉˢᵗ, X, z, metric)
     pwa = pwaᵇᵉˢᵗ
     for it ∈ 1:lᵐᵃˣ
         if it > 1
             pwa = fit(𝒫)
-            e = _approx_error(X, z, pwa, metric)
+            e = approximation_error(pwa, X, z, metric)
             if e < eᵇᵉˢᵗ
                 pwaᵇᵉˢᵗ, eᵇᵉˢᵗ = pwa, e
             end
@@ -254,7 +225,7 @@ function _refine_partition(
 
     # Iteration limit reached, also consider the fit to the final partition
     pwa = fit(𝒫)
-    return _approx_error(X, z, pwa, metric) < eᵇᵉˢᵗ ? pwa : pwaᵇᵉˢᵗ
+    return approximation_error(pwa, X, z, metric) < eᵇᵉˢᵗ ? pwa : pwaᵇᵉˢᵗ
 end
 
 # Fit a plane to each subset of the partition 𝒫. For strict = :outer, all planes

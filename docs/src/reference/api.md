@@ -5,19 +5,18 @@ CurrentModule = PiecewiseAffineApprox
 ## Algorithms
 
 ```@docs
-#FullOrderFitting
-#Heuristic
-#Interpol
-#Optimized
-#ProgressiveFitting
+MILP
+Cluster
+Interpol
+Progressive
+FullOrder
 ```
 
 ## Other types
 
 ```@docs
-
-#Convex     # Missing docstring
-#Concave    # Missing docstring
+Convex
+Concave
 DC
 Alternating
 Select

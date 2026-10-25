@@ -16,7 +16,7 @@
             @test z ≥ pv || z ≈ pv
         end
         # The tolerance is met for the error per data point
-        @test PWA._tolerance_error(f, pwa_red, pen) ≤ tol
+        @test approximation_error(pwa_red, f, pen) ≤ tol
         @test length(pwa_red.planes) < length(f)
     end
 
@@ -47,7 +47,7 @@
     )
     # The number of planes and the value at the origin depend on which of
     # several equally good solutions is found, so test the guaranteed properties
-    @test PWA._tolerance_error(vals, pwa_red, :max) ≤ 0.2
+    @test approximation_error(pwa_red, vals, :max) ≤ 0.2
     @test all(evaluate(pwa_red, x) ≤ z + 1e-6 for (x, z) ∈ vals)
     # The origin is not a data point, but lies within the convex hull of the
     # data, where the error is of the order of the tolerance
@@ -86,7 +86,7 @@
             Convex(),
             Progressive(optimizer = optimizer, tolerance = 0.02, metric = :l1),
         )
-        @test PWA._tolerance_error(fc, pwa_con, :l1) ≤ 0.02
+        @test approximation_error(pwa_con, fc, :l1) ≤ 0.02
         @test 1 < PWA._planes(pwa_con) < length(fc)
 
         # Convex data is returned unchanged, and :none is not a valid metric
@@ -224,7 +224,7 @@ end
     @test length(pwa.planes) == 400
     alg = Progressive(optimizer = optimizer, tolerance = 0.005, metric = :max)
     pwa = approx(fN, Convex(), alg)
-    @test PWA._tolerance_error(fN, pwa, :max) ≤ 0.005
+    @test approximation_error(pwa, fN, :max) ≤ 0.005
 end
 
 @testset "Progressive fitting within a band" begin
@@ -294,7 +294,7 @@ end
     for metric ∈ (:l1, :l2, :max), tol ∈ (0.0, 1e-12)
         alg = Progressive(optimizer = optimizer, tolerance = tol, metric = metric)
         pwa = approx(f, Convex(), alg)
-        @test PWA._tolerance_error(f, pwa, metric) ≤ 1e-9
+        @test approximation_error(pwa, f, metric) ≤ 1e-9
         @test length(pwa.planes) ≤ length(f)
     end
 
@@ -302,7 +302,7 @@ end
     vals = PWA._sample_uniform(x -> exp(x[1]) + x[2]^2, [(-1, 1), (-1, 1)], 10)
     alg = Progressive(optimizer = optimizer, tolerance = 0.05, metric = :max)
     pwa = approx(vals, Convex(), alg)
-    @test PWA._tolerance_error(vals, pwa, :max) ≤ 0.05
+    @test approximation_error(pwa, vals, :max) ≤ 0.05
 
     # A single data point
     one = FunctionEvaluations([(0.5,)], [0.25])
@@ -323,7 +323,7 @@ end
         for strict ∈ (:none, :inner)
             alg = Progressive(optimizer = optimizer, tolerance = 0.01zs, strict = strict)
             pwa = approx(f, Convex(), alg)
-            @test PWA._tolerance_error(f, pwa, :max) ≤ 0.01zs * (1 + 1e-5)
+            @test approximation_error(pwa, f, :max) ≤ 0.01zs * (1 + 1e-5)
             @test length(pwa.planes) ≤ 25
         end
     end
@@ -375,12 +375,12 @@ end
     for (metric, tol) ∈ ((:max, 0.005), (:l2, 0.002))
         alg = Progressive(optimizer = optimizer, tolerance = tol, metric = metric)
         pwa = approx(f, Convex(), alg)
-        @test PWA._tolerance_error(f, pwa, metric) ≤ tol
+        @test approximation_error(pwa, f, metric) ≤ tol
     end
     v10 = PWA._sample_uniform(x -> exp(x[1]) + x[2]^2, [(-1, 1), (-1, 1)], 10)
     alg = Progressive(optimizer = optimizer, tolerance = 0.05, metric = :max)
     pwa = approx(v10, Convex(), alg)
-    @test PWA._tolerance_error(v10, pwa, :max) ≤ 0.05
+    @test approximation_error(pwa, v10, :max) ≤ 0.05
     @test length(pwa.planes) ≤ 22
 end
 

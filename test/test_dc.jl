@@ -115,7 +115,7 @@ end
 @testset "DC approximation" begin
     x = collect(range(-1, 1; length = 25))
     f = FunctionEvaluations(tuple.(x), sin.(3x))
-    err(fe, pwa) = PWA._tolerance_error(fe, pwa, :l1)
+    err(fe, pwa) = approximation_error(pwa, fe, :l1)
     for alg ∈ (
         Cluster(planes = 4, rng = StableRNG(1)),
         Interpol(planes = 4, optimizer = optimizer),
@@ -284,7 +284,7 @@ end
     s(x) = sin(3x[1]) * cos(2x[2])
     f2 = PWA._sample_uniform(s, [(-1, 1), (-1, 1)], 10)
     gap(fe, pwa) = extrema(evaluate(pwa, p) - v for (p, v) ∈ fe)
-    err(fe, pwa) = PWA._tolerance_error(fe, pwa, :l1)
+    err(fe, pwa) = approximation_error(pwa, fe, :l1)
 
     # strict applies to the sum of the parts, below (:outer) or above (:inner)
     # the data, and is interchanged for the concave part

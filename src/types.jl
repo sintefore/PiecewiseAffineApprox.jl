@@ -1,6 +1,16 @@
 # Input types
 abstract type Curvature end
+"""
+    Concave
+
+Curvature for a concave approximation, the pointwise minimum of planes.
+"""
 struct Concave <: Curvature end
+"""
+    Convex
+
+Curvature for a convex approximation, the pointwise maximum of planes.
+"""
 struct Convex <: Curvature end
 """
     DC

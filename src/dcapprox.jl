@@ -123,13 +123,13 @@ function _dc_approx(
         h = approx(parts.concave, Concave(), ah)
     end
     best = DCFunc(g, h)
-    eᵇᵉˢᵗ = _tolerance_error(f, best, metric)
+    eᵇᵉˢᵗ = approximation_error(best, f, metric)
     eᵖʳᵉᵛ = eᵇᵉˢᵗ
     for _ ∈ 1:iterations
         g = approx(residual(h), Convex(), ag)
         h = approx(residual(g), Concave(), ah)
         dc = DCFunc(g, h)
-        e = _tolerance_error(f, dc, metric)
+        e = approximation_error(dc, f, metric)
         if e < eᵇᵉˢᵗ
             best, eᵇᵉˢᵗ = dc, e
         end

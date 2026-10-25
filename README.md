@@ -15,6 +15,8 @@ This package provides three main methods to fit a set of points:
 2. uses a heuristic to fit the set of points. This method is based on [Magnani & Boyd, 2009](https://doi.org/10.1007/s11081-008-9045-3).
 3. a progressive heuristic to add planes until a certain accuracy is met. This method is based on [Kazda & Li, 2024](https://doi.org/10.1016/j.ejor.2023.07.026)
 
+The number of planes can be selected automatically with `Select`, which wraps any of the methods and chooses the fewest planes within a tolerance, or by an information criterion or cross validation. The deviation of an approximation from the data is measured with `approximation_error`.
+
 Non-convex functions are approximated as a difference of convex functions with `DC()`: the sum of a convex and a concave piecewise linear function, fitted with any of the methods above. The resulting `DCFunc` is added to a JuMP model with binary variables selecting the active plane of the concave part.
 
 ## Usage

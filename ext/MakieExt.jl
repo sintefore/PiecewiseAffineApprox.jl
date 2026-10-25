@@ -26,9 +26,9 @@ function Makie.plot(x, z, pwa::PWAFunc{C,2}) where {C}
     end
     scatter!(ax1, x[1, :], x[2, :], z, color = :red, markersize = 8)
 
-    l1 = PiecewiseAffineApprox._approx_error(x, z, pwa, :l1)
-    l2 = PiecewiseAffineApprox._approx_error(x, z, pwa, :l2)
-    lmax = PiecewiseAffineApprox._approx_error(x, z, pwa, :max)
+    l1 = approximation_error(pwa, x, z, :l1)
+    l2 = approximation_error(pwa, x, z, :l2)
+    lmax = approximation_error(pwa, x, z, :max)
     ax1.title = "l1 = $(round(l1, digits=2)), l2 = $(round(l2, digits=2)), max = $(round(lmax, digits=2))"
     z̄ = [abs(evaluate(pwa, x[:, i]) - z[i]) for i ∈ eachindex(z)]
     θ = 20 / maximum(z̄)
@@ -150,9 +150,9 @@ function Makie.plot(x, z, f::DCFunc{2}; parts = true)
     surface!(ax1, x̄, ȳ, v)
     scatter!(ax1, x[1, :], x[2, :], z, color = :red, markersize = 8)
 
-    l1 = PiecewiseAffineApprox._approx_error(x, z, f, :l1)
-    l2 = PiecewiseAffineApprox._approx_error(x, z, f, :l2)
-    lmax = PiecewiseAffineApprox._approx_error(x, z, f, :max)
+    l1 = approximation_error(f, x, z, :l1)
+    l2 = approximation_error(f, x, z, :l2)
+    lmax = approximation_error(f, x, z, :max)
     ax1.title = "l1 = $(round(l1, digits=2)), l2 = $(round(l2, digits=2)), max = $(round(lmax, digits=2))"
     z̄ = [abs(evaluate(f, x[:, i]) - z[i]) for i ∈ eachindex(z)]
     θ = 20 / max(maximum(z̄), eps())
