@@ -3,89 +3,45 @@ defaultplanes() = 4
 defaulttimelimit() = 60
 
 """
-    approx(input::FunctionEvaluations{D}, c::Curvature, a::Algorithm)
+    approx(input::FunctionEvaluations{D}, c::Curvature, a::ApproximationAlgorithm)
 
-Return PWAFunc{Convex,D} or PWAFunc{Concave,D} depending on `c`, approximating the `input` points in `D` dimensions
+Return a `PWAFunc{Convex,D}` or `PWAFunc{Concave,D}` depending on `c`,
+approximating the `input` points in `D` dimensions with the algorithm `a`, or
+a [`DCFunc`](@ref) for `c = DC()`. Concave data is approximated by negating
+the values, approximating with a convex function, and negating the result.
 """
-function approx(input, c::Concave, a::Algorithm)
-    cv = approx(FunctionEvaluations(input.points, -input.values), Convex(), a;)
+function approx(
+    input::FunctionEvaluations{D},
+    c::Convex,
+    a::ApproximationAlgorithm,
+) where {D}
+    if D ∉ supported_dimensions(a)
+        throw(
+            ArgumentError(
+                "$(nameof(typeof(a))) supports functions of " *
+                "$(_dimensions_text(supported_dimensions(a))), got $D variables. " *
+                "Use another algorithm, e.g. Cluster.",
+            ),
+        )
+    end
+    isempty(input.points) && throw(ArgumentError("The data has no points"))
+    return _fit(a, input)
+end
+
+function approx(
+    input::FunctionEvaluations,
+    c::Concave,
+    a::ApproximationAlgorithm,
+)
+    cv = approx(FunctionEvaluations(input.points, -input.values), Convex(), a)
     return PWAFunc{Concave,dims(cv)}(cv.planes)
 end
 
 dims(pwa::PWAFunc{C,D}) where {C,D} = D
 
-# Using dispatch for specializing on dimensions. If performance were a concern,
-# maybe just do branching and call specialized function directly
-function approx(input::FunctionEvaluations{D}, c::Convex, a;) where {D}
-    return approx(input, c, a, Val(D))
-end
-
-# Specialized for 1D and interpolation
-function approx(
-    input::FunctionEvaluations{D},
-    c::Convex,
-    a::Interpol,
-    ::Val{1};
-) where {D}
-    return _convex_linearization_ipol(
-        [i[1] for i ∈ input.points],
-        input.values,
-        a;
-    )
-end
-
-function approx(
-    input::FunctionEvaluations{D},
-    c::Convex,
-    a::Interpol,
-    ::Val,
-) where {D}
-    throw(
-        ArgumentError(
-            "Interpol only supports 1D data, got $D dimensions. " *
-            "Use another algorithm, e.g. Cluster.",
-        ),
-    )
-end
-
-"""
-    approx(input::FunctionEvaluations, c::Convex, a::Cluster)
-
-Approximate using a heuristic that works for general dimensions.
-
-Additional keyword arguments:
-- `trials`: number of restarts (default = 20)
-- `itlim`: max refining iterations in each trial (default = 50),
-"""
-function approx(input::FunctionEvaluations{D}, c::Convex, a::Cluster;) where {D}
-    x = [p[i] for i ∈ 1:D, p ∈ input.points]
-    z = input.values
-    return _convex_linearization_mb(x, z, a)
-end
-
-"""
-    approx(input::FunctionEvaluations, c::Convex, a::Progressive)
-
-Approximate using a progressive fitting heuristic that adds planes until
-a specified error tolerance is met.
-
-This algorithm requires that the data points provided are samples from
-a convex function.
-"""
-function approx(input::FunctionEvaluations, c::Convex, a::Progressive;)
-    return _progressive_pwa(input, a)
-end
-
-"""
-    approx(input::FunctionEvaluations, c::Convex, a::FullOrder)
-
-Approximate using full order fitting that adds planes for all sample points.
-
-This algorithm requires that the data points provided are samples from
-a convex function.
-"""
-function approx(input::FunctionEvaluations, c::Convex, a::FullOrder;)
-    return _full_order_pwa(input, a.optimizer, a.metric)
+function _dimensions_text(r)
+    return length(r) == 1 ? "$(first(r)) variable" :
+           "$(first(r)) to $(last(r)) variables"
 end
 
 # Sample the function on a uniform grid within the given bounding box using nsamples in each dimension
@@ -115,7 +71,7 @@ function _evaluate_points(f::Function, x)
 end
 
 """
-    approx(f::Function, bbox::Vector{<:Tuple}, c::Curvature, a::Algorithm; nsamples)
+    approx(f::Function, bbox::Vector{<:Tuple}, c::Curvature, a::ApproximationAlgorithm; nsamples)
 
 Approximate the function using a uniform sampling over the bounding box `bbox`,
 with one `(lower, upper)` tuple for each dimension. The function is called with
@@ -136,7 +92,7 @@ function approx(
     f::Function,
     bbox::Vector{<:Tuple},
     c::Curvature,
-    a::Algorithm;
+    a::ApproximationAlgorithm;
     nsamples = _default_samples(a, length(bbox)),
 )
     nsamples ≥ 2 || throw(ArgumentError("nsamples must be at least 2"))
@@ -144,7 +100,8 @@ function approx(
 end
 
 # Default number of samples in each of D dimensions
-function _default_samples(a::Algorithm, D)
-    return hasproperty(a, :planes) ? 3 * a.planes : max(3, round(Int, 100^(1 / D)))
+function _default_samples(a::ApproximationAlgorithm, D)
+    p = planes(a)
+    return isnothing(p) ? max(3, round(Int, 100^(1 / D))) : 3p
 end
 _default_samples(a::MILP, D) = max(2, ceil(Int, (3 * D * a.planes)^(1 / D)))

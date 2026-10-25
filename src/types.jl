@@ -11,7 +11,7 @@ returns a [`DCFunc`](@ref).
 """
 struct DC <: Curvature end
 
-abstract type Algorithm end
+abstract type ApproximationAlgorithm end
 """
     Cluster
 Compute affine approximation using the method proposed by Magnani & Boyd.
@@ -50,7 +50,7 @@ fit, which is both faster and better than the requested fit alone.
 For a difference of convex approximation, see [`DC`](@ref), the concave part
 has `concave_planes` planes (default: the same as `planes`).
 """
-@kwdef struct Cluster{T,R<:AbstractRNG} <: Algorithm
+@kwdef struct Cluster{T,R<:AbstractRNG} <: ApproximationAlgorithm
     planes::Int = defaultplanes()
     concave_planes::Int = planes
     metric::Symbol = :l2
@@ -118,7 +118,7 @@ the unadjusted fits.
 For a difference of convex approximation, see [`DC`](@ref), the concave part
 has `concave_planes` planes (default: the same as `planes`).
 """
-@kwdef struct Interpol{T} <: Algorithm
+@kwdef struct Interpol{T} <: ApproximationAlgorithm
     planes::Int = defaultplanes()
     concave_planes::Int = planes
     metric::Symbol = defaultmetric()
@@ -158,7 +158,7 @@ again as long as this improves the objective, within the total time `maxtime`.
 For a difference of convex approximation, see [`DC`](@ref), the concave part
 has `concave_planes` planes (default: the same as `planes`).
 """
-@kwdef struct MILP{T} <: Algorithm
+@kwdef struct MILP{T} <: ApproximationAlgorithm
     planes::Int = defaultplanes()
     concave_planes::Int = planes
     metric::Symbol = defaultmetric()
@@ -194,7 +194,7 @@ ways depending on `strict`:
 
 For concave approximations, above and below are interchanged.
 """
-@kwdef struct Progressive{T} <: Algorithm
+@kwdef struct Progressive{T} <: ApproximationAlgorithm
     tolerance::Float64 = 0.01
     metric::Symbol = defaultmetric()
     optimizer::T
@@ -214,7 +214,7 @@ is chosen, measured by `metric` (`:l1`, `:l2`, `:max` or `:none`).
 The data points must be convex, i.e. possible to interpolate by a convex
 function. Use [`enforce_curvature`](@ref) first for noisy or non-convex data.
 """
-@kwdef struct FullOrder{T} <: Algorithm
+@kwdef struct FullOrder{T} <: ApproximationAlgorithm
     metric::Symbol = defaultmetric()
     optimizer::T
 end
@@ -245,11 +245,11 @@ approximation on its own, and the option is interchanged internally. The
 concave part has `concave_planes` planes of the algorithm `concave`, which by
 default is its `planes`.
 """
-@kwdef struct Alternating{A<:Algorithm,B<:Algorithm,T} <: Algorithm
+@kwdef struct Alternating{A<:ApproximationAlgorithm,B<:ApproximationAlgorithm,T} <: ApproximationAlgorithm
     convex::A
     concave::B = convex
     optimizer::T = nothing
-    iterations::Int = min(_dc_iterations(convex), _dc_iterations(concave))
+    iterations::Int = (requires_convex_data(convex) || requires_convex_data(concave)) ? 0 : 5
 end
 
 # Printed in keyword form, as the nested algorithm types make the default

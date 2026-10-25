@@ -477,10 +477,7 @@ function _selection_fits(d::_Data1D, options, K)
 end
 
 # Copy of the Interpol options with some fields changed
-function _with(options::Interpol; kwargs...)
-    fields = (f => getfield(options, f) for f ∈ fieldnames(Interpol))
-    return Interpol(; fields..., kwargs...)
-end
+_with(options::Interpol; kwargs...) = with(options; kwargs...)
 
 # Select the number of planes (at most K) according to options.selection.
 # Returns the selected number, the score for each number of planes, and the
@@ -650,13 +647,7 @@ end
 
 # Check the options, and return them with :rms replaced by :l2
 function _validate(options::Interpol)
-    valid(name, value, values) =
-        value ∈ values || throw(
-            ArgumentError(
-                "Unsupported $name = :$value for Interpol, use one of " *
-                join(":" .* string.(values), ", "),
-            ),
-        )
+    valid(name, value, values) = _check_option(options, name, value, values)
     valid("metric", options.metric, (:l1, :l2, :rms, :max))
     valid("convexify", options.convexify, (:auto, :dp, :data))
     valid("selection", options.selection, (:none, :tolerance, :aic, :bic, :cv))
@@ -876,4 +867,10 @@ function _nnls(A, b; maxiter = 3size(A, 2) + 10)
         w = A' * (b - A * x)
     end
     return x
+end
+
+supported_dimensions(::Interpol) = 1:1
+
+function _fit(a::Interpol, input::FunctionEvaluations{1})
+    return _convex_linearization_ipol([p[1] for p ∈ input.points], input.values, a)
 end

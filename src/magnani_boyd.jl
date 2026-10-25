@@ -70,17 +70,8 @@ function _convex_linearization_mb(X::Matrix, z::Vector, options::Cluster)
     strict = options.strict
     optimizer = options.optimizer
 
-    metric ∈ (:l1, :l2, :rms, :max) || throw(
-        ArgumentError(
-            "Unsupported metric :$metric for Cluster, use :l1, :l2 or :max",
-        ),
-    )
-    strict ∈ (:none, :inner, :outer) || throw(
-        ArgumentError(
-            "Unsupported strict = :$strict for Cluster, " *
-            "use :none, :inner or :outer",
-        ),
-    )
+    _check_option(options, "metric", metric, (:l1, :l2, :rms, :max))
+    _check_option(options, "strict", strict, (:none, :inner, :outer))
     K ≥ 1 || throw(ArgumentError("Cluster requires at least one plane"))
     if isnothing(optimizer) && !(strict == :none && metric ∈ (:l2, :rms))
         error(
@@ -430,4 +421,9 @@ function _update_partition(X, pwa)
         push!(𝒫[_active(pwa, x)], i)
     end
     return 𝒫
+end
+
+function _fit(a::Cluster, input::FunctionEvaluations{D}) where {D}
+    x = [p[i] for i ∈ 1:D, p ∈ input.points]
+    return _convex_linearization_mb(x, input.values, a)
 end

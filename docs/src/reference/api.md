@@ -20,6 +20,7 @@ CurrentModule = PiecewiseAffineApprox
 #Concave    # Missing docstring
 DC
 Alternating
+Select
 Plane
 FunctionEvaluations
 PWAFunc
@@ -36,12 +37,30 @@ DeltaFormulation
 PhiFormulation
 ```
 
+## Extending
+
+The interface for adding an algorithm, see [Add an algorithm](@ref).
+
+```@docs
+ApproximationAlgorithm
+_fit
+planes
+concave_planes
+metric
+strict
+optimizer
+with
+supported_dimensions
+requires_convex_data
+```
+
 ## Functions
 
 ```@docs
 approx
 enforce_curvature
 dc_decomposition
+approximation_error
 evaluate
 pwaffine
-```
+```

@@ -11,6 +11,7 @@ using StructTypes
 using Base.Threads: @spawn
 
 include("types.jl")
+include("fitting.jl")
 include("convexapprox.jl")
 include("milp.jl")
 include("vertex_enum.jl")
@@ -22,7 +23,7 @@ include("dcapprox.jl")
 include("struct_types.jl")
 
 export Convex, Concave, DC
-export MILP, Cluster, Interpol, Alternating
+export MILP, Cluster, Interpol, Alternating, Select
 export Progressive, FullOrder
 export Plane
 export FunctionEvaluations
@@ -33,6 +34,7 @@ export PWAFormulation, PsiFormulation, LambdaFormulation, DeltaFormulation, PhiF
 export Ψ_Formulation, λ_Formulation, Δ_Formulation, Φ_Formulation
 export evaluate
 export enforce_curvature
+export approximation_error
 export dc_decomposition
 
 end # module

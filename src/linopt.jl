@@ -109,7 +109,7 @@ function pwaffine(
     x,
     fevals::FunctionEvaluations,
     curvature::Curvature,
-    a::Algorithm;
+    a::ApproximationAlgorithm;
     z = nothing,
     kwargs...,
 )

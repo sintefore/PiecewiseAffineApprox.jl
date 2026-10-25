@@ -1,9 +1,5 @@
 # Optimal convex approximation using mixed integer optimization
-function approx(
-    input::FunctionEvaluations{D},
-    c::Convex,
-    options::MILP,
-) where {D}
+function _fit(options::MILP, input::FunctionEvaluations{D}) where {D}
     _validate(options)
     # Solve on data normalized to the unit box, to make the solver tolerances,
     # big-M values and margins independent of the scale of the data
@@ -244,15 +240,8 @@ function _tight_big_M_points(m, x, Mᵖ; tol = 1e-6)
 end
 
 function _validate(options::MILP)
-    valid(name, value, values) =
-        value ∈ values || throw(
-            ArgumentError(
-                "Unsupported $name = :$value for MILP, use one of " *
-                join(":" .* string.(values), ", "),
-            ),
-        )
-    valid("metric", options.metric, (:l1, :l2, :max))
-    valid("strict", options.strict, (:none, :inner, :outer))
+    _check_option(options, "metric", options.metric, (:l1, :l2, :max))
+    _check_option(options, "strict", options.strict, (:none, :inner, :outer))
     options.planes ≥ 1 || throw(ArgumentError("MILP requires planes ≥ 1"))
     options.maxtime > 0 || throw(ArgumentError("MILP requires maxtime > 0"))
     return options

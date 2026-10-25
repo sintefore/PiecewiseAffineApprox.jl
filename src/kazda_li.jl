@@ -525,23 +525,10 @@ function _increase_order(f::FunctionEvaluations, pwa_red, pwa)
     return _update_allocation(f, pwa_red)
 end
 
-# Approximation error per data point, compared with the tolerance: the mean
-# absolute deviation (:l1), the root mean square deviation (:l2, :rms) or the
-# maximum absolute deviation (:max)
+# Approximation error per data point, compared with the tolerance, see
+# approximation_error
 function _tolerance_error(f::FunctionEvaluations, pwa::AbstractPWAFunc, metric)
-    r = [abs(evaluate(pwa, x) - z) for (x, z) ∈ f]
-    if metric == :l1
-        return mean(r)
-    elseif metric == :l2 || metric == :rms
-        return sqrt(mean(abs2, r))
-    elseif metric == :max
-        return maximum(r)
-    end
-    throw(
-        ArgumentError(
-            "Unsupported metric :$metric for Progressive, use :l1, :l2 or :max",
-        ),
-    )
+    return approximation_error(pwa, f, metric)
 end
 
 # Main algorithm
@@ -552,14 +539,12 @@ function _progressive_pwa(
     metric,
     full_order_metric = :l1,
 )
-    if metric ∉ (:l1, :l2, :rms, :max)
-        throw(
-            ArgumentError(
-                "Unsupported metric :$metric for Progressive, " *
-                "use :l1, :l2 or :max",
-            ),
-        )
-    end
+    metric ∈ (:l1, :l2, :rms, :max) || throw(
+        ArgumentError(
+            "Unsupported metric = :$metric for Progressive, use one of " *
+            ":l1, :l2, :rms, :max",
+        ),
+    )
 
     # Find the full order convex approximation, will error if the points are
     # not convex
@@ -942,4 +927,12 @@ function _nearest_neighbours(X, n)
         d = [sum(abs2, Y[:, l] .- Y[:, k]) for l ∈ 1:N]
         return [l for l ∈ partialsortperm(d, 1:min(N, n + 1)) if l != k]
     end
+end
+
+requires_convex_data(::Progressive) = true
+requires_convex_data(::FullOrder) = true
+
+_fit(a::Progressive, input::FunctionEvaluations) = _progressive_pwa(input, a)
+function _fit(a::FullOrder, input::FunctionEvaluations)
+    return _full_order_pwa(input, a.optimizer, a.metric)
 end

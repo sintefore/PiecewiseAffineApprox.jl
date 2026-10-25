@@ -8,22 +8,16 @@
 
 # The default number of alternating refits for an algorithm: none for the
 # algorithms that require convex data
-_dc_iterations(::Algorithm) = 5
-_dc_iterations(::Union{Progressive,FullOrder}) = 0
-
-# The optimizer of an algorithm, if any
-_dc_optimizer(a::Algorithm) = hasproperty(a, :optimizer) ? a.optimizer : nothing
+_dc_iterations(a::ApproximationAlgorithm) = requires_convex_data(a) ? 0 : 5
 
 # The metric used for comparing the alternating refits
-function _dc_metric(a::Algorithm)
-    if hasproperty(a, :metric) && a.metric ∈ (:l1, :l2, :rms, :max)
-        return a.metric
-    end
-    return :l1
+function _dc_metric(a::ApproximationAlgorithm)
+    m = metric(a)
+    return isnothing(m) || m ∉ (:l1, :l2, :rms, :max) ? :l1 : m
 end
 
 """
-    approx(input::FunctionEvaluations{D}, c::DC, a::Algorithm)
+    approx(input::FunctionEvaluations{D}, c::DC, a::ApproximationAlgorithm)
 
 Return a [`DCFunc`](@ref), approximating the `input` points in `D` dimensions
 as the sum of a convex and a concave piecewise linear function. Any function
@@ -37,19 +31,23 @@ options. Use `Alternating` to fit the parts with different algorithms. The
 `strict` option of the algorithm applies to the approximation as a whole: with
 `:outer` it lies below the data and with `:inner` above it.
 """
-function approx(input::FunctionEvaluations{D}, c::DC, a::Algorithm) where {D}
-    return _dc_approx(input, a, a, _dc_optimizer(a), _dc_iterations(a))
+function approx(
+    input::FunctionEvaluations{D},
+    c::DC,
+    a::ApproximationAlgorithm,
+) where {D}
+    return _dc_approx(input, a, a, optimizer(a), _dc_iterations(a))
 end
 
 function approx(input::FunctionEvaluations{D}, c::DC, a::Alternating) where {D}
-    optimizer = a.optimizer
-    if isnothing(optimizer)
-        optimizer = _dc_optimizer(a.convex)
+    opt = a.optimizer
+    if isnothing(opt)
+        opt = optimizer(a.convex)
     end
-    if isnothing(optimizer)
-        optimizer = _dc_optimizer(a.concave)
+    if isnothing(opt)
+        opt = optimizer(a.concave)
     end
-    return _dc_approx(input, a.convex, a.concave, optimizer, a.iterations)
+    return _dc_approx(input, a.convex, a.concave, opt, a.iterations)
 end
 
 function approx(
@@ -75,30 +73,20 @@ end
 
 # The algorithm for fitting the concave part: strict = :outer and :inner are
 # interchanged, and the number of planes is concave_planes
-function _dc_concave_algorithm(a::Algorithm)
+function _dc_concave_algorithm(a::ApproximationAlgorithm)
     a = _dc_swap_strict(a)
-    hasproperty(a, :concave_planes) || return a
-    return _dc_with(a, :planes, a.concave_planes)
+    p = planes(a)
+    (isnothing(p) || concave_planes(a) == p) && return a
+    return with(a; planes = concave_planes(a))
 end
 
 # The algorithm with strict = :outer and :inner interchanged, for fitting the
 # concave part. Algorithms without strictness are returned as they are.
-function _dc_swap_strict(a::Algorithm)
-    hasproperty(a, :strict) || return a
-    swapped =
-        a.strict == :outer ? :inner : a.strict == :inner ? :outer : a.strict
-    return _dc_with(a, :strict, swapped)
-end
-
-# A copy of the algorithm with the field set to the value, through its
-# keyword constructor
-function _dc_with(a::Algorithm, field::Symbol, value)
-    getfield(a, field) == value && return a
-    fields = (
-        name => (name == field ? value : getfield(a, name)) for
-        name ∈ fieldnames(typeof(a))
-    )
-    return typeof(a).name.wrapper(; fields...)
+function _dc_swap_strict(a::ApproximationAlgorithm)
+    s = strict(a)
+    swapped = s == :outer ? :inner : s == :inner ? :outer : s
+    swapped == s && return a
+    return with(a; strict = swapped)
 end
 
 # Fit the convex part with ag and the concave part with ah, alternately. The
@@ -108,8 +96,8 @@ end
 # part as well, which for a concave approximation is strict = :inner.
 function _dc_approx(
     f::FunctionEvaluations{D},
-    ag::Algorithm,
-    ah::Algorithm,
+    ag::ApproximationAlgorithm,
+    ah::ApproximationAlgorithm,
     optimizer,
     iterations,
 ) where {D}
