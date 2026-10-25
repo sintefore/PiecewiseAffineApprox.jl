@@ -41,8 +41,6 @@ function _convex_linearization_mb(X::Matrix, z::Vector, options::Cluster)
     strict = options.strict
     optimizer = options.optimizer
 
-    _check_option(options, "metric", metric, (:l1, :l2, :rms, :max))
-    _check_option(options, "strict", strict, (:none, :inner, :outer))
     K ≥ 1 || throw(ArgumentError("Cluster requires at least one plane"))
     if isnothing(optimizer) && !(strict == :none && metric ∈ (:l2, :rms))
         error(

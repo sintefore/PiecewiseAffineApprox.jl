@@ -74,11 +74,15 @@ not to refit them.
 
 ## Conventions
 
-- Validate the options in `_fit` and throw an `ArgumentError` for unsupported
-  values; `PiecewiseAffineApprox._check_option` gives a uniform message.
 - An option `metric` takes the values `:l1`, `:l2` (with `:rms` as an alias)
   or `:max`, and `strict` the values `:none`, `:outer` for an approximation
-  below the data and `:inner` for one above it.
+  below the data and `:inner` for one above it. Both are checked by `approx`
+  against [`supported_metrics`](@ref) and [`supported_strict`](@ref) before
+  `_fit` is called. Validate the other options in `_fit` and throw an
+  `ArgumentError` for unsupported values; `PiecewiseAffineApprox._check_option`
+  gives a uniform message.
+- To report diagnostics, return `(f, details)` from `_fit` with a named tuple
+  `details`, which [`fit`](@ref) includes in its [`FitResult`](@ref).
 - Measure errors with [`approximation_error`](@ref).
 - Use `rng` for randomness, and advance it so that repeated calls give
   reproducible, different results, as [`Cluster`](@ref) does.

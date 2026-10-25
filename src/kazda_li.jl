@@ -166,11 +166,6 @@ end
 # closed form for one-dimensional data, and otherwise by a small optimization
 # problem.
 function _full_order_pwa(f::FunctionEvaluations{D}, optimizer, metric) where {D}
-    if metric ∉ (:l1, :l2, :rms, :max, :none)
-        throw(
-            ArgumentError("Unsupported metric :$metric for full order fitting"),
-        )
-    end
     X = [pt[i] for i ∈ 1:D, pt ∈ f.points]
     z = f.values
     planes = if D == 1
@@ -533,13 +528,6 @@ function _progressive_pwa(
     metric,
     full_order_metric = :l1,
 )
-    metric ∈ (:l1, :l2, :rms, :max) || throw(
-        ArgumentError(
-            "Unsupported metric = :$metric for Progressive, use one of " *
-            ":l1, :l2, :rms, :max",
-        ),
-    )
-
     # Find the full order convex approximation, will error if the points are
     # not convex
     pwa = _full_order_pwa(f, optimizer, full_order_metric)
@@ -564,7 +552,7 @@ function _progressive_pwa(
         pwa_red = improve(U, length(pwa_red.planes))
     end
     _check_tolerance(f, pwa_red, metric, δᵗᵒˡ, rounds)
-    return pwa_red
+    return pwa_red, rounds
 end
 
 # Warn if the fitting stopped without meeting the tolerance
@@ -583,27 +571,12 @@ end
 
 # Map algorithm structure to correct parameters
 function _progressive_pwa(f::FunctionEvaluations, options::Progressive)
-    if options.strict == :outer
-        return _progressive_pwa(
-            f,
-            options.optimizer,
-            options.tolerance,
-            options.metric,
-        )
-    elseif options.strict ∈ (:none, :inner)
-        return _progressive_band(
-            f,
-            options.optimizer,
-            options.tolerance,
-            options.strict,
-        )
+    pwa, rounds = if options.strict == :outer
+        _progressive_pwa(f, options.optimizer, options.tolerance, options.metric)
+    else
+        _progressive_band(f, options.optimizer, options.tolerance, options.strict)
     end
-    throw(
-        ArgumentError(
-            "Unsupported strict = :$(options.strict) for Progressive, " *
-            "use :outer, :none or :inner",
-        ),
-    )
+    return pwa, (rounds = rounds, planes = _planes(pwa))
 end
 
 # Progressive fitting within a band around the data, following Kazda and Li
@@ -672,7 +645,7 @@ function _progressive_band(
     end
     pwa = PWAFunc{Convex,D}([_denormalize(q, μx, σx, z̄, s) for q ∈ planes])
     _check_tolerance(f, pwa, :max, δ, rounds)
-    return pwa
+    return pwa, rounds
 end
 
 # The points as columns of a matrix, shifted and scaled to [-1, 1] in each
@@ -925,6 +898,7 @@ end
 
 requires_convex_data(::Progressive) = true
 requires_convex_data(::FullOrder) = true
+supported_metrics(::FullOrder) = (:l1, :l2, :rms, :max, :none)
 
 _fit(a::Progressive, input::FunctionEvaluations) = _progressive_pwa(input, a)
 function _fit(a::FullOrder, input::FunctionEvaluations)

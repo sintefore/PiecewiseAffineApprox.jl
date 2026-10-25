@@ -28,7 +28,7 @@ export Progressive, FullOrder
 export Plane
 export FunctionEvaluations
 export PWAFunc, DCFunc
-export approx
+export approx, fit, FitResult
 export pwaffine
 export PWAFormulation, PsiFormulation, LambdaFormulation, DeltaFormulation, PhiFormulation
 export Ψ_Formulation, λ_Formulation, Δ_Formulation, Φ_Formulation

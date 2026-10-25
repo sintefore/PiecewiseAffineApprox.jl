@@ -31,16 +31,17 @@ options. Use `Alternating` to fit the parts with different algorithms. The
 `strict` option of the algorithm applies to the approximation as a whole: with
 `:outer` it lies below the data and with `:inner` above it.
 """
-function approx(
+function fit(
     input::FunctionEvaluations{D},
     c::DC,
     a::ApproximationAlgorithm,
 ) where {D}
-    dc = _dc_approx(input, a, a, optimizer(a), _dc_iterations(a))
-    return _with_domain(dc, _data_domain(input))
+    t = @elapsed dc, details =
+        _dc_approx(input, a, a, optimizer(a), _dc_iterations(a))
+    return _result(input, a, _with_domain(dc, _data_domain(input)), details, t)
 end
 
-function approx(input::FunctionEvaluations{D}, c::DC, a::Alternating) where {D}
+function fit(input::FunctionEvaluations{D}, c::DC, a::Alternating) where {D}
     opt = a.optimizer
     if isnothing(opt)
         opt = optimizer(a.convex)
@@ -48,18 +49,19 @@ function approx(input::FunctionEvaluations{D}, c::DC, a::Alternating) where {D}
     if isnothing(opt)
         opt = optimizer(a.concave)
     end
-    dc = _dc_approx(input, a.convex, a.concave, opt, a.iterations)
-    return _with_domain(dc, _data_domain(input))
+    t = @elapsed dc, details =
+        _dc_approx(input, a.convex, a.concave, opt, a.iterations)
+    return _result(input, a, _with_domain(dc, _data_domain(input)), details, t)
 end
 
-function approx(
+function fit(
     input::FunctionEvaluations{D},
     c::Convex,
     a::Alternating,
 ) where {D}
     return _alternating_error(c)
 end
-approx(::FunctionEvaluations, c::Concave, ::Alternating) = _alternating_error(c)
+fit(::FunctionEvaluations, c::Concave, ::Alternating) = _alternating_error(c)
 function _alternating_error(c)
     return throw(
         ArgumentError(
@@ -127,11 +129,13 @@ function _dc_approx(
     best = DCFunc(g, h)
     eᵇᵉˢᵗ = approximation_error(best, f, metric)
     eᵖʳᵉᵛ = eᵇᵉˢᵗ
+    errors = [eᵇᵉˢᵗ]
     for _ ∈ 1:iterations
         g = approx(residual(h), Convex(), ag)
         h = approx(residual(g), Concave(), ah)
         dc = DCFunc(g, h)
         e = approximation_error(dc, f, metric)
+        push!(errors, e)
         if e < eᵇᵉˢᵗ
             best, eᵇᵉˢᵗ = dc, e
         end
@@ -139,7 +143,7 @@ function _dc_approx(
         abs(e - eᵖʳᵉᵛ) ≤ 1e-9 * max(e, eᵖʳᵉᵛ) && break
         eᵖʳᵉᵛ = e
     end
-    return best
+    return best, (refits = length(errors) - 1, errors = errors)
 end
 
 # Whether the decomposition can be computed without an optimizer: for

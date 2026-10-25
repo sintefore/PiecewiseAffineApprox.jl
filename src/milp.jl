@@ -15,16 +15,19 @@ function _fit(options::MILP, input::FunctionEvaluations{D}) where {D}
         (input.values .- zᵐⁱⁿ) ./ zʷ,
     )
 
-    a, b = _milp(normalized, options)
+    a, b, details = _milp(normalized, options)
 
     # Transform the planes back: z = zᵐⁱⁿ + zʷ (Σⱼ aⱼ (xⱼ - loⱼ) / wⱼ + b)
-    return PWAFunc{Convex,D}([
+    pwa = PWAFunc{Convex,D}([
         Plane(
             ntuple(j -> zʷ * a[j, k] / w[j], D),
             zᵐⁱⁿ + zʷ * (b[k] - sum(a[j, k] * lo[j] / w[j] for j ∈ 1:D)),
         ) for k ∈ axes(a, 2)
     ])
+    return pwa, details
 end
+
+supported_metrics(::MILP) = (:l1, :l2, :max)
 
 # Maximum number of times the big-M values are doubled when they may cut off
 # the optimal solution
@@ -176,7 +179,10 @@ function _milp(
     # this improves the objective.
     t₀ = time()
     objᵖʳᵉᵛ = Inf
+    status = MOI.OPTIMIZE_NOT_CALLED
+    big_M_rounds = 0
     for iteration ∈ 0:rounds
+        big_M_rounds = iteration
         set_time_limit_sec(m, max(options.maxtime - (time() - t₀), 0.1))
         optimize!(m)
 
@@ -223,7 +229,13 @@ function _milp(
         end
     end
 
-    return [value(a[j, k]) for j ∈ ℐₚ, k ∈ 𝒦], [value(b[k]) for k ∈ 𝒦]
+    details = (
+        status = status,
+        objective = objective_value(m),
+        big_M_rounds = big_M_rounds,
+        solve_time = time() - t₀,
+    )
+    return [value(a[j, k]) for j ∈ ℐₚ, k ∈ 𝒦], [value(b[k]) for k ∈ 𝒦], details
 end
 
 # Points where a big-M constraint is tight for a plane that is not active
@@ -240,8 +252,6 @@ function _tight_big_M_points(m, x, Mᵖ; tol = 1e-6)
 end
 
 function _validate(options::MILP)
-    _check_option(options, "metric", options.metric, (:l1, :l2, :max))
-    _check_option(options, "strict", options.strict, (:none, :inner, :outer))
     options.planes ≥ 1 || throw(ArgumentError("MILP requires planes ≥ 1"))
     options.maxtime > 0 || throw(ArgumentError("MILP requires maxtime > 0"))
     return options

@@ -28,9 +28,14 @@ ApproximationAlgorithm
 
 Approximate the `data` by a convex piecewise affine function. Implemented by
 every algorithm. The data has at least one point and a number of variables
-in [`supported_dimensions`](@ref) when called through [`approx`](@ref). The
-algorithm should validate its options and throw an `ArgumentError` for
+in [`supported_dimensions`](@ref) when called through [`approx`](@ref), and
+the `metric` and `strict` options have been checked against
+[`supported_metrics`](@ref) and [`supported_strict`](@ref). The algorithm
+should validate its other options and throw an `ArgumentError` for
 unsupported values.
+
+The method may also return a tuple `(f, details)` with a named tuple of
+diagnostics, which [`fit`](@ref) reports in the [`FitResult`](@ref).
 """
 function _fit(a::ApproximationAlgorithm, ::FunctionEvaluations{D}) where {D}
     return throw(
@@ -38,6 +43,56 @@ function _fit(a::ApproximationAlgorithm, ::FunctionEvaluations{D}) where {D}
             "$(nameof(typeof(a))) does not implement _fit for functions of " *
             "$D variables, see the documentation of ApproximationAlgorithm",
         ),
+    )
+end
+
+# The function and the diagnostics from the return value of _fit
+_unwrap(f::AbstractPWAFunc) = (f, (;))
+_unwrap(x::Tuple{AbstractPWAFunc,NamedTuple}) = x
+
+"""
+    FitResult
+
+The result of [`fit`](@ref): the approximation `func`, its `error` from the
+data in `metric` (see [`approximation_error`](@ref)), the `time` in seconds,
+the `algorithm`, and `details`, a named tuple of diagnostics from the
+algorithm, e.g. the errors of the trials of a [`Restart`](@ref), the scores
+of a [`Select`](@ref) or the status of the [`MILP`](@ref) solve.
+"""
+struct FitResult{F<:AbstractPWAFunc,A<:ApproximationAlgorithm,N<:NamedTuple}
+    func::F
+    error::Float64
+    metric::Symbol
+    time::Float64
+    algorithm::A
+    details::N
+end
+function Base.show(io::IO, r::FitResult)
+    print(io, "FitResult: ")
+    summary(io, r.func)
+    print(io, ", error = ", round(r.error; sigdigits = 4), " (", r.metric, ")")
+    print(io, ", time = ", round(r.time; sigdigits = 3), " s")
+    isempty(r.details) ||
+        print(io, ", details: ", join(string.(keys(r.details)), ", "))
+    return
+end
+
+# The metric of an algorithm for reporting errors: its own, or :l1
+function _report_metric(a::ApproximationAlgorithm)
+    m = metric(a)
+    return isnothing(m) || m ∉ (:l1, :l2, :rms, :max) ? :l1 : m
+end
+
+# A FitResult from the fitted function and the diagnostics
+function _result(data, a, func, details, time)
+    m = _report_metric(a)
+    return FitResult(
+        func,
+        approximation_error(func, data, m),
+        m,
+        time,
+        a,
+        details,
     )
 end
 
@@ -106,6 +161,30 @@ function with(a::ApproximationAlgorithm; options...)
     end
     fields = (name => getfield(a, name) for name ∈ fieldnames(T))
     return T.name.wrapper(; fields..., options...)
+end
+
+"""
+    supported_metrics(a::ApproximationAlgorithm)
+
+The values of the `metric` option that `a` accepts, checked by [`approx`](@ref)
+before the algorithm is called. Defaults to `(:l1, :l2, :rms, :max)`.
+"""
+supported_metrics(::ApproximationAlgorithm) = (:l1, :l2, :rms, :max)
+
+"""
+    supported_strict(a::ApproximationAlgorithm)
+
+The values of the `strict` option that `a` accepts, checked by [`approx`](@ref)
+before the algorithm is called. Defaults to `(:none, :inner, :outer)`.
+"""
+supported_strict(::ApproximationAlgorithm) = (:none, :inner, :outer)
+
+# Check the metric and strict options of an algorithm, if it has them
+function _validate_options(a::ApproximationAlgorithm)
+    m = metric(a)
+    isnothing(m) || _check_option(a, "metric", m, supported_metrics(a))
+    _check_option(a, "strict", strict(a), supported_strict(a))
+    return a
 end
 
 """
@@ -249,7 +328,6 @@ end
 
 function _fit(s::Select, data::FunctionEvaluations{D}) where {D}
     _check_option(s, "criterion", s.criterion, (:tolerance, :aic, :bic, :cv))
-    _check_option(s, "metric", s.metric, (:l1, :l2, :rms, :max))
     K = planes(s.inner)
     isnothing(K) && throw(
         ArgumentError(
@@ -272,19 +350,22 @@ function _fit(s::Select, data::FunctionEvaluations{D}) where {D}
             ),
         )
     N = length(data)
-    fit(p, d) = approx(d, Convex(), with(s.inner; planes = p))
+    fitp(p, d) = approx(d, Convex(), with(s.inner; planes = p))
 
+    # The score of each number of planes, reported in the details
+    scores = Float64[]
     k, fits = if s.criterion == :cv
-        E = _cv_errors(s, data, K, fit)
+        E = _cv_errors(s, data, K, fitp)
         F = size(E, 1)
         scores = vec(mean(E, dims = 1))
         se = vec(std(E, dims = 1)) ./ sqrt(F)
         kᵐⁱⁿ = argmin(scores)
         findfirst(≤(scores[kᵐⁱⁿ] + se[kᵐⁱⁿ]), scores), nothing
     else
-        fits = [fit(p, data) for p ∈ 1:K]
+        fits = [fitp(p, data) for p ∈ 1:K]
         e = [approximation_error(f, data, s.metric) for f ∈ fits]
         if s.criterion == :tolerance
+            scores = e
             k = findfirst(≤(s.tolerance), e)
             if isnothing(k)
                 @warn "Tolerance $(s.tolerance) not reached with $K planes " *
@@ -305,7 +386,8 @@ function _fit(s::Select, data::FunctionEvaluations{D}) where {D}
                 N .* log.(2π .* e .^ 2) .+ N
             nparams = [(D + 1) * _planes(f) for f ∈ fits]
             penalty = s.criterion == :aic ? 2.0 : log(N)
-            argmin(m2ll .+ penalty .* nparams), fits
+            scores = m2ll .+ penalty .* nparams
+            argmin(scores), fits
         end
     end
     if s.criterion != :tolerance && k == K
@@ -313,7 +395,8 @@ function _fit(s::Select, data::FunctionEvaluations{D}) where {D}
               ":$(s.criterion), consider increasing planes"
     end
     @debug "Select chose $k planes by :$(s.criterion)"
-    return isnothing(fits) ? fit(k, data) : fits[k]
+    func = isnothing(fits) ? fitp(k, data) : fits[k]
+    return func, (criterion = s.criterion, planes = k, scores = scores)
 end
 
 # Cross validation errors E[f, p] for fold f and p = 1, ..., K planes, with
@@ -413,7 +496,6 @@ _has_rng(a::ApproximationAlgorithm) = hasfield(typeof(a), :rng)
 _has_rng(s::Select) = _has_rng(s.inner)
 
 function _fit(r::Restart, data::FunctionEvaluations)
-    _check_option(r, "metric", r.metric, (:l1, :l2, :rms, :max))
     r.trials ≥ 1 || throw(ArgumentError("Restart requires trials ≥ 1"))
     _has_rng(r.inner) || throw(
         ArgumentError(
@@ -430,13 +512,16 @@ function _fit(r::Restart, data::FunctionEvaluations)
     ]
     fits = map(tasks) do task
         try
-            fetch(task)
+            _unwrap(fetch(task))
         catch e
             # Report the error of the trial rather than the failure of the task
             e isa TaskFailedException ? throw(e.task.result) : rethrow()
         end
     end
-    errors = [approximation_error(f, data, r.metric) for f ∈ fits]
-    @debug "Restart: best of $(r.trials) trials has error $(minimum(errors)) ($(r.metric))"
-    return fits[argmin(errors)]
+    errors = [approximation_error(f, data, r.metric) for (f, _) ∈ fits]
+    best = argmin(errors)
+    @debug "Restart: best of $(r.trials) trials has error $(errors[best]) ($(r.metric))"
+    func, inner = fits[best]
+    return func,
+    (trials = r.trials, errors = errors, best = best, inner = inner)
 end

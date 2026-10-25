@@ -57,12 +57,16 @@ optimizer
 with
 supported_dimensions
 requires_convex_data
+supported_metrics
+supported_strict
 ```
 
 ## Functions
 
 ```@docs
 approx
+fit
+FitResult
 enforce_curvature
 dc_decomposition
 approximation_error

@@ -479,7 +479,6 @@ end
 # Check the options, and return them with :rms replaced by :l2
 function _validate(options::Interpol)
     valid(name, value, values) = _check_option(options, name, value, values)
-    valid("metric", options.metric, (:l1, :l2, :rms, :max))
     valid("convexify", options.convexify, (:auto, :dp, :data))
     valid("selection", options.selection, (:none, :tolerance, :aic, :bic, :cv))
     valid("adjust", options.adjust, (:none, :values, :breakpoints))
@@ -728,7 +727,8 @@ function _select_interpol(a::Interpol, input::FunctionEvaluations{1}, x)
         folds = a.folds,
         metric = a.metric,
     )
-    pwa = _fit(s, input)
-    a.adjust == :breakpoints || return pwa
-    return _fit(with(a; planes = _planes(pwa), selection = :none), input)
+    pwa, details = _unwrap(_fit(s, input))
+    a.adjust == :breakpoints || return pwa, details
+    refit = with(a; planes = _planes(pwa), selection = :none)
+    return _fit(refit, input), details
 end

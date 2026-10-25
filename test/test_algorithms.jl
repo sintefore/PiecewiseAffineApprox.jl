@@ -394,3 +394,98 @@ end
         ),
     )
 end
+
+@testset "fit and diagnostics" begin
+    x = collect(range(-1, 1; length = 30))
+    f = FunctionEvaluations(x, x .^ 2 .+ 0.05 .* randn(StableRNG(5), 30))
+
+    r = fit(f, Convex(), Cluster(planes = 3, rng = StableRNG(1)))
+    @test r isa FitResult
+    @test r.func == approx(f, Convex(), Cluster(planes = 3, rng = StableRNG(1)))
+    @test r.error == approximation_error(r.func, f, :l2)
+    @test r.metric == :l2
+    @test r.time > 0
+    @test r.algorithm isa Cluster
+    @test r.details.trials == 20 && length(r.details.errors) == 20
+    @test r.details.errors[r.details.best] == minimum(r.details.errors)
+    @test occursin("error = ", repr(r)) && occursin("trials", repr(r))
+
+    r = fit(f, Convex(), MILP(planes = 2; optimizer))
+    @test r.details.status == MOI.OPTIMAL
+    @test r.details.objective ≥ 0 && r.details.big_M_rounds ≥ 0
+    @test r.metric == :l1
+    r = fit(f, Convex(), Interpol(planes = 3))
+    @test isempty(r.details)
+    q = FunctionEvaluations(x, x .^ 2)
+    r = fit(q, Convex(), Progressive(; optimizer, tolerance = 0.05))
+    @test r.details.rounds ≥ 0 && r.details.planes == PWA._planes(r.func)
+    r = fit(f, Convex(), Select(Interpol(planes = 6); criterion = :bic))
+    @test r.details.planes == PWA._planes(r.func)
+    @test length(r.details.scores) == 6 &&
+          argmin(r.details.scores) == r.details.planes
+    r = fit(
+        f,
+        Convex(),
+        Restart(
+            Select(Cluster(planes = 5, trials = 1); criterion = :aic);
+            trials = 3,
+            rng = StableRNG(1),
+        ),
+    )
+    @test r.details.trials == 3 && haskey(r.details.inner, :scores)
+
+    # Concave, difference of convex, and sampled functions
+    r = fit(FunctionEvaluations(x, -x .^ 2), Concave(), Interpol(planes = 3))
+    @test r.func isa PWAFunc{Concave,1} &&
+          r.error ≈
+          approximation_error(r.func, FunctionEvaluations(x, -x .^ 2), :l1)
+    r = fit(
+        FunctionEvaluations(x, sin.(3x)),
+        DC(),
+        Interpol(planes = 3; optimizer),
+    )
+    @test r.func isa DCFunc{1}
+    @test r.details.refits ≥ 0 &&
+          length(r.details.errors) == r.details.refits + 1
+    @test r.details.errors[end] ≥ r.error
+    r = fit(
+        sin,
+        [(0, 2π)],
+        DC(),
+        Alternating(
+            convex = Interpol(planes = 3),
+            concave = Interpol(planes = 2),
+        ),
+    )
+    @test r.algorithm isa Alternating && haskey(r.details, :refits)
+    r = fit(x -> x[1]^2, [(-1, 1)], Convex(), Interpol(planes = 2))
+    @test domain(r.func) == [(-1.0, 1.0)]
+end
+
+@testset "Option validation" begin
+    x = collect(range(-1, 1; length = 20))
+    f = FunctionEvaluations(x, x .^ 2)
+    @test PWA.supported_metrics(Cluster()) == (:l1, :l2, :rms, :max)
+    @test PWA.supported_metrics(MILP(; optimizer)) == (:l1, :l2, :max)
+    @test :none ∈ PWA.supported_metrics(FullOrder(; optimizer))
+    @test PWA.supported_strict(Cluster()) == (:none, :inner, :outer)
+    # Checked before the algorithm is called, for every algorithm
+    for a ∈ (
+        Cluster(metric = :foo),
+        Cluster(strict = :bar; optimizer),
+        MILP(metric = :rms; optimizer),
+        MILP(strict = :foo; optimizer),
+        Interpol(metric = :foo),
+        Progressive(metric = :foo; optimizer),
+        Progressive(metric = :foo, strict = :none; optimizer),
+        Progressive(strict = :foo; optimizer),
+        FullOrder(metric = :foo; optimizer),
+        Select(Interpol(); metric = :foo),
+        Restart(Cluster(); metric = :foo),
+    )
+        @test_throws ArgumentError approx(f, Convex(), a)
+        @test_throws ArgumentError approx(f, Concave(), a)
+        @test_throws ArgumentError approx(f, DC(), a)
+    end
+    @test approx(f, Convex(), FullOrder(metric = :none; optimizer)) isa PWAFunc
+end

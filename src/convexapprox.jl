@@ -9,8 +9,22 @@ Return a `PWAFunc{Convex,D}` or `PWAFunc{Concave,D}` depending on `c`,
 approximating the `input` points in `D` dimensions with the algorithm `a`, or
 a [`DCFunc`](@ref) for `c = DC()`. Concave data is approximated by negating
 the values, approximating with a convex function, and negating the result.
+Use [`fit`](@ref) to also get the error, the time and the diagnostics of the
+algorithm.
 """
-function approx(
+function approx(input::FunctionEvaluations, c::Curvature, a::ApproximationAlgorithm)
+    return fit(input, c, a).func
+end
+
+"""
+    fit(input::FunctionEvaluations, c::Curvature, a::ApproximationAlgorithm)
+    fit(f::Function, bbox::Vector{<:Tuple}, c::Curvature, a::ApproximationAlgorithm; nsamples)
+
+As [`approx`](@ref), but returning a [`FitResult`](@ref) with the
+approximation, its error from the data, the time taken and the diagnostics of
+the algorithm.
+"""
+function fit(
     input::FunctionEvaluations{D},
     c::Convex,
     a::ApproximationAlgorithm,
@@ -25,16 +39,17 @@ function approx(
         )
     end
     isempty(input.points) && throw(ArgumentError("The data has no points"))
-    return _with_domain(_fit(a, input), _data_domain(input))
+    _validate_options(a)
+    t = @elapsed func, details = _unwrap(_fit(a, input))
+    func = _with_domain(func, _data_domain(input))
+    return _result(input, a, func, details, t)
 end
 
-function approx(
-    input::FunctionEvaluations,
-    c::Concave,
-    a::ApproximationAlgorithm,
-)
-    cv = approx(FunctionEvaluations(input.points, -input.values), Convex(), a)
-    return PWAFunc{Concave,dims(cv)}(cv.planes; domain = cv.domain)
+function fit(input::FunctionEvaluations, c::Concave, a::ApproximationAlgorithm)
+    r = fit(FunctionEvaluations(input.points, -input.values), Convex(), a)
+    cv = r.func
+    func = PWAFunc{Concave,dims(cv)}(cv.planes; domain = cv.domain)
+    return FitResult(func, r.error, r.metric, r.time, a, r.details)
 end
 
 # The range of the data in each variable, as the domain of the approximation
@@ -100,8 +115,18 @@ function approx(
     a::ApproximationAlgorithm;
     nsamples = _default_samples(a, length(bbox)),
 )
+    return fit(f, bbox, c, a; nsamples).func
+end
+
+function fit(
+    f::Function,
+    bbox::Vector{<:Tuple},
+    c::Curvature,
+    a::ApproximationAlgorithm;
+    nsamples = _default_samples(a, length(bbox)),
+)
     nsamples ≥ 2 || throw(ArgumentError("nsamples must be at least 2"))
-    return approx(_sample_uniform(f, bbox, nsamples), c, a)
+    return fit(_sample_uniform(f, bbox, nsamples), c, a)
 end
 
 # Default number of samples in each of D dimensions
