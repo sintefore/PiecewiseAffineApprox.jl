@@ -20,6 +20,7 @@ Concave
 DC
 Alternating
 Select
+Restart
 Plane
 FunctionEvaluations
 PWAFunc

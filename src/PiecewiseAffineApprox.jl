@@ -23,7 +23,7 @@ include("dcapprox.jl")
 include("struct_types.jl")
 
 export Convex, Concave, DC
-export MILP, Cluster, Interpol, Alternating, Select
+export MILP, Cluster, Interpol, Alternating, Select, Restart
 export Progressive, FullOrder
 export Plane
 export FunctionEvaluations

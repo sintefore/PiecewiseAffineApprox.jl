@@ -341,3 +341,102 @@ function _cv_errors(s::Select, data::FunctionEvaluations, K, fit)
     end
     return E
 end
+
+"""
+    Restart(inner::ApproximationAlgorithm; trials = 20, rng = Random.default_rng(), metric)
+
+Run the randomized algorithm `inner` `trials` times from different random
+starts, and return the best approximation as measured by `metric` (default:
+that of `inner`, or `:l1`). The algorithm must have an `rng` option, which is
+set to a seeded generator for each trial, with the seeds drawn from `rng` up
+front, so that the result is reproducible and independent of the number of
+threads. If julia is started with multiple threads, the trials run in
+parallel; consider how many threads are beneficial, particularly with a
+commercial solver whose license may restrict the number of simultaneous
+instances. Errors in a trial are reported directly.
+
+The `trials` option of [`Cluster`](@ref) is a shorthand for this wrapper.
+"""
+@kwdef struct Restart{A<:ApproximationAlgorithm,R<:AbstractRNG} <:
+              ApproximationAlgorithm
+    inner::A
+    trials::Int = 20
+    rng::R = Random.default_rng()
+    metric::Symbol = something(PiecewiseAffineApprox.metric(inner), :l1)
+end
+Restart(inner::ApproximationAlgorithm; kwargs...) = Restart(; inner, kwargs...)
+
+planes(r::Restart) = planes(r.inner)
+concave_planes(r::Restart) = concave_planes(r.inner)
+strict(r::Restart) = strict(r.inner)
+optimizer(r::Restart) = optimizer(r.inner)
+supported_dimensions(r::Restart) = supported_dimensions(r.inner)
+requires_convex_data(r::Restart) = requires_convex_data(r.inner)
+function with(r::Restart; options...)
+    for name ∈ keys(options)
+        hasfield(typeof(r.inner), name) ||
+            hasfield(Restart, name) ||
+            throw(
+                ArgumentError(
+                    "Neither Restart nor $(nameof(typeof(r.inner))) has an option $name",
+                ),
+            )
+    end
+    # Options of both go to the wrapper, as its rng and metric are the ones
+    # that matter for the restarts
+    inner = (
+        k => v for (k, v) ∈ options if
+        hasfield(typeof(r.inner), k) && !hasfield(Restart, k)
+    )
+    outer = (k => v for (k, v) ∈ options if hasfield(Restart, k))
+    r =
+        isempty(inner) ? r :
+        Restart(; _fields(r)..., inner = with(r.inner; inner...))
+    return isempty(outer) ? r : Restart(; _fields(r)..., outer...)
+end
+
+function Base.show(io::IO, r::Restart)
+    return print(
+        io,
+        "Restart(",
+        r.inner,
+        "; trials = ",
+        r.trials,
+        ", metric = :",
+        r.metric,
+        ")",
+    )
+end
+
+# Whether the algorithm has an rng option, through wrappers
+_has_rng(a::ApproximationAlgorithm) = hasfield(typeof(a), :rng)
+_has_rng(s::Select) = _has_rng(s.inner)
+
+function _fit(r::Restart, data::FunctionEvaluations)
+    _check_option(r, "metric", r.metric, (:l1, :l2, :rms, :max))
+    r.trials ≥ 1 || throw(ArgumentError("Restart requires trials ≥ 1"))
+    _has_rng(r.inner) || throw(
+        ArgumentError(
+            "Restart requires an algorithm with an rng option, got " *
+            "$(nameof(typeof(r.inner)))",
+        ),
+    )
+    # One seed per trial up front, so that the result does not depend on how
+    # the trials are scheduled across threads
+    seeds = rand(r.rng, UInt64, r.trials)
+    tasks = [
+        @spawn _fit(with(r.inner; rng = StableRNG(seeds[i])), data) for
+        i ∈ 1:r.trials
+    ]
+    fits = map(tasks) do task
+        try
+            fetch(task)
+        catch e
+            # Report the error of the trial rather than the failure of the task
+            e isa TaskFailedException ? throw(e.task.result) : rethrow()
+        end
+    end
+    errors = [approximation_error(f, data, r.metric) for f ∈ fits]
+    @debug "Restart: best of $(r.trials) trials has error $(minimum(errors)) ($(r.metric))"
+    return fits[argmin(errors)]
+end

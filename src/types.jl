@@ -26,10 +26,12 @@ abstract type ApproximationAlgorithm end
     Cluster
 Compute affine approximation using the method proposed by Magnani & Boyd.
 
-Note that this algoritm computes multiple approximations and selects the best.
-If julia is started with multiple threads, these are computed in parallel. Consider
- how many threads will be beneficial, particularly when using a commercial solver where
- the license may restrict the number of simultanous solver instances.
+Note that this algorithm computes `trials` approximations from random
+partitions and selects the best, as [`Restart`](@ref) does for any randomized
+algorithm. If julia is started with multiple threads, these are computed in
+parallel. Consider how many threads will be beneficial, particularly when using
+a commercial solver where the license may restrict the number of simultaneous
+solver instances.
 
 The random initial partitions are generated from `rng`. Pass a seeded generator,
 e.g. `rng = StableRNG(123)` from StableRNGs.jl, to get reproducible results that are

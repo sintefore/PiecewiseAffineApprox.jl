@@ -60,9 +60,10 @@ to `planes`.
 
 Algorithms can wrap other algorithms through these functions: [`Select`](@ref)
 chooses the number of planes for any algorithm with a `planes` option by
-fitting with `with(inner; planes = p)` for each candidate `p`, and
-[`Alternating`](@ref) fits the two parts of a difference of convex
-approximation with different algorithms.
+fitting with `with(inner; planes = p)` for each candidate `p`,
+[`Restart`](@ref) runs an algorithm with an `rng` option from several random
+starts and keeps the best, and [`Alternating`](@ref) fits the two parts of a
+difference of convex approximation with different algorithms.
 
 Two more functions describe what the algorithm accepts:
 [`supported_dimensions`](@ref) for the numbers of variables, used above to

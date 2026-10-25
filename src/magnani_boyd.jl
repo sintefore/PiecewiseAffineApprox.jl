@@ -51,40 +51,26 @@ function _convex_linearization_mb(X::Matrix, z::Vector, options::Cluster)
         )
     end
 
+    Nᵗʳ ≥ 1 || throw(ArgumentError("Cluster requires at least one trial"))
+
     # Work on normalized data to make the heuristic invariant to affine
     # transformations of the input (Magnani & Boyd, Sect. 1.3)
     μ, T = _normalization(X)
     X̃ = T * (X .- μ)
 
-    # Draw one seed per trial up front so that the result does not depend on
-    # how the trials are scheduled across threads
-    seeds = rand(options.rng, UInt64, Nᵗʳ)
-
-    @debug "Starting heuristic search "
-    tasks = [
-        @spawn _convex_linearization_mb_single(
-            X̃,
-            z,
-            K,
-            lᵐᵃˣ,
-            metric,
-            optimizer,
-            strict,
-            StableRNG(seeds[i]),
-        ) for i ∈ 1:Nᵗʳ
-    ]
-    approxes = map(tasks) do task
-        try
-            fetch(task)
-        catch e
-            # Report the error of the trial rather than the failure of the task
-            e isa TaskFailedException ? throw(e.task.result) : rethrow()
-        end
-    end
-    min_error, pwa_best = argmin(first, approxes)
-
-    @debug "Terminating search - best approximation error = $(min_error) ($metric)"
-    return _denormalize(pwa_best, μ, T)
+    # A single trial; several trials are run through Restart, see _fit
+    e, pwa = _convex_linearization_mb_single(
+        X̃,
+        z,
+        K,
+        lᵐᵃˣ,
+        metric,
+        optimizer,
+        strict,
+        options.rng,
+    )
+    @debug "Cluster trial finished with error $e ($metric)"
+    return _denormalize(pwa, μ, T)
 end
 
 # Affine transformation x̃ = T(x - μ) giving data with zero mean and identity
@@ -395,6 +381,12 @@ function _update_partition(X, pwa)
 end
 
 function _fit(a::Cluster, input::FunctionEvaluations{D}) where {D}
+    if a.trials > 1
+        # The trials are restarts of single trials with seeded generators
+        single = with(a; trials = 1)
+        r = Restart(single; trials = a.trials, rng = a.rng, metric = a.metric)
+        return _fit(r, input)
+    end
     x = [p[i] for i ∈ 1:D, p ∈ input.points]
     return _convex_linearization_mb(x, input.values, a)
 end

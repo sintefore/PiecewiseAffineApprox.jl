@@ -305,3 +305,92 @@ end
         Select(Interpol(); metric = :foo),
     )
 end
+
+@testset "Restart" begin
+    x = collect(range(-1, 1; length = 40))
+    f = FunctionEvaluations(x, x .^ 2 .+ 0.05 .* randn(StableRNG(5), 40))
+    err(pwa) = approximation_error(pwa, f, :l2)
+
+    # The trials of Cluster are the wrapper, with identical results
+    a = Cluster(planes = 4, trials = 8, rng = StableRNG(3))
+    r = Restart(Cluster(planes = 4, trials = 1); trials = 8, rng = StableRNG(3))
+    @test r isa Restart
+    @test PWA.planes(r) == 4 && PWA.metric(r) == :l2 && PWA.strict(r) == :none
+    @test approx(f, Convex(), r) == approx(f, Convex(), a)
+    # More trials do not give a worse result with the same first seeds
+    single =
+        approx(f, Convex(), Cluster(planes = 4, trials = 1, rng = StableRNG(3)))
+    @test err(
+        approx(
+            f,
+            Convex(),
+            Restart(
+                Cluster(planes = 4, trials = 1);
+                trials = 8,
+                rng = StableRNG(3),
+            ),
+        ),
+    ) ≤ err(single) + 1e-12
+    @test occursin("trials = 8", repr(r))
+
+    # Restarts of a wrapped algorithm, and of other metrics and strictness
+    s = Restart(
+        Select(Cluster(planes = 6, trials = 1); criterion = :bic);
+        trials = 4,
+        rng = StableRNG(1),
+    )
+    pwa = approx(f, Convex(), s)
+    @test PWA._planes(pwa) ≤ 6
+    @test err(pwa) < 0.1
+    o = Restart(
+        Cluster(
+            planes = 4,
+            trials = 1,
+            metric = :l1,
+            strict = :outer;
+            optimizer,
+        );
+        trials = 3,
+        rng = StableRNG(1),
+    )
+    pwa = approx(f, Convex(), o)
+    @test all(evaluate(pwa, p) ≤ v + 1e-6 for (p, v) ∈ f)
+    @test PWA.metric(o) == :l1 && PWA.strict(o) == :outer
+    # Through the concave and difference of convex paths
+    @test approx(FunctionEvaluations(x, -x .^ 2), Concave(), r) isa
+          PWAFunc{Concave,1}
+    @test approx(FunctionEvaluations(x, sin.(3x)), DC(), r) isa DCFunc{1}
+
+    # Options go to the wrapper or the inner algorithm
+    @test PWA.with(r; trials = 3).trials == 3
+    @test PWA.with(r; planes = 2).inner.planes == 2
+    @test PWA.with(r; rng = StableRNG(9)).rng isa StableRNG
+    @test_throws ArgumentError PWA.with(r; foo = 1)
+
+    # An algorithm without randomness cannot be restarted
+    @test_throws ArgumentError approx(
+        f,
+        Convex(),
+        Restart(Interpol(planes = 3)),
+    )
+    @test_throws ArgumentError approx(
+        f,
+        Convex(),
+        Restart(Cluster(); trials = 0),
+    )
+    @test_throws ArgumentError approx(
+        f,
+        Convex(),
+        Restart(Cluster(); metric = :foo),
+    )
+    # Errors in a trial are reported directly
+    failing = () -> error("no solver available")
+    @test_throws ErrorException approx(
+        f,
+        Convex(),
+        Restart(
+            Cluster(trials = 1, metric = :l1, optimizer = failing);
+            trials = 2,
+        ),
+    )
+end
