@@ -38,12 +38,12 @@ optimize!(m)
 value(z) # 0.2653
 ```
 
-A non-convex function is approximated as a difference of convex functions, and added to a model in the same way. Here `z` is only minimized, so with `direction = :epigraph` only the concave part needs binary variables:
+A non-convex function is approximated as a difference of convex functions, and added to a model in the same way. Here `z` is only minimized, so with `direction = Epigraph()` only the concave part needs binary variables:
 
 ```julia
 dc = approx(sin, [(0, 2π)], DC(), Interpol(optimizer = HiGHS.Optimizer, planes = 3))
 @variable(m, 0 ≤ y ≤ 2π)
-w = pwaffine(m, (y,), dc; direction = :epigraph)
+w = pwaffine(m, (y,), dc; direction = Epigraph())
 ```
 
 To keep dependencies light, PiecewiseAffineApprox does not include plotting by default. If the `Makie` or `Plots` package is loaded

@@ -25,7 +25,7 @@ function approx(
         )
     end
     isempty(input.points) && throw(ArgumentError("The data has no points"))
-    return _fit(a, input)
+    return _with_domain(_fit(a, input), _data_domain(input))
 end
 
 function approx(
@@ -34,7 +34,12 @@ function approx(
     a::ApproximationAlgorithm,
 )
     cv = approx(FunctionEvaluations(input.points, -input.values), Convex(), a)
-    return PWAFunc{Concave,dims(cv)}(cv.planes)
+    return PWAFunc{Concave,dims(cv)}(cv.planes; domain = cv.domain)
+end
+
+# The range of the data in each variable, as the domain of the approximation
+function _data_domain(input::FunctionEvaluations{D}) where {D}
+    return [extrema(p[i] for p ∈ input.points) for i ∈ 1:D]
 end
 
 dims(pwa::PWAFunc{C,D}) where {C,D} = D

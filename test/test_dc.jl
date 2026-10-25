@@ -190,8 +190,8 @@ end
         v = evaluate(dc, (x̂,))
         @test solve(dc, x̂, MOI.MIN_SENSE) ≈ v atol = 1e-6
         @test solve(dc, x̂, MOI.MAX_SENSE) ≈ v atol = 1e-6
-        @test solve(dc, x̂, MOI.MIN_SENSE; direction = :epigraph) ≈ v atol = 1e-6
-        @test solve(dc, x̂, MOI.MAX_SENSE; direction = :hypograph) ≈ v atol =
+        @test solve(dc, x̂, MOI.MIN_SENSE; direction = Epigraph()) ≈ v atol = 1e-6
+        @test solve(dc, x̂, MOI.MAX_SENSE; direction = Hypograph()) ≈ v atol =
             1e-6
     end
 
@@ -203,8 +203,8 @@ end
         return count(is_binary, all_variables(m))
     end
     @test nbin() == 6
-    @test nbin(direction = :epigraph) == 3
-    @test nbin(direction = :hypograph) == 3
+    @test nbin(direction = Epigraph()) == 3
+    @test nbin(direction = Hypograph()) == 3
     @test nbin(selection = :indicator) == 6
     m = Model()
     @variable(m, xv)
@@ -216,13 +216,14 @@ end
         MOI.Indicator{MOI.ACTIVATE_ON_ONE,MOI.LessThan{Float64}},
     ) == 3
 
-    # Bounds are required for big-M, from the variables or the keyword
+    # Bounds are required for big-M, from the variables, the keyword or the
+    # domain of the function
     m = Model()
     @variable(m, xv)
-    @test_throws ArgumentError pwaffine(m, (xv,), dc)
+    @test_throws ArgumentError pwaffine(m, (xv,), PWA._with_domain(dc, nothing))
     @test_throws ArgumentError pwaffine(m, (xv,), dc; bounds = [(0, Inf)])
     @test_throws ArgumentError pwaffine(m, (xv,), dc; bounds = [(0, 1), (0, 1)])
-    @test_throws ArgumentError pwaffine(m, (xv,), dc; direction = :none)
+    @test_throws TypeError pwaffine(m, (xv,), dc; direction = :none)
     @test_throws ArgumentError pwaffine(
         m,
         (xv,),
@@ -408,9 +409,9 @@ end
     @test length(xp) == 6
     @test zp ≈ [evaluate(dc, (xᵢ,)) for xᵢ ∈ xp]
     slope = diff(zp) ./ diff(xp)
-    @test length(PWA._dc_binary_kinks(slope, :graph)) == 4
-    @test length(PWA._dc_binary_kinks(slope, :epigraph)) == 2
-    @test length(PWA._dc_binary_kinks(slope, :hypograph)) == 2
+    @test length(PWA._dc_binary_kinks(slope, Graph())) == 4
+    @test length(PWA._dc_binary_kinks(slope, Epigraph())) == 2
+    @test length(PWA._dc_binary_kinks(slope, Hypograph())) == 2
     # Narrower bounds keep only the kinks inside
     xp₂, _ = PWA._dc_breakpoints(dc, [(1, 2)])
     @test xp₂[1] == 1 && xp₂[end] == 2 && length(xp₂) < length(xp)
@@ -437,19 +438,19 @@ end
             v = evaluate(dc, (x̂,))
             @test solve(x̂, MOI.MIN_SENSE; formulation) ≈ v atol = 1e-6
             @test solve(x̂, MOI.MAX_SENSE; formulation) ≈ v atol = 1e-6
-            @test solve(x̂, MOI.MIN_SENSE; formulation, direction = :epigraph) ≈
+            @test solve(x̂, MOI.MIN_SENSE; formulation, direction = Epigraph()) ≈
                   v atol = 1e-6
-            @test solve(x̂, MOI.MAX_SENSE; formulation, direction = :hypograph) ≈
+            @test solve(x̂, MOI.MAX_SENSE; formulation, direction = Hypograph()) ≈
                   v atol = 1e-6
         end
         # Binary variables only at the kinks against the direction
         @test nbin(; formulation) == 4
-        @test nbin(; formulation, direction = :epigraph) == 2
-        @test nbin(; formulation, direction = :hypograph) == 2
+        @test nbin(; formulation, direction = Epigraph()) == 2
+        @test nbin(; formulation, direction = Hypograph()) == 2
         # Free optimization finds the minimum and maximum of the function
         m = Model(optimizer)
         @variable(m, 0 ≤ xv ≤ 2π)
-        z = pwaffine(m, xv, dc; formulation, direction = :epigraph)
+        z = pwaffine(m, xv, dc; formulation, direction = Epigraph())
         @objective(m, Min, z)
         optimize!(m)
         @test value(z) ≈ minimum(zp) atol = 1e-6
@@ -473,7 +474,7 @@ end
     for formulation ∈ (DeltaFormulation(), PhiFormulation())
         m = Model(optimizer)
         @variable(m, 0 ≤ xv ≤ 4)
-        z = pwaffine(m, xv, g; formulation, direction = :epigraph)
+        z = pwaffine(m, xv, g; formulation, direction = Epigraph())
         for x̂ ∈ range(0, 4; length = 9)
             c = @constraint(m, xv == x̂)
             @objective(m, Min, z)
@@ -500,4 +501,113 @@ end
         dc2;
         formulation = PhiFormulation(),
     )
+end
+
+@testset "Domain and direction" begin
+    x = collect(range(0, 2π; length = 40))
+    f = FunctionEvaluations(x, sin.(x))
+    quad = FunctionEvaluations(x, (x .- 3) .^ 2)
+
+    # approx records the range of the data as the domain
+    pwa = approx(quad, Convex(), Interpol(planes = 3))
+    @test domain(pwa) == [(0.0, 2π)]
+    @test domain(approx(x -> x[1]^2, [(-1, 2)], Convex(), Interpol(planes = 2))) == [(-1.0, 2.0)]
+    @test domain(approx(FunctionEvaluations(x, -(x .- 3) .^ 2), Concave(), Interpol(planes = 3))) == [(0.0, 2π)]
+    dc = approx(f, DC(), Interpol(planes = 3; optimizer))
+    @test domain(dc) == [(0.0, 2π)]
+    @test domain(dc.convex) == [(0.0, 2π)] && domain(dc.concave) == [(0.0, 2π)]
+    s(x) = x[1]^2 - x[2]^2
+    f2 = PWA._sample_uniform(s, [(-1, 1), (0, 2)], 5)
+    @test domain(approx(f2, DC(), Cluster(planes = 2, rng = StableRNG(1)))) == [(-1.0, 1.0), (0.0, 2.0)]
+    @test domain(approx(f2, Convex(), Select(Cluster(planes = 3, rng = StableRNG(1))))) == [(-1.0, 1.0), (0.0, 2.0)]
+    # Manual functions have none, and it is part of equality and printing
+    g = PWAFunc{Convex,1}([Plane((1.0,), 0.0)])
+    @test domain(g) === nothing
+    @test PWAFunc{Convex,1}([Plane((1.0,), 0.0)]; domain = [(0, 1)]) != g
+    @test occursin(" on [0.0, 6.283]", summary(pwa))
+    @test !occursin(" on ", summary(g))
+    @test_throws ArgumentError PWAFunc{Convex,1}([Plane((1.0,), 0.0)]; domain = [(0, 1), (0, 1)])
+    @test_throws ArgumentError PWAFunc{Convex,1}([Plane((1.0,), 0.0)]; domain = [(1, 0)])
+    @test_throws ArgumentError DCFunc(g, PWAFunc{Concave,1}(); domain = [(0, Inf)])
+
+    # Serialization keeps the domain, and files without one can be read
+    tmp = mktempdir()
+    # (one file per object, as a file read by JSON3 stays memory mapped)
+    for (name, write, read) ∈ (
+        ("a", JSON3.write, (fn, T) -> JSON3.read(fn, T)),
+        ("b", JSON.json, (fn, T) -> JSON.parsefile(fn, T)),
+    )
+        for (i, (obj, T)) ∈ enumerate(((pwa, PWAFunc), (dc, DCFunc), (g, PWAFunc)))
+            fn = joinpath(tmp, "$(name)$(i).json")
+            write(fn, obj)
+            @test read(fn, T) == obj
+        end
+    end
+
+    # The domain is the default bounds of the formulations that need bounds
+    for formulation ∈ (LambdaFormulation(), DeltaFormulation(), PhiFormulation())
+        m = Model(optimizer)
+        @variable(m, xv)
+        z = pwaffine(m, xv, pwa; formulation)
+        @constraint(m, xv == 2.0)
+        @objective(m, Min, z)
+        optimize!(m)
+        @test value(z) ≈ evaluate(pwa, (2.0,)) atol = 1e-6
+        # Explicit bounds override the domain, and are required without one
+        m = Model()
+        @variable(m, xv)
+        @test_throws ArgumentError pwaffine(m, xv, g; formulation)
+        pwaffine(m, xv, g; formulation, bounds = [(0, 1)])
+    end
+    # ... and of the big-M selection of a difference of convex function
+    m = Model(optimizer)
+    @variable(m, xv)
+    z = pwaffine(m, xv, dc)
+    @constraint(m, xv == 1.5)
+    @objective(m, Max, z)
+    optimize!(m)
+    @test value(z) ≈ evaluate(dc, (1.5,)) atol = 1e-6
+    # The Ψ formulation adds no constraints unless bounds are given
+    m = Model()
+    @variable(m, xv)
+    z = pwaffine(m, xv, pwa)
+    @test num_constraints(m, AffExpr, MOI.LessThan{Float64}) == 0
+    @test !has_lower_bound(z)
+
+    # Directions for a convex function: the natural one needs no binaries,
+    # the others make the function exact with binaries
+    function solve(fn, x̂, sense; kwargs...)
+        m = Model(optimizer)
+        @variable(m, 0 ≤ xv ≤ 2π)
+        z = pwaffine(m, xv, fn; kwargs...)
+        @constraint(m, xv == x̂)
+        @objective(m, sense, z)
+        optimize!(m)
+        @test is_solved_and_feasible(m)
+        return value(z), count(is_binary, all_variables(m))
+    end
+    cc = approx(FunctionEvaluations(x, -(x .- 3) .^ 2), Concave(), Interpol(planes = 3))
+    for x̂ ∈ (0.5, 3.0, 5.5)
+        v = evaluate(pwa, (x̂,))
+        z, nb = solve(pwa, x̂, MOI.MIN_SENSE)
+        @test z ≈ v atol = 1e-6
+        @test nb == 0
+        z, nb = solve(pwa, x̂, MOI.MAX_SENSE; direction = Graph())
+        @test z ≈ v atol = 1e-6
+        @test nb == 3
+        z, nb = solve(pwa, x̂, MOI.MAX_SENSE; direction = Hypograph())
+        @test z ≈ v atol = 1e-6
+        @test nb == 3
+        z, nb = solve(pwa, x̂, MOI.MAX_SENSE; direction = Graph(), formulation = DeltaFormulation())
+        @test z ≈ v atol = 1e-6
+        @test nb == 2
+        # Concave: the natural direction is the hypograph
+        w = evaluate(cc, (x̂,))
+        @test solve(cc, x̂, MOI.MAX_SENSE)[1] ≈ w atol = 1e-6
+        @test solve(cc, x̂, MOI.MAX_SENSE)[2] == 0
+        z, nb = solve(cc, x̂, MOI.MIN_SENSE; direction = Epigraph())
+        @test z ≈ w atol = 1e-6
+        @test nb == 3
+    end
+    @test_throws TypeError pwaffine(Model(), (@variable(Model(), 0 ≤ q ≤ 1)), pwa; direction = :graph)
 end

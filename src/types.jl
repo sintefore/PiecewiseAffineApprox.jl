@@ -396,21 +396,75 @@ an empty function with `T = Float64`.
 """
 struct PWAFunc{C<:Curvature,D,T<:Real} <: AbstractPWAFunc{D}
     planes::Vector{Plane{D,T}}
+    domain::Union{Nothing,Vector{Tuple{Float64,Float64}}}
+    function PWAFunc{C,D,T}(
+        planes::Vector{Plane{D,T}},
+        domain = nothing,
+    ) where {C<:Curvature,D,T<:Real}
+        return new{C,D,T}(planes, _check_domain(domain, D))
+    end
 end
-function PWAFunc{C,D}(planes::AbstractVector{<:Plane{D}}) where {C<:Curvature,D}
+function PWAFunc{C,D}(
+    planes::AbstractVector{<:Plane{D}};
+    domain = nothing,
+) where {C<:Curvature,D}
     T = isempty(planes) ? _numtype(eltype(planes)) :
         mapreduce(p -> typeof(p.β), promote_type, planes)
-    return PWAFunc{C,D,T}(convert(Vector{Plane{D,T}}, planes))
+    return PWAFunc{C,D,T}(convert(Vector{Plane{D,T}}, planes), domain)
 end
-PWAFunc{C,D}() where {C<:Curvature,D} = PWAFunc{C,D,Float64}(Plane{D,Float64}[])
-function PWAFunc(planes::AbstractVector{<:Plane{D}}, C::Curvature) where {D}
-    return PWAFunc{typeof(C),D}(planes)
+function PWAFunc{C,D}(; domain = nothing) where {C<:Curvature,D}
+    return PWAFunc{C,D,Float64}(Plane{D,Float64}[], domain)
+end
+function PWAFunc(
+    planes::AbstractVector{<:Plane{D}},
+    C::Curvature;
+    domain = nothing,
+) where {D}
+    return PWAFunc{typeof(C),D}(planes; domain)
 end
 
 _numtype(::Type{Plane{D,T}}) where {D,T} = T
 _numtype(::Type) = Float64
 
-Base.:(==)(f::PWAFunc{C,D}, g::PWAFunc{C,D}) where {C,D} = f.planes == g.planes
+"""
+    domain(f::AbstractPWAFunc)
+
+The box `[(lower, upper), …]` the function was fitted on, with one tuple for
+each variable, or `nothing`. [`approx`](@ref) sets it to the range of the
+data, and [`pwaffine`](@ref) uses it as the default for `bounds`.
+"""
+domain(f::AbstractPWAFunc) = f.domain
+
+# The domain as a vector of (lower, upper) tuples of Float64, checked
+function _check_domain(domain, D)
+    isnothing(domain) && return nothing
+    length(domain) == D || throw(
+        ArgumentError(
+            "The domain must have $D (lower, upper) tuples, got $(length(domain))",
+        ),
+    )
+    box = [(Float64(b[1]), Float64(b[2])) for b ∈ domain]
+    all(b -> isfinite(b[1]) && isfinite(b[2]) && b[1] ≤ b[2], box) || throw(
+        ArgumentError("The domain must be finite with lower ≤ upper, got $domain"),
+    )
+    return box
+end
+
+# A copy of the function with the domain set
+function _with_domain(f::PWAFunc{C,D,T}, domain) where {C,D,T}
+    return PWAFunc{C,D,T}(f.planes, domain)
+end
+
+function _domain_text(domain)
+    isnothing(domain) && return ""
+    r(v) = string(round(v; sigdigits = 4))
+    boxes = ("[" * r(lo) * ", " * r(hi) * "]" for (lo, hi) ∈ domain)
+    return " on " * join(boxes, " × ")
+end
+
+function Base.:(==)(f::PWAFunc{C,D}, g::PWAFunc{C,D}) where {C,D}
+    return f.planes == g.planes && f.domain == g.domain
+end
 
 function _write_planes(
     io::IO,
@@ -441,7 +495,7 @@ function _xepr(α)
 end
 function Base.summary(io::IO, pwa::PWAFunc)
     n = _planes(pwa)
-    return print(io, "$(typeof(pwa)) with $n planes")
+    return print(io, "$(typeof(pwa)) with $n planes", _domain_text(pwa.domain))
 end
 function Base.show(io::IO, ::MIME"text/plain", pwa::PWAFunc{C}) where {C}
     summary(io, pwa)
@@ -492,19 +546,45 @@ type.
 struct DCFunc{D,T<:Real} <: AbstractPWAFunc{D}
     convex::PWAFunc{Convex,D,T}
     concave::PWAFunc{Concave,D,T}
+    domain::Union{Nothing,Vector{Tuple{Float64,Float64}}}
+    function DCFunc{D,T}(
+        convex::PWAFunc{Convex,D,T},
+        concave::PWAFunc{Concave,D,T},
+        domain = nothing,
+    ) where {D,T<:Real}
+        return new{D,T}(convex, concave, _check_domain(domain, D))
+    end
 end
-function DCFunc(g::PWAFunc{Convex,D,S}, h::PWAFunc{Concave,D,R}) where {D,S,R}
+"""
+    DCFunc(convex::PWAFunc{Convex}, concave::PWAFunc{Concave}; domain)
+
+The sum of the convex and the concave function, with the coefficients
+promoted to a common type. The `domain` defaults to that of the parts.
+"""
+function DCFunc(
+    g::PWAFunc{Convex,D,S},
+    h::PWAFunc{Concave,D,R};
+    domain = something(g.domain, h.domain, Some(nothing)),
+) where {D,S,R}
     T = promote_type(S, R)
     return DCFunc{D,T}(
-        PWAFunc{Convex,D,T}(convert(Vector{Plane{D,T}}, g.planes)),
-        PWAFunc{Concave,D,T}(convert(Vector{Plane{D,T}}, h.planes)),
+        PWAFunc{Convex,D,T}(convert(Vector{Plane{D,T}}, g.planes), g.domain),
+        PWAFunc{Concave,D,T}(convert(Vector{Plane{D,T}}, h.planes), h.domain),
+        domain,
+    )
+end
+function _with_domain(f::DCFunc{D,T}, domain) where {D,T}
+    return DCFunc{D,T}(
+        _with_domain(f.convex, domain),
+        _with_domain(f.concave, domain),
+        domain,
     )
 end
 
 _planes(f::DCFunc) = _planes(f.convex) + _planes(f.concave)
 
 function Base.:(==)(f::DCFunc{D}, g::DCFunc{D}) where {D}
-    return f.convex == g.convex && f.concave == g.concave
+    return f.convex == g.convex && f.concave == g.concave && f.domain == g.domain
 end
 
 """
@@ -527,6 +607,7 @@ function Base.summary(io::IO, f::DCFunc)
         io,
         "$(typeof(f)) with $(_planes(f.convex)) convex and " *
         "$(_planes(f.concave)) concave planes",
+        _domain_text(f.domain),
     )
 end
 function Base.show(io::IO, ::MIME"text/plain", f::DCFunc)

@@ -150,8 +150,13 @@ concave kinks when `z` is minimized. These formulations are ideal and need no
 big-M values, so they are preferable to the Ψ-formulation in one dimension.
 
 By default `z` equals the approximation. If `z` is only minimized, pass
-`direction = :epigraph`, and if it is only maximized `direction = :hypograph`.
+`direction = Epigraph()`, and if it is only maximized `direction = Hypograph()`.
 Then only the concave or the convex part, respectively, needs binary variables.
+The same keyword makes a convex or concave `PWAFunc` exact, `direction = Graph()`,
+at the cost of binary variables.
+
+A function fitted with `approx` records the range of its data as its `domain`,
+which is the default for `bounds` in all formulations that need bounds.
 
 ```jldoctest; output = false
 using JuMP, PiecewiseAffineApprox, HiGHS
@@ -162,7 +167,7 @@ m = Model(optimizer)
 # A difference of convex approximation of sin(x) on [0, 2π]
 dc = approx(sin, [(0, 2π)], DC(), Interpol(; optimizer, planes = 3))
 # Only minimized, so binary variables are needed at the concave kinks only
-z = pwaffine(m, x, dc; direction = :epigraph, formulation = DeltaFormulation())
+z = pwaffine(m, x, dc; direction = Epigraph(), formulation = DeltaFormulation())
 @constraint(m, x ≥ 4)
 @objective(m, Min, z)
 optimize!(m)

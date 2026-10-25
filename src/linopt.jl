@@ -38,7 +38,46 @@ const Φ_Formulation = PhiFormulation
 const VarOrAff = Union{JuMP.VariableRef,JuMP.AffExpr}
 
 """
-    pwaffine(m::JuMP.Model, x, pwa::PWAFunc{C,D}; z, formulation::PWAFormulation, bounds) where {C,D}
+    Direction
+
+How the output `z` of [`pwaffine`](@ref) relates to the function value:
+[`Graph`](@ref), [`Epigraph`](@ref) or [`Hypograph`](@ref).
+"""
+abstract type Direction end
+
+"""
+    Graph()
+
+The output equals the function, `z == f(x)`. The default for a
+[`DCFunc`](@ref). For a convex or concave [`PWAFunc`](@ref), this needs
+binary variables, as for a `DCFunc`.
+"""
+struct Graph <: Direction end
+
+"""
+    Epigraph()
+
+The output is at least the function, `z ≥ f(x)`, which suffices when `z` is
+minimized. The default for a convex [`PWAFunc`](@ref), where it needs no
+binary variables.
+"""
+struct Epigraph <: Direction end
+
+"""
+    Hypograph()
+
+The output is at most the function, `z ≤ f(x)`, which suffices when `z` is
+maximized. The default for a concave [`PWAFunc`](@ref), where it needs no
+binary variables.
+"""
+struct Hypograph <: Direction end
+
+# The direction that needs no binary variables for the curvature
+_natural_direction(::Type{Convex}) = Epigraph()
+_natural_direction(::Type{Concave}) = Hypograph()
+
+"""
+    pwaffine(m::JuMP.Model, x, pwa::PWAFunc{C,D}; z, formulation::PWAFormulation, bounds, direction) where {C,D}
 
 Add constraints to JuMP-model `m` for JuMP-variable `z` as a
 piecewise linear function/approximation `pwa` of JuMP-variables `x`.
@@ -56,21 +95,27 @@ piecewise linear function/approximation `pwa` of JuMP-variables `x`.
   - `DeltaFormulation()`: Specialized for 1D. Uses ordered breakpoint structure. Requires breakpoint enumeration.
   - `PhiFormulation()`: Alternative 1D formulation. Requires breakpoint enumeration.
 - `bounds`: Box `[(lo₁, hi₁), …, (lo_D, hi_D)]` restricting the domain of `x`. Required by the
-  λ, Δ and Φ formulations unless all of `x` are JuMP variables with finite bounds (or fixed
-  values), in which case these are used. For the Ψ formulation the bounds are optional. If
-  given, they are added as constraints on `x`, and `z` is bounded by the smallest and
-  largest value of the function over the box.
+  λ, Δ and Φ formulations, and taken from the [`domain`](@ref) of `pwa` if not given, or
+  else from the bounds of the JuMP variables `x` if all are finite (or fixed). For the Ψ
+  formulation the bounds are optional. If given, they are added as constraints on `x`, and
+  `z` is bounded by the smallest and largest value of the function over the box.
+- `direction::Direction`: [`Epigraph`](@ref) for a convex and [`Hypograph`](@ref) for a
+  concave function by default, which the formulations above model without binary
+  variables. With [`Graph`](@ref), or the other one-sided direction, the function is
+  modelled as a [`DCFunc`](@ref) with binary variables, see `pwaffine` for `DCFunc`,
+  which also takes the `selection` keyword.
 
 # Returns
 - The JuMP variable `z` representing the piecewise affine function value
 
 # Note
-All formulations are pure linear programs (no binary variables). They model z ≥ f(x) for
-convex and z ≤ f(x) for concave functions, i.e. the relation is only tight if the
-objective pushes `z` towards the function (minimizing a convex or maximizing a concave
-function). The Δ and Φ formulations only work for 1D problems and will error for higher
-dimensions. With interior point solvers for nonlinear models, the λ and Δ formulations are
-typically much faster than Ψ (see Coffrin et al. (2021), arXiv:2005.14087).
+In the default direction, all formulations are pure linear programs (no binary
+variables). They model z ≥ f(x) for convex and z ≤ f(x) for concave functions, i.e. the
+relation is only tight if the objective pushes `z` towards the function (minimizing a
+convex or maximizing a concave function). The Δ and Φ formulations only work for 1D
+problems and will error for higher dimensions. With interior point solvers for nonlinear
+models, the λ and Δ formulations are typically much faster than Ψ (see Coffrin et al.
+(2021), arXiv:2005.14087).
 
 # Example
 ```julia
@@ -87,7 +132,22 @@ function pwaffine(
     z = nothing,
     formulation::PWAFormulation = PsiFormulation(),
     bounds = nothing,
+    direction::Direction = _natural_direction(C),
+    selection = :bigm,
 ) where {C,D}
+    if direction != _natural_direction(C)
+        # Binary variables are needed, as for a difference of convex function
+        return pwaffine(
+            m,
+            x,
+            _as_dc(pwa);
+            z,
+            direction,
+            formulation,
+            selection,
+            bounds,
+        )
+    end
     n = length(_inputs(x))
     n == D || throw(
         ArgumentError(
@@ -131,17 +191,29 @@ function _has_finite_bounds(v)
     return JuMP.has_lower_bound(v) && JuMP.has_upper_bound(v)
 end
 
-# Use the bounds given explicitly, otherwise the bounds of the JuMP variables
-function _resolve_bounds(x, bounds, D)
+# A convex or concave function as a difference of convex function with an
+# empty other part
+function _as_dc(pwa::PWAFunc{Convex,D,T}) where {D,T}
+    return DCFunc{D,T}(pwa, PWAFunc{Concave,D,T}(Plane{D,T}[]), pwa.domain)
+end
+function _as_dc(pwa::PWAFunc{Concave,D,T}) where {D,T}
+    return DCFunc{D,T}(PWAFunc{Convex,D,T}(Plane{D,T}[]), pwa, pwa.domain)
+end
+
+# Use the bounds given explicitly, otherwise the domain of the function, and
+# otherwise the bounds of the JuMP variables
+function _resolve_bounds(x, bounds, D, domain = nothing)
     isnothing(bounds) || return bounds
+    isnothing(domain) || return domain
     xs = _inputs(x)
     if length(xs) == D && all(_has_finite_bounds, xs)
         return [_var_bounds(v) for v ∈ xs]
     end
     return throw(
         ArgumentError(
-            "Formulation requires finite bounds on x: pass `bounds = [(lo, hi), ...]` " *
-            "or set bounds on the variables",
+            "Formulation requires finite bounds on x: pass `bounds = [(lo, hi), ...]`, " *
+            "set bounds on the variables, or fit the function with approx, which " *
+            "records its domain",
         ),
     )
 end
@@ -156,7 +228,7 @@ function pwaffine_formulation(
     ::LambdaFormulation,
     bounds,
 ) where {C,D}
-    vertices = vertices_by_subsets(pwa, _resolve_bounds(x, bounds, D))
+    vertices = vertices_by_subsets(pwa, _resolve_bounds(x, bounds, D, pwa.domain))
     xs = _inputs(x)
     V = eachindex(vertices)
     λ = @variable(m, [V], lower_bound = 0, base_name = "_λ_$(counter)")
@@ -226,7 +298,7 @@ end
 
 # Sorted breakpoints (including the end points of the domain) of a 1D pwa function
 function _breakpoints(x, pwa::PWAFunc{C,1}, bounds) where {C}
-    verts = vertices_by_subsets(pwa, _resolve_bounds(x, bounds, 1))
+    verts = vertices_by_subsets(pwa, _resolve_bounds(x, bounds, 1, pwa.domain))
     sort!(verts, by = v -> v[1][1])
     return _merge_segments([v[1][1] for v ∈ verts], [v[2] for v ∈ verts])
 end
@@ -356,7 +428,7 @@ function pwaffine_formulation(
 end
 
 """
-    pwaffine(m::JuMP.Model, x, f::DCFunc{D}; z = nothing, direction = :graph,
+    pwaffine(m::JuMP.Model, x, f::DCFunc{D}; z = nothing, direction = Graph(),
              formulation = PsiFormulation(), selection = :bigm, bounds = nothing)
 
 Add constraints to the JuMP model `m` for the variable `z` as the difference of
@@ -364,11 +436,11 @@ convex piecewise linear function `f` of the `D` variables `x`, and return `z`.
 Binary variables are needed where the function is bounded against its
 curvature, depending on `direction`:
 
-- `direction = :graph` (default): z equals the function.
-- `direction = :epigraph`: z is at least the function, which is sufficient when
-  z is minimized or only bounded from below. The convex part, or the convex
-  kinks, need no binary variables, as for a convex [`PWAFunc`](@ref).
-- `direction = :hypograph`: z is at most the function, which is sufficient
+- `direction = Graph()` (default): z equals the function.
+- `direction = Epigraph()`: z is at least the function, which is sufficient
+  when z is minimized or only bounded from below. The convex part, or the
+  convex kinks, need no binary variables, as for a convex [`PWAFunc`](@ref).
+- `direction = Hypograph()`: z is at most the function, which is sufficient
   when z is maximized. The concave part, or the concave kinks, need no binary
   variables.
 
@@ -386,24 +458,20 @@ variable at each kink of the wrong curvature for the direction: the
 formulations are then ideal and no big-M values are needed. The convex and
 concave kinks of the function are found from the vertices of its parts.
 
-The bounds are the lower and upper bounds of the variables `x`, or given with
-`bounds` as a vector of `(lower, upper)` tuples, e.g. when `x` are expressions.
+The bounds are given with `bounds` as a vector of `(lower, upper)` tuples, or
+taken from the [`domain`](@ref) of `f`, or else from the lower and upper bounds
+of the variables `x`.
 """
 function pwaffine(
     m::JuMP.Model,
     x,
     f::DCFunc{D};
     z = nothing,
-    direction = :graph,
+    direction::Direction = Graph(),
     formulation::PWAFormulation = PsiFormulation(),
     selection = :bigm,
     bounds = nothing,
 ) where {D}
-    direction ∈ (:graph, :epigraph, :hypograph) || throw(
-        ArgumentError(
-            "Unsupported direction :$direction, use :graph, :epigraph or :hypograph",
-        ),
-    )
     if formulation isa LambdaFormulation ||
        (!(formulation isa PsiFormulation) && D != 1)
         throw(
@@ -432,7 +500,7 @@ function pwaffine(
         z = JuMP.@variable(m, base_name = "z_$(counter)")
     end
     if !(formulation isa PsiFormulation)
-        xp, zp = _dc_breakpoints(f, _resolve_bounds(x, bounds, 1))
+        xp, zp = _dc_breakpoints(f, _resolve_bounds(x, bounds, 1, f.domain))
         _dc_formulation_1d!(
             m,
             only(xs),
@@ -447,10 +515,10 @@ function pwaffine(
     end
     # The box containing x, needed for the big-M values when a part has
     # binary variables
-    exact₁ = direction != :epigraph && _planes(f.convex) > 1
-    exact₂ = direction != :hypograph && _planes(f.concave) > 1
+    exact₁ = !(direction isa Epigraph) && _planes(f.convex) > 1
+    exact₂ = !(direction isa Hypograph) && _planes(f.concave) > 1
     box = if selection == :bigm && (exact₁ || exact₂)
-        _check_bounds(_resolve_bounds(x, bounds, D), D)
+        _check_bounds(_resolve_bounds(x, bounds, D, f.domain), D)
     else
         nothing
     end
@@ -458,7 +526,7 @@ function pwaffine(
         m,
         xs,
         f.convex,
-        direction != :epigraph,
+        !(direction isa Epigraph),
         selection,
         box,
         "$(counter)_cvx",
@@ -467,7 +535,7 @@ function pwaffine(
         m,
         xs,
         f.concave,
-        direction != :hypograph,
+        !(direction isa Hypograph),
         selection,
         box,
         "$(counter)_ccv",
@@ -570,10 +638,10 @@ end
 # The interior breakpoints that need a binary variable: the kinks of the
 # wrong curvature for the direction, i.e. where the slope decreases for the
 # epigraph and increases for the hypograph, and all kinks for the graph
-function _dc_binary_kinks(slope, direction)
+function _dc_binary_kinks(slope, direction::Direction)
     S̃ = 2:length(slope)
-    direction == :graph && return collect(S̃)
-    if direction == :epigraph
+    direction isa Graph && return collect(S̃)
+    if direction isa Epigraph
         return [s for s ∈ S̃ if slope[s] < slope[s-1]]
     end
     return [s for s ∈ S̃ if slope[s] > slope[s-1]]

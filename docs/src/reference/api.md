@@ -24,6 +24,7 @@ Plane
 FunctionEvaluations
 PWAFunc
 DCFunc
+domain
 ```
 
 ## Formulations
@@ -34,6 +35,10 @@ PsiFormulation
 LambdaFormulation
 DeltaFormulation
 PhiFormulation
+Direction
+Graph
+Epigraph
+Hypograph
 ```
 
 ## Extending

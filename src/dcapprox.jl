@@ -36,7 +36,8 @@ function approx(
     c::DC,
     a::ApproximationAlgorithm,
 ) where {D}
-    return _dc_approx(input, a, a, optimizer(a), _dc_iterations(a))
+    dc = _dc_approx(input, a, a, optimizer(a), _dc_iterations(a))
+    return _with_domain(dc, _data_domain(input))
 end
 
 function approx(input::FunctionEvaluations{D}, c::DC, a::Alternating) where {D}
@@ -47,7 +48,8 @@ function approx(input::FunctionEvaluations{D}, c::DC, a::Alternating) where {D}
     if isnothing(opt)
         opt = optimizer(a.concave)
     end
-    return _dc_approx(input, a.convex, a.concave, opt, a.iterations)
+    dc = _dc_approx(input, a.convex, a.concave, opt, a.iterations)
+    return _with_domain(dc, _data_domain(input))
 end
 
 function approx(
