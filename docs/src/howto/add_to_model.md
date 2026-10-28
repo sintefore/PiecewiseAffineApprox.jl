@@ -74,6 +74,43 @@ round(value.(y))
 ```
 
 
+## Calling the approximation
+
+An approximation can also be called like a function. With numbers it is
+evaluated, and with JuMP variables or expressions it is added to their model
+with `pwaffine` and the output returned, so it can be used directly in
+expressions, constraints and objectives. `Formulated` stores the options of
+`pwaffine` with the function.
+
+```jldoctest; output = false
+using JuMP, PiecewiseAffineApprox, HiGHS
+optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
+
+cost = approx(x -> x[1]^2 + 1 / x[1], [(0.2, 2)], Convex(), Interpol(planes = 5))
+m = Model(optimizer)
+@variable(m, 0.2 ≤ x[1:3] ≤ 2)
+@constraint(m, sum(x) ≥ 3)
+@objective(m, Min, sum(cost(x[i]) for i ∈ 1:3))
+optimize!(m)
+round(objective_value(m); digits = 1), round(cost(1.0); digits = 1)
+
+# output
+(6.1, 2.0)
+```
+
+`add_pwaffine` returns the output together with a record of the variables and
+constraints that were added, which can be removed again with `delete`. If a
+function cannot be added, the model is left unchanged.
+
+```julia
+z, record = add_pwaffine(m, x[1], cost; name = "cost1")
+delete(m, record)
+```
+
+The output `z` is bounded by the smallest value of the function over the box
+that `x` is restricted to, unless the direction is `Hypograph()`, and by the
+largest value, unless it is `Epigraph()`.
+
 ## Formulations
 
 PiecewiseAffineApprox.jl provides four different linear programming formulations for adding convex (or concave) piecewise affine functions to optimization models. All formulations are pure linear programs (no binary variables required) and differ in their computational structure and preprocessing requirements. Within the bounds of the input variables they model the same function. The formulations and their names follow [Coffrin et al. (2021)](https://doi.org/10.1016/j.epsr.2021.107191) (preprint: [arXiv:2005.14087](https://arxiv.org/abs/2005.14087)), which considers one-dimensional piecewise linear cost functions. The λ-formulation for functions of two or more variables is a natural extension of the one-dimensional formulation.

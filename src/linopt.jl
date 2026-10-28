@@ -1,6 +1,47 @@
+"""
+    PWARecord
+
+The variables and constraints that [`add_pwaffine`](@ref) added to a model for
+a piecewise affine function: fields `model`, `name`, `output` (the output `z`),
+`variables` and `constraints`. The variables include the output if it was
+created, and the constraints exclude variable bounds and integrality, which
+are removed with the variables. Use `JuMP.delete(model, record)` to remove the
+function from the model again; bounds that were set on an output given by
+the user are constraints, and are removed as well.
+"""
+struct PWARecord{M<:JuMP.AbstractModel}
+    model::M
+    name::String
+    output::Base.RefValue{Any}
+    variables::Vector{JuMP.VariableRef}
+    constraints::Vector{JuMP.ConstraintRef}
+end
+
+function Base.show(io::IO, r::PWARecord)
+    return print(
+        io,
+        "PWARecord \"$(r.name)\" with $(length(r.variables)) variables and ",
+        "$(length(r.constraints)) constraints",
+    )
+end
+
+function JuMP.delete(model::JuMP.AbstractModel, r::PWARecord)
+    model === r.model ||
+        throw(ArgumentError("The record does not belong to the model"))
+    for c ∈ r.constraints
+        JuMP.is_valid(model, c) && JuMP.delete(model, c)
+    end
+    vars = filter(v -> JuMP.is_valid(model, v), r.variables)
+    isempty(vars) || JuMP.delete(model, vars)
+    empty!(r.constraints)
+    empty!(r.variables)
+    return
+end
+
 mutable struct PWLData
     counter::Int
-    PWLData() = new(0)
+    recording::Union{Nothing,PWARecord}
+    PWLData() = new(0, nothing)
 end
 
 function initPWL!(m::JuMP.Model)
@@ -9,6 +50,20 @@ function initPWL!(m::JuMP.Model)
     end
     return nothing
 end
+
+# Record the variables or constraints x in the record being built, if any,
+# and return x
+function _rec!(m, x)
+    data = get(m.ext, :PWL, nothing)
+    if data isa PWLData && !isnothing(data.recording)
+        _push_record!(data.recording, x)
+    end
+    return x
+end
+_push_record!(r, x::JuMP.VariableRef) = push!(r.variables, x)
+_push_record!(r, x::JuMP.ConstraintRef) = push!(r.constraints, x)
+_push_record!(r, x::AbstractArray) = foreach(y -> _push_record!(r, y), x)
+_push_record!(r, x) = nothing
 
 """
     PWAFormulation
@@ -94,11 +149,15 @@ piecewise linear function/approximation `pwa` of JuMP-variables `x`.
   - `LambdaFormulation()`: Convex combination of vertices. Works for any dimension. Requires vertex enumeration.
   - `DeltaFormulation()`: Specialized for 1D. Uses ordered breakpoint structure. Requires breakpoint enumeration.
   - `PhiFormulation()`: Alternative 1D formulation. Requires breakpoint enumeration.
+- `name`: the label in the names of the variables and constraints added, e.g. `z_name`
+  (default: a counter).
 - `bounds`: Box `[(lo₁, hi₁), …, (lo_D, hi_D)]` restricting the domain of `x`. Required by the
   λ, Δ and Φ formulations, and taken from the [`domain`](@ref) of `pwa` if not given, or
   else from the bounds of the JuMP variables `x` if all are finite (or fixed). For the Ψ
-  formulation the bounds are optional. If given, they are added as constraints on `x`, and
-  `z` is bounded by the smallest and largest value of the function over the box.
+  formulation the bounds are optional. If given, they are added as constraints on `x`.
+  Over the box that `x` is restricted to, the output `z` is bounded by the smallest value
+  of the function unless the direction is `Hypograph()`, and by the largest value unless it
+  is `Epigraph()`: as variable bounds for a new `z`, and as a constraint for a given one.
 - `direction::Direction`: [`Epigraph`](@ref) for a convex and [`Hypograph`](@ref) for a
   concave function by default, which the formulations above model without binary
   variables. With [`Graph`](@ref), or the other one-sided direction, the function is
@@ -106,7 +165,9 @@ piecewise linear function/approximation `pwa` of JuMP-variables `x`.
   which also takes the `selection` keyword.
 
 # Returns
-- The JuMP variable `z` representing the piecewise affine function value
+- The JuMP variable `z` representing the piecewise affine function value. Use
+  [`add_pwaffine`](@ref) to also get a record of what was added, and see the call of a
+  [`PWAFunc`](@ref) for a shorter form, e.g. `pwa(x)`.
 
 # Note
 In the default direction, all formulations are pure linear programs (no binary
@@ -125,10 +186,58 @@ pwa = approx(x -> x[1]^2, [(-1, 1)], Convex(), MILP(optimizer = optimizer, plane
 z = pwaffine(m, x, pwa; formulation = LambdaFormulation())
 ```
 """
-function pwaffine(
+function pwaffine(m::JuMP.Model, x, pwa::PWAFunc; kwargs...)
+    return first(add_pwaffine(m, x, pwa; kwargs...))
+end
+
+"""
+    add_pwaffine(m::JuMP.Model, x, f::AbstractPWAFunc; name = nothing, kwargs...)
+
+As [`pwaffine`](@ref), but returning the tuple `(z, record)` with the
+[`PWARecord`](@ref) of the variables and constraints that were added, which
+can be removed again with `JuMP.delete(m, record)`. The variables and
+constraints are named with `name` (by default a counter), e.g. `z_name`. If
+the function cannot be added, an error is thrown and the model is left
+unchanged.
+"""
+function add_pwaffine(
     m::JuMP.Model,
     x,
-    pwa::PWAFunc{C,D};
+    f::AbstractPWAFunc;
+    name::Union{Nothing,AbstractString} = nothing,
+    kwargs...,
+)
+    initPWL!(m)
+    data = m.ext[:PWL]
+    isnothing(data.recording) ||
+        error("add_pwaffine cannot be called while another function is added")
+    data.counter += 1
+    label = isnothing(name) ? string(data.counter) : String(name)
+    record = PWARecord(
+        m,
+        label,
+        Ref{Any}(nothing),
+        JuMP.VariableRef[],
+        JuMP.ConstraintRef[],
+    )
+    data.recording = record
+    try
+        record.output[] = _pwaffine!(m, x, f, label; kwargs...)
+    catch
+        data.recording = nothing
+        JuMP.delete(m, record)
+        rethrow()
+    finally
+        data.recording = nothing
+    end
+    return record.output[], record
+end
+
+function _pwaffine!(
+    m::JuMP.Model,
+    x,
+    pwa::PWAFunc{C,D},
+    counter;
     z = nothing,
     formulation::PWAFormulation = PsiFormulation(),
     bounds = nothing,
@@ -137,10 +246,11 @@ function pwaffine(
 ) where {C,D}
     if direction != _natural_direction(C)
         # Binary variables are needed, as for a difference of convex function
-        return pwaffine(
+        return _pwaffine!(
             m,
             x,
-            _as_dc(pwa);
+            _as_dc(pwa),
+            counter;
             z,
             direction,
             formulation,
@@ -154,13 +264,20 @@ function pwaffine(
             "The pwa function has dimension $D, but x has $n element(s)",
         ),
     )
-    initPWL!(m)
-    counter = m.ext[:PWL].counter + 1
-    m.ext[:PWL].counter = counter
-    if isnothing(z)
-        z = JuMP.@variable(m, base_name = "z_$(counter)")
+    created = isnothing(z)
+    if created
+        z = _rec!(m, JuMP.@variable(m, base_name = "z_$(counter)"))
     end
     pwaffine_formulation(m, x, z, counter, pwa, formulation, bounds)
+    # Bound the output over the box that x is restricted to, by the explicit
+    # bounds (constraints of the Ψ-formulation), the domain (for the
+    # formulations that restrict x to it) or the bounds of the variables
+    domain = formulation isa PsiFormulation ? nothing : pwa.domain
+    box = _known_box(x, bounds, D, domain)
+    if !isnothing(box)
+        zmin, zmax = extrema(v[2] for v ∈ vertices_by_subsets(pwa, box))
+        _bound_output!(m, z, created, zmin, zmax, direction, counter)
+    end
     return z
 end
 
@@ -200,6 +317,37 @@ function _as_dc(pwa::PWAFunc{Concave,D,T}) where {D,T}
     return DCFunc{D,T}(PWAFunc{Convex,D,T}(Plane{D,T}[]), pwa, pwa.domain)
 end
 
+# Bound the output z by the smallest and largest function value, from the
+# sides that the direction implies: as variable bounds for an output created
+# here, and otherwise as a constraint
+function _bound_output!(m, z, created, zmin, zmax, direction, counter)
+    lower = !(direction isa Hypograph)
+    upper = !(direction isa Epigraph)
+    if created
+        lower && JuMP.set_lower_bound(z, zmin)
+        upper && JuMP.set_upper_bound(z, zmax)
+    elseif lower && upper
+        _rec!(m, @constraint(m, zmin ≤ z ≤ zmax, base_name = "pwa_$(counter)_zbounds"))
+    elseif lower
+        _rec!(m, @constraint(m, z ≥ zmin, base_name = "pwa_$(counter)_zbounds"))
+    elseif upper
+        _rec!(m, @constraint(m, z ≤ zmax, base_name = "pwa_$(counter)_zbounds"))
+    end
+    return
+end
+
+# The box that x is known to lie in: the explicit bounds, otherwise the domain
+# (if given), otherwise the bounds of the variables, or nothing
+function _known_box(x, bounds, D, domain)
+    isnothing(bounds) || return bounds
+    isnothing(domain) || return domain
+    xs = _inputs(x)
+    if length(xs) == D && all(_has_finite_bounds, xs)
+        return [_var_bounds(v) for v ∈ xs]
+    end
+    return nothing
+end
+
 # Use the bounds given explicitly, otherwise the domain of the function, and
 # otherwise the bounds of the JuMP variables
 function _resolve_bounds(x, bounds, D, domain = nothing)
@@ -231,25 +379,25 @@ function pwaffine_formulation(
     vertices = vertices_by_subsets(pwa, _resolve_bounds(x, bounds, D, pwa.domain))
     xs = _inputs(x)
     V = eachindex(vertices)
-    λ = @variable(m, [V], lower_bound = 0, base_name = "_λ_$(counter)")
-    @constraint(
+    λ = _rec!(m, @variable(m, [V], lower_bound = 0, base_name = "_λ_$(counter)"))
+    _rec!(m, @constraint(
         m,
         [i = 1:D],
         xs[i] == sum(λ[v] * vertices[v][1][i] for v ∈ V),
         base_name = "pwa_$(counter)_x"
-    )
-    @constraint(
+    ))
+    _rec!(m, @constraint(
         m,
         z == sum(λ[v] * vertices[v][2] for v ∈ V),
         base_name = "pwa_$(counter)_z"
-    )
-    @constraint(m, sum(λ[v] for v ∈ V) == 1, base_name = "pwa_$(counter)_sum")
+    ))
+    _rec!(m, @constraint(m, sum(λ[v] for v ∈ V) == 1, base_name = "pwa_$(counter)_sum"))
     return
 end
 
-constr(::Type{Convex}, m, z, p, x) = JuMP.@constraint(m, z ≥ dot(p.α, x) + p.β)
+constr(::Type{Convex}, m, z, p, x) = _rec!(m, JuMP.@constraint(m, z ≥ dot(p.α, x) + p.β))
 function constr(::Type{Concave}, m, z, p, x)
-    JuMP.@constraint(m, z ≤ dot(-1 .* p.α, x) - p.β)
+    _rec!(m, JuMP.@constraint(m, z ≤ dot(-1 .* p.α, x) - p.β))
 end
 
 # Model the piecewise affine function directly as the maximum of its hyperplanes
@@ -269,29 +417,12 @@ function pwaffine_formulation(
     if !isnothing(bounds)
         lo, hi = _check_bounds(bounds, D)
         xs = _inputs(x)
-        @constraint(
+        _rec!(m, @constraint(
             m,
             [i = 1:D],
             lo[i] ≤ xs[i] ≤ hi[i],
             base_name = "pwa_$(counter)_bounds"
-        )
-        # The function values over the box are bounded by the values at the vertices
-        zmin, zmax = extrema(v[2] for v ∈ vertices_by_subsets(pwa, bounds))
-        _bound_z!(m, z, zmin, zmax, counter)
-    end
-    return
-end
-
-# Bound z to [zmin, zmax]: as variable bounds for a free variable, otherwise as a constraint
-function _bound_z!(m, z, zmin, zmax, counter)
-    if z isa JuMP.VariableRef &&
-       !JuMP.has_lower_bound(z) &&
-       !JuMP.has_upper_bound(z) &&
-       !JuMP.is_fixed(z)
-        JuMP.set_lower_bound(z, zmin)
-        JuMP.set_upper_bound(z, zmax)
-    else
-        @constraint(m, zmin ≤ z ≤ zmax, base_name = "pwa_$(counter)_zbounds")
+        ))
     end
     return
 end
@@ -351,23 +482,23 @@ function pwaffine_formulation(
     S = 1:(length(xp)-1)
     width = diff(xp)
     slope = diff(zp) ./ width
-    Δ = @variable(
+    Δ = _rec!(m, @variable(
         m,
         [s ∈ S],
         lower_bound = 0,
         upper_bound = width[s],
         base_name = "_Δ_$(counter)"
-    )
-    @constraint(
+    ))
+    _rec!(m, @constraint(
         m,
         x1 == xp[1] + sum(Δ[s] for s ∈ S),
         base_name = "pwa_$(counter)_x"
-    )
-    @constraint(
+    ))
+    _rec!(m, @constraint(
         m,
         z == zp[1] + sum(slope[s] * Δ[s] for s ∈ S),
         base_name = "pwa_$(counter)_z"
-    )
+    ))
     return
 end
 
@@ -400,30 +531,30 @@ function pwaffine_formulation(
 ) where {C}
     xp, zp = _breakpoints(x, pwa, bounds)
     x1 = only(_inputs(x))
-    @constraint(m, xp[1] ≤ x1 ≤ xp[end], base_name = "pwa_$(counter)_bounds")
+    _rec!(m, @constraint(m, xp[1] ≤ x1 ≤ xp[end], base_name = "pwa_$(counter)_bounds"))
     if length(xp) == 1
-        @constraint(m, z == zp[1], base_name = "pwa_$(counter)_z")
+        _rec!(m, @constraint(m, z == zp[1], base_name = "pwa_$(counter)_z"))
         return
     end
     slope = diff(zp) ./ diff(xp)
     # Φ[s] measures how far x extends beyond breakpoint s
     S̃ = 2:(length(xp)-1)
-    Φ = @variable(
+    Φ = _rec!(m, @variable(
         m,
         [s ∈ S̃],
         lower_bound = 0,
         upper_bound = xp[end] - xp[s],
         base_name = "_Φ_$(counter)"
-    )
-    @constraint(m, [s ∈ S̃], Φ[s] ≥ x1 - xp[s], base_name = "pwa_$(counter)_Φ")
-    @constraint(
+    ))
+    _rec!(m, @constraint(m, [s ∈ S̃], Φ[s] ≥ x1 - xp[s], base_name = "pwa_$(counter)_Φ"))
+    _rec!(m, @constraint(
         m,
         z ==
         zp[1] +
         slope[1] * (x1 - xp[1]) +
         sum((slope[s] - slope[s-1]) * Φ[s] for s ∈ S̃),
         base_name = "pwa_$(counter)_z"
-    )
+    ))
     return
 end
 
@@ -460,12 +591,21 @@ concave kinks of the function are found from the vertices of its parts.
 
 The bounds are given with `bounds` as a vector of `(lower, upper)` tuples, or
 taken from the [`domain`](@ref) of `f`, or else from the lower and upper bounds
-of the variables `x`.
+of the variables `x`. Explicit bounds, and the domain when used for big-M
+values, are added as constraints on `x`. The output `z` is bounded over the
+box that `x` is restricted to, from the sides that the direction implies, as
+for a [`PWAFunc`](@ref). The keyword `name` and the record are as for
+[`add_pwaffine`](@ref).
 """
-function pwaffine(
+function pwaffine(m::JuMP.Model, x, f::DCFunc; kwargs...)
+    return first(add_pwaffine(m, x, f; kwargs...))
+end
+
+function _pwaffine!(
     m::JuMP.Model,
     x,
-    f::DCFunc{D};
+    f::DCFunc{D},
+    counter;
     z = nothing,
     direction::Direction = Graph(),
     formulation::PWAFormulation = PsiFormulation(),
@@ -492,12 +632,9 @@ function pwaffine(
             "The function has $D inputs, got $(length(xs)) variables",
         ),
     )
-    initPWL!(m)
-    counter = m.ext[:PWL].counter + 1
-    m.ext[:PWL].counter = counter
-
-    if isnothing(z)
-        z = JuMP.@variable(m, base_name = "z_$(counter)")
+    created = isnothing(z)
+    if created
+        z = _rec!(m, JuMP.@variable(m, base_name = "z_$(counter)"))
     end
     if !(formulation isa PsiFormulation)
         xp, zp = _dc_breakpoints(f, _resolve_bounds(x, bounds, 1, f.domain))
@@ -511,6 +648,8 @@ function pwaffine(
             formulation,
             direction,
         )
+        # x is restricted to the breakpoints
+        _bound_output!(m, z, created, minimum(zp), maximum(zp), direction, counter)
         return z
     end
     # The box containing x, needed for the big-M values when a part has
@@ -521,6 +660,25 @@ function pwaffine(
         _check_bounds(_resolve_bounds(x, bounds, D, f.domain), D)
     else
         nothing
+    end
+    # x is restricted to the box of the big-M values, and to explicit bounds;
+    # the bounds of the variables need no constraints
+    restricted = !isnothing(box) ? box :
+        !isnothing(bounds) ? _check_bounds(bounds, D) : nothing
+    if !isnothing(restricted) && (!isnothing(bounds) || !isnothing(f.domain))
+        lo, hi = restricted
+        _rec!(
+            m,
+            @constraint(
+                m,
+                [i = 1:D],
+                lo[i] ≤ xs[i] ≤ hi[i],
+                base_name = "pwa_$(counter)_bounds"
+            )
+        )
+    elseif isnothing(restricted)
+        known = _known_box(x, nothing, D, nothing)
+        restricted = isnothing(known) ? nothing : _check_bounds(known, D)
     end
     z₁ = _dc_part!(
         m,
@@ -540,9 +698,27 @@ function pwaffine(
         box,
         "$(counter)_ccv",
     )
-    con = JuMP.@constraint(m, z == z₁ + z₂)
+    con = _rec!(m, JuMP.@constraint(m, z == z₁ + z₂))
     JuMP.set_name(con, "pwa_$(counter)")
+    if !isnothing(restricted)
+        zmin, zmax = _dc_range(f, collect(zip(restricted...)))
+        _bound_output!(m, z, created, zmin, zmax, direction, counter)
+    end
     return z
+end
+
+# Bounds on the values of a difference of convex function over a box: the sums
+# of the smallest and largest values of the parts, which are attained at the
+# vertices of the parts over the box
+function _dc_range(f::DCFunc{D}, box) where {D}
+    zmin, zmax = 0.0, 0.0
+    for part ∈ (f.convex, f.concave)
+        isempty(part.planes) && continue
+        v = [w[2] for w ∈ vertices_by_subsets(part, box)]
+        zmin += minimum(v)
+        zmax += maximum(v)
+    end
+    return zmin, zmax
 end
 
 # The value of the plane in the sense of the curvature, as an affine expression
@@ -564,36 +740,36 @@ function _dc_part!(
 ) where {C,D}
     K = _planes(pwa)
     K == 0 && return zero(JuMP.AffExpr)
-    zᵢ = JuMP.@variable(m, base_name = "z_$(name)")
+    zᵢ = _rec!(m, JuMP.@variable(m, base_name = "z_$(name)"))
     v = [_plane_expr(C, p, x) for p ∈ pwa.planes]
     # The constraints giving the maximum (minimum) of the planes
     for k ∈ 1:K
         con =
-            C == Convex ? JuMP.@constraint(m, zᵢ ≥ v[k]) :
-            JuMP.@constraint(m, zᵢ ≤ v[k])
+            C == Convex ? _rec!(m, JuMP.@constraint(m, zᵢ ≥ v[k])) :
+            _rec!(m, JuMP.@constraint(m, zᵢ ≤ v[k]))
         JuMP.set_name(con, "pwa_$(name)_$(k)")
     end
     exact || return zᵢ
     if K == 1
         con =
-            C == Convex ? JuMP.@constraint(m, zᵢ ≤ v[1]) :
-            JuMP.@constraint(m, zᵢ ≥ v[1])
+            C == Convex ? _rec!(m, JuMP.@constraint(m, zᵢ ≤ v[1])) :
+            _rec!(m, JuMP.@constraint(m, zᵢ ≥ v[1]))
         JuMP.set_name(con, "pwa_$(name)_active_1")
         return zᵢ
     end
-    u = JuMP.@variable(m, [1:K], Bin, base_name = "u_$(name)")
-    con = JuMP.@constraint(m, sum(u) == 1)
+    u = _rec!(m, JuMP.@variable(m, [1:K], Bin, base_name = "u_$(name)"))
+    con = _rec!(m, JuMP.@constraint(m, sum(u) == 1))
     JuMP.set_name(con, "pwa_$(name)_select")
     M = selection == :bigm ? _dc_big_M(pwa, box) : nothing
     for k ∈ 1:K
         con = if selection == :indicator && C == Convex
-            JuMP.@constraint(m, u[k] --> {zᵢ ≤ v[k]})
+            _rec!(m, JuMP.@constraint(m, u[k] --> {zᵢ ≤ v[k]}))
         elseif selection == :indicator
-            JuMP.@constraint(m, u[k] --> {zᵢ ≥ v[k]})
+            _rec!(m, JuMP.@constraint(m, u[k] --> {zᵢ ≥ v[k]}))
         elseif C == Convex
-            JuMP.@constraint(m, zᵢ ≤ v[k] + M[k] * (1 - u[k]))
+            _rec!(m, JuMP.@constraint(m, zᵢ ≤ v[k] + M[k] * (1 - u[k])))
         else
-            JuMP.@constraint(m, zᵢ ≥ v[k] - M[k] * (1 - u[k]))
+            _rec!(m, JuMP.@constraint(m, zᵢ ≥ v[k] - M[k] * (1 - u[k])))
         end
         JuMP.set_name(con, "pwa_$(name)_active_$(k)")
     end
@@ -663,51 +839,51 @@ function _dc_formulation_1d!(
     ::PhiFormulation,
     direction,
 )
-    @constraint(m, xp[1] ≤ x1 ≤ xp[end], base_name = "pwa_$(counter)_bounds")
+    _rec!(m, @constraint(m, xp[1] ≤ x1 ≤ xp[end], base_name = "pwa_$(counter)_bounds"))
     if length(xp) == 1
-        @constraint(m, z == zp[1], base_name = "pwa_$(counter)_z")
+        _rec!(m, @constraint(m, z == zp[1], base_name = "pwa_$(counter)_z"))
         return
     end
     slope = diff(zp) ./ diff(xp)
     S̃ = 2:(length(xp)-1)
-    Φ = @variable(
+    Φ = _rec!(m, @variable(
         m,
         [s ∈ S̃],
         lower_bound = 0,
         upper_bound = xp[end] - xp[s],
         base_name = "_Φ_$(counter)"
-    )
-    @constraint(m, [s ∈ S̃], Φ[s] ≥ x1 - xp[s], base_name = "pwa_$(counter)_Φ")
-    @constraint(
+    ))
+    _rec!(m, @constraint(m, [s ∈ S̃], Φ[s] ≥ x1 - xp[s], base_name = "pwa_$(counter)_Φ"))
+    _rec!(m, @constraint(
         m,
         z ==
         zp[1] +
         slope[1] * (x1 - xp[1]) +
         sum((slope[s] - slope[s-1]) * Φ[s] for s ∈ S̃),
         base_name = "pwa_$(counter)_z"
-    )
+    ))
     B = _dc_binary_kinks(slope, direction)
     isempty(B) && return
-    y = @variable(m, [s ∈ B], Bin, base_name = "_y_$(counter)")
-    @constraint(
+    y = _rec!(m, @variable(m, [s ∈ B], Bin, base_name = "_y_$(counter)"))
+    _rec!(m, @constraint(
         m,
         [s ∈ B],
         Φ[s] ≤ (xp[end] - xp[s]) * y[s],
         base_name = "pwa_$(counter)_Φup"
-    )
-    @constraint(
+    ))
+    _rec!(m, @constraint(
         m,
         [s ∈ B],
         Φ[s] ≤ x1 - xp[s] + (xp[s] - xp[1]) * (1 - y[s]),
         base_name = "pwa_$(counter)_Φx"
-    )
+    ))
     # x ≥ xp[s+1] implies x ≥ xp[s]
-    @constraint(
+    _rec!(m, @constraint(
         m,
         [i ∈ 1:(length(B)-1)],
         y[B[i]] ≥ y[B[i+1]],
         base_name = "pwa_$(counter)_order"
-    )
+    ))
     return
 end
 
@@ -729,44 +905,145 @@ function _dc_formulation_1d!(
     direction,
 )
     if length(xp) == 1
-        @constraint(m, x1 == xp[1], base_name = "pwa_$(counter)_x")
-        @constraint(m, z == zp[1], base_name = "pwa_$(counter)_z")
+        _rec!(m, @constraint(m, x1 == xp[1], base_name = "pwa_$(counter)_x"))
+        _rec!(m, @constraint(m, z == zp[1], base_name = "pwa_$(counter)_z"))
         return
     end
     S = 1:(length(xp)-1)
     width = diff(xp)
     slope = diff(zp) ./ width
-    Δ = @variable(
+    Δ = _rec!(m, @variable(
         m,
         [s ∈ S],
         lower_bound = 0,
         upper_bound = width[s],
         base_name = "_Δ_$(counter)"
-    )
-    @constraint(
+    ))
+    _rec!(m, @constraint(
         m,
         x1 == xp[1] + sum(Δ[s] for s ∈ S),
         base_name = "pwa_$(counter)_x"
-    )
-    @constraint(
+    ))
+    _rec!(m, @constraint(
         m,
         z == zp[1] + sum(slope[s] * Δ[s] for s ∈ S),
         base_name = "pwa_$(counter)_z"
-    )
+    ))
     B = _dc_binary_kinks(slope, direction)
     isempty(B) && return
-    y = @variable(m, [s ∈ B], Bin, base_name = "_y_$(counter)")
-    @constraint(
+    y = _rec!(m, @variable(m, [s ∈ B], Bin, base_name = "_y_$(counter)"))
+    _rec!(m, @constraint(
         m,
         [s ∈ B, j ∈ S; j ≥ s],
         Δ[j] ≤ width[j] * y[s],
         base_name = "pwa_$(counter)_Δempty"
-    )
-    @constraint(
+    ))
+    _rec!(m, @constraint(
         m,
         [s ∈ B, j ∈ S; j < s],
         Δ[j] ≥ width[j] * y[s],
         base_name = "pwa_$(counter)_Δfull"
-    )
+    ))
     return
+end
+
+# The inputs of a call: one collection of inputs, or the inputs themselves
+_call_inputs(x::Tuple{Union{Tuple,AbstractVector}}) = Tuple(only(x))
+_call_inputs(x::Tuple) = x
+
+# The model of the inputs, or nothing if they are all numbers
+function _owner_model(xs)
+    model = nothing
+    for xi ∈ xs
+        xi isa Real && continue
+        mi = JuMP.owner_model(xi)
+        if isnothing(model)
+            model = mi
+        elseif mi !== model
+            throw(ArgumentError("The inputs belong to different models"))
+        end
+    end
+    return model
+end
+
+"""
+    (f::AbstractPWAFunc)(x...; kwargs...)
+
+Evaluate `f` at a point given as numbers, e.g. `f(0.5)` or `f(1.0, 2.0)`, or,
+if the inputs are JuMP variables or expressions, add `f` to their model with
+[`pwaffine`](@ref) and return the output. The inputs can also be given as one
+vector or tuple, e.g. `f(x)` for `x = @variable(m, [1:2])`. The keyword
+arguments are passed to `pwaffine`; see [`Formulated`](@ref) to store them
+with the function. Each call adds a new formulation, so a function of the same
+inputs that is used several times should be added once, e.g. with
+`@expression(m, c, f(x))`.
+
+```julia
+cost = approx(x -> x[1]^2, [(0, 1)], Convex(), Interpol(planes = 4))
+@variable(m, 0 ≤ x[1:3] ≤ 1)
+@objective(m, Min, sum(cost(x[i]) for i ∈ 1:3))
+```
+"""
+function (f::AbstractPWAFunc)(x...; kwargs...)
+    xs = _call_inputs(x)
+    model = _owner_model(xs)
+    if isnothing(model)
+        isempty(kwargs) ||
+            throw(ArgumentError("Keyword arguments are only used with JuMP inputs"))
+        return evaluate(f, xs)
+    end
+    return pwaffine(model, length(xs) == 1 ? only(xs) : collect(xs), f; kwargs...)
+end
+
+"""
+    Formulated(f::AbstractPWAFunc; formulation, direction, selection, bounds)
+
+The function `f` with the options of [`pwaffine`](@ref) for adding it to a
+model, which is called like the function: `g(x)` evaluates `g` for numbers
+and adds it with these options for JuMP inputs, see the call of
+[`PWAFunc`](@ref). Options given in a call override the stored ones. It can
+also be passed to [`pwaffine`](@ref), [`add_pwaffine`](@ref) and
+[`evaluate`](@ref).
+
+```julia
+cost = Formulated(approx(sin, [(0, 2π)], DC(), Interpol(planes = 4));
+    formulation = DeltaFormulation(), direction = Epigraph())
+@objective(m, Min, cost(x))
+```
+"""
+struct Formulated{F<:AbstractPWAFunc,K<:NamedTuple}
+    func::F
+    options::K
+end
+const _FORMULATED_OPTIONS = (:formulation, :direction, :selection, :bounds)
+function Formulated(f::AbstractPWAFunc; options...)
+    for k ∈ keys(options)
+        k ∈ _FORMULATED_OPTIONS || throw(
+            ArgumentError(
+                "Unknown option $k, use one of " * join(_FORMULATED_OPTIONS, ", "),
+            ),
+        )
+    end
+    return Formulated(f, NamedTuple(options))
+end
+function Base.show(io::IO, g::Formulated)
+    print(io, "Formulated(")
+    summary(io, g.func)
+    for (k, v) ∈ pairs(g.options)
+        print(io, "; ", k, " = ", v)
+    end
+    return print(io, ")")
+end
+function (g::Formulated)(x...; kwargs...)
+    # The stored options are for adding the function to a model only
+    isnothing(_owner_model(_call_inputs(x))) && return g.func(x...; kwargs...)
+    return g.func(x...; g.options..., kwargs...)
+end
+evaluate(g::Formulated, x) = evaluate(g.func, x)
+domain(g::Formulated) = domain(g.func)
+function pwaffine(m::JuMP.Model, x, g::Formulated; kwargs...)
+    return pwaffine(m, x, g.func; g.options..., kwargs...)
+end
+function add_pwaffine(m::JuMP.Model, x, g::Formulated; kwargs...)
+    return add_pwaffine(m, x, g.func; g.options..., kwargs...)
 end

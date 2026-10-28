@@ -72,4 +72,7 @@ dc_decomposition
 approximation_error
 evaluate
 pwaffine
+add_pwaffine
+PWARecord
+Formulated
 ```

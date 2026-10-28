@@ -192,9 +192,10 @@ end
     @variable(m, x)
     z = pwaffine(m, x, pwa)
     @test !has_lower_bound(z) && !has_upper_bound(z)
+    # (from below only, for a convex function in the epigraph direction)
     z = pwaffine(m, x, pwa; bounds = [(-1, 1)])
     @test lower_bound(z) ≈ -0.0625
-    @test upper_bound(z) ≈ 0.9375
+    @test !has_upper_bound(z)
     # A bounded z is not modified, the bounds are added as a constraint instead
     @variable(m, zz ≥ -10)
     pwaffine(m, x, pwa; z = zz, bounds = [(-1, 1)])
@@ -203,7 +204,7 @@ end
     @test !isnothing(constraint_by_name(m, "pwa_3_zbounds"))
     # Concave
     z = pwaffine(m, x, PWAFunc{Concave,1}(planes); bounds = [(-1, 1)])
-    @test lower_bound(z) ≈ -0.9375
+    @test !has_lower_bound(z)
     @test upper_bound(z) ≈ 0.0625
 end
 

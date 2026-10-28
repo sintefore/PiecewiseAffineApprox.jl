@@ -45,5 +45,6 @@ const qp_optimizer = optimizer_with_attributes(
         include("test_vertex_enum.jl")
         include("test_linopt.jl")
         include("test_algorithms.jl")
+        include("test_record.jl")
     end
 end
