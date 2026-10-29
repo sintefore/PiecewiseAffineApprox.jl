@@ -51,10 +51,47 @@ function Makie.plot(input::FunctionEvaluations{2}, pwa::PWAFunc{C,2}) where {C}
 end
 
 function Makie.plot(pwa::PWAFunc{C,2}) where {C}
-    verts = PiecewiseAffineApprox.vertices_by_subsets(pwa)
-    x = [v[1][i] for i in 1:2, v in verts]
-    z = [v[2] for v in verts]
+    box = domain(pwa)
+    if isnothing(box)
+        # Without a domain, the vertices of the function are shown
+        verts = PiecewiseAffineApprox.vertices_by_subsets(pwa)
+        x = [v[1][i] for i in 1:2, v in verts]
+    else
+        x = _grid(box, 10)
+    end
+    z = [evaluate(pwa, x[:, i]) for i ∈ axes(x, 2)]
     return Makie.plot(x, z, pwa)
+end
+
+# A one-dimensional function over its domain, with the planes
+function Makie.plot(pwa::PWAFunc{C,1}) where {C}
+    lo, hi = only(_domain(pwa))
+    x̄ = LinRange(lo, hi, 200)
+    fig = Figure(size = (600, 400))
+    ax = Axis(fig[1, 1], limits = (nothing, ylims([evaluate(pwa, (t,)) for t ∈ x̄])))
+    _plot_planes!(ax, x̄, pwa)
+    return fig
+end
+
+# The domain of the function, required to plot it without data
+function _domain(f)
+    box = domain(f)
+    isnothing(box) && throw(
+        ArgumentError(
+            "The function has no domain, plot it together with data, e.g. " *
+            "plot(x, y, f), or fit it with approx, which records the domain",
+        ),
+    )
+    return box
+end
+
+# The points of an n × n grid over a two-dimensional box, as columns
+function _grid(box, n)
+    (a, b), (c, d) = box
+    return [p[i] for i ∈ 1:2, p ∈ vec(collect(Iterators.product(
+        LinRange(a, b, n),
+        LinRange(c, d, n),
+    )))]
 end
 
 function Makie.plot(x, y, pwa::PWAFunc{C,1}) where {C}
@@ -104,12 +141,20 @@ Plot a difference of convex approximation together with the data points. With
 function z = z₁ + z₂ are shown in separate axes, with their planes.
 """
 function Makie.plot(x, y, f::DCFunc{1}; parts = true)
-    fig = Figure(size = (600, parts ? 700 : 400))
-    ax = Axis(fig[1, 1], limits = (nothing, ylims(y)))
-    x̄ = LinRange(minimum(x), maximum(x), 200)
+    return _plot_dc_1d(LinRange(minimum(x), maximum(x), 200), f, (x, y); parts)
+end
 
-    scatter!(ax, x, y, color = :red, markersize = 8)
-    lines!(ax, x̄, [evaluate(f, (i,)) for i ∈ x̄], color = :black)
+function Makie.plot(f::DCFunc{1}; parts = true)
+    lo, hi = only(_domain(f))
+    return _plot_dc_1d(LinRange(lo, hi, 200), f, nothing; parts)
+end
+
+function _plot_dc_1d(x̄, f::DCFunc{1}, data; parts)
+    fig = Figure(size = (600, parts ? 700 : 400))
+    v = [evaluate(f, (i,)) for i ∈ x̄]
+    ax = Axis(fig[1, 1], limits = (nothing, ylims(isnothing(data) ? v : data[2])))
+    isnothing(data) || scatter!(ax, data[1], data[2], color = :red, markersize = 8)
+    lines!(ax, x̄, v, color = :black)
 
     if parts
         # The planes of the parts extend far beyond the parts themselves, so
@@ -138,26 +183,43 @@ function Makie.plot(x, y, f::DCFunc{1}; parts = true)
 end
 
 function Makie.plot(x, z, f::DCFunc{2}; parts = true)
-    xmin, xmax = extrema(x[1, :])
-    ymin, ymax = extrema(x[2, :])
+    return _plot_dc_2d(
+        [extrema(x[1, :]), extrema(x[2, :])],
+        f,
+        (x, z);
+        parts,
+    )
+end
+
+function Makie.plot(f::DCFunc{2}; parts = true)
+    return _plot_dc_2d(_domain(f), f, nothing; parts)
+end
+
+function _plot_dc_2d(box, f::DCFunc{2}, data; parts)
+    (xmin, xmax), (ymin, ymax) = box
     x̄ = LinRange(xmin, xmax, 40)
     ȳ = LinRange(ymin, ymax, 40)
     fig = Figure(size = (1000, 1000))
-    ax1 = Axis3(fig[1:(parts ? 3 : 2), 1:2])
-    ax2 = Axis(fig[1, 3], title = "Error at the data points")
+    rows = isnothing(data) ? 2 : 3
+    ax1 = Axis3(fig[1:(parts ? rows : 2), 1:2])
 
     v = [evaluate(f, (x̄[i], ȳ[j])) for i ∈ eachindex(x̄), j ∈ eachindex(ȳ)]
     surface!(ax1, x̄, ȳ, v)
-    scatter!(ax1, x[1, :], x[2, :], z, color = :red, markersize = 8)
-
-    l1 = approximation_error(f, x, z, :l1)
-    l2 = approximation_error(f, x, z, :l2)
-    lmax = approximation_error(f, x, z, :max)
-    ax1.title = "l1 = $(round(l1, digits=2)), l2 = $(round(l2, digits=2)), max = $(round(lmax, digits=2))"
-    z̄ = [abs(evaluate(f, x[:, i]) - z[i]) for i ∈ eachindex(z)]
-    θ = 20 / max(maximum(z̄), eps())
-    ax2.title = "Max error = $(round(maximum(z̄),digits=2))"
-    scatter!(ax2, x[1, :], x[2, :]; markersize = θ * z̄)
+    if !isnothing(data)
+        x, z = data
+        ax2 = Axis(fig[1, 3], title = "Error at the data points")
+        scatter!(ax1, x[1, :], x[2, :], z, color = :red, markersize = 8)
+        l1 = approximation_error(f, x, z, :l1)
+        l2 = approximation_error(f, x, z, :l2)
+        lmax = approximation_error(f, x, z, :max)
+        ax1.title = "l1 = $(round(l1, digits=2)), l2 = $(round(l2, digits=2)), max = $(round(lmax, digits=2))"
+        z̄ = [abs(evaluate(f, x[:, i]) - z[i]) for i ∈ eachindex(z)]
+        θ = 20 / max(maximum(z̄), eps())
+        ax2.title = "Max error = $(round(maximum(z̄),digits=2))"
+        scatter!(ax2, x[1, :], x[2, :]; markersize = θ * z̄)
+    end
+    # The parts are below the error panel, or in the right column without data
+    offset = isnothing(data) ? 0 : 1
 
     if parts
         x̄ = LinRange(xmin, xmax, 20)
@@ -166,7 +228,7 @@ function Makie.plot(x, z, f::DCFunc{2}; parts = true)
             (f.convex, Convex, "z₁ (convex)"),
             (f.concave, Concave, "z₂ (concave)"),
         ))
-            ax = Axis3(fig[1+k, 3], title = name)
+            ax = Axis3(fig[offset+k, 3], title = name)
             for p ∈ part.planes
                 v = [
                     evaluate(p, [x̄[i], ȳ[j]], C) for i ∈ eachindex(x̄),
