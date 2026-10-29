@@ -31,6 +31,7 @@ pages = [
         "Add constraints to a model" => "howto/add_to_model.md",
         "Plot approximations" => "howto/plot_approximation.md",
         "Add an algorithm" => "howto/add_algorithm.md",
+        "Add a formulation" => "howto/add_formulation.md",
     ],
     "Background" => "background/background.md",
     "API reference" => "reference/api.md",

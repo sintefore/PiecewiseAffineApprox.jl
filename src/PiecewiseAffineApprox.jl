@@ -29,10 +29,10 @@ export Plane
 export FunctionEvaluations
 export PWAFunc, DCFunc
 export approx, fit, FitResult
-export pwaffine, add_pwaffine, PWARecord, Formulated
-export PWAFormulation, PsiFormulation, LambdaFormulation, DeltaFormulation, PhiFormulation
+export add_pwaformulation, PWAFormulation, Formulated
+export pwaffine # deprecated
+export PWAMethod, PsiFormulation, LambdaFormulation, DeltaFormulation, PhiFormulation
 export Ψ_Formulation, λ_Formulation, Δ_Formulation, Φ_Formulation
-export Direction, Graph, Epigraph, Hypograph
 export domain
 export evaluate
 export enforce_curvature

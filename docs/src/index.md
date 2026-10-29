@@ -23,7 +23,7 @@ m = Model(optimizer)
 # Create a piecewise linear approximation to x^2 on the interval [-1, 1]
 pwa = approx(x -> x[1]^2, [(-1, 1)], Convex(), MILP(;optimizer, planes=5))
 # Add the pwa function to the model
-z = pwaffine(m, x, pwa)
+z = pwa(x)
 # Minimize
 @objective(m, Min, z)
 # Check approximation/solution at x = 0.5

@@ -179,7 +179,7 @@ end
     function solve(dc, x̂, sense; kwargs...)
         m = Model(optimizer)
         @variable(m, 0 ≤ xv ≤ 2π)
-        z = pwaffine(m, (xv,), dc; kwargs...)
+        z = dc(xv; kwargs...)
         @constraint(m, xv == x̂)
         @objective(m, sense, z)
         optimize!(m)
@@ -195,11 +195,12 @@ end
             1e-6
     end
 
-    # Binary variables only for the parts that need them
+    # Binary variables only for the parts that need them, with the
+    # Ψ-formulation: one per plane
     nbin(; kwargs...) = begin
         m = Model()
         @variable(m, 0 ≤ xv ≤ 2π)
-        pwaffine(m, (xv,), dc; kwargs...)
+        dc(xv; formulation = PsiFormulation(), kwargs...)
         return count(is_binary, all_variables(m))
     end
     @test nbin() == 6
@@ -208,7 +209,7 @@ end
     @test nbin(selection = :indicator) == 6
     m = Model()
     @variable(m, xv)
-    pwaffine(m, (xv,), dc; selection = :indicator)
+    dc(xv; selection = :indicator, formulation = PsiFormulation())
     @test num_constraints(m, VariableRef, MOI.ZeroOne) == 6
     @test num_constraints(
         m,
@@ -220,24 +221,18 @@ end
     # domain of the function
     m = Model()
     @variable(m, xv)
-    @test_throws ArgumentError pwaffine(m, (xv,), PWA._with_domain(dc, nothing))
-    @test_throws ArgumentError pwaffine(m, (xv,), dc; bounds = [(0, Inf)])
-    @test_throws ArgumentError pwaffine(m, (xv,), dc; bounds = [(0, 1), (0, 1)])
-    @test_throws TypeError pwaffine(m, (xv,), dc; direction = :none)
-    @test_throws ArgumentError pwaffine(
-        m,
-        (xv,),
-        dc;
-        formulation = LambdaFormulation(),
-        bounds = [(0, 1)],
-    )
-    @test_throws ArgumentError pwaffine(m, (xv,), dc; selection = :sos)
-    @test_throws ArgumentError pwaffine(m, (xv, xv), dc)
+    @test_throws ArgumentError (PWA._with_domain(dc, nothing))(xv)
+    @test_throws ArgumentError dc(xv; bounds = [(0, Inf)])
+    @test_throws ArgumentError dc(xv; bounds = [(0, 1), (0, 1)])
+    @test_throws TypeError dc(xv; direction = :none)
+    @test_throws ArgumentError dc(xv; formulation = LambdaFormulation(), bounds = [(0, 1)])
+    @test_throws ArgumentError dc(xv; selection = :sos)
+    @test_throws ArgumentError dc((xv, xv))
     # Expressions as inputs with explicit bounds, and a given z
     m = Model(optimizer)
     @variable(m, 0 ≤ t ≤ π)
     @variable(m, zv)
-    z = pwaffine(m, (2t,), dc; z = zv, bounds = [(0, 2π)])
+    z = dc(2t; z = zv, bounds = [(0, 2π)])
     @test z === zv
     @constraint(m, t == 0.75)
     @objective(m, Min, zv)
@@ -254,7 +249,7 @@ end
     )
         m = Model(optimizer)
         @variable(m, -2 ≤ xv ≤ 2)
-        z = pwaffine(m, (xv,), dc₁)
+        z = dc₁(xv; formulation = PsiFormulation())
         @test count(is_binary, all_variables(m)) ==
               (isempty(dc₁.concave.planes) ? 0 : 2)
         @constraint(m, xv == 0.5)
@@ -263,12 +258,12 @@ end
         @test value(z) ≈ evaluate(dc₁, (0.5,)) atol = 1e-6
     end
 
-    # Two dimensions, with the fit from data through pwaffine
+    # Two dimensions, with the fit from data added by calling it
     s(x) = x[1]^2 - x[2]^2
     f2 = PWA._sample_uniform(s, [(-1, 1), (-1, 1)], 8)
     m = Model(optimizer)
     @variable(m, -1 ≤ xv[1:2] ≤ 1)
-    z = pwaffine(m, xv, f2, DC(), Cluster(planes = 3, rng = StableRNG(1)))
+    z = approx(f2, DC(), Cluster(planes = 3, rng = StableRNG(1)))(xv)
     dc2 = approx(f2, DC(), Cluster(planes = 3, rng = StableRNG(1)))
     for x̂ ∈ ((0.3, -0.7), (-0.9, 0.9), (0.0, 0.0))
         c = @constraint(m, xv .== collect(x̂))
@@ -419,7 +414,7 @@ end
     function solve(x̂, sense; kwargs...)
         m = Model(optimizer)
         @variable(m, 0 ≤ xv ≤ 2π)
-        z = pwaffine(m, xv, dc; kwargs...)
+        z = dc(xv; kwargs...)
         @constraint(m, xv == x̂)
         @objective(m, sense, z)
         optimize!(m)
@@ -429,7 +424,7 @@ end
     nbin(; kwargs...) = begin
         m = Model()
         @variable(m, 0 ≤ xv ≤ 2π)
-        pwaffine(m, xv, dc; kwargs...)
+        dc(xv; kwargs...)
         return count(is_binary, all_variables(m))
     end
     for formulation ∈ (DeltaFormulation(), PhiFormulation())
@@ -450,17 +445,12 @@ end
         # Free optimization finds the minimum and maximum of the function
         m = Model(optimizer)
         @variable(m, 0 ≤ xv ≤ 2π)
-        z = pwaffine(m, xv, dc; formulation, direction = Epigraph())
+        z = dc(xv; formulation, direction = Epigraph())
         @objective(m, Min, z)
         optimize!(m)
         @test value(z) ≈ minimum(zp) atol = 1e-6
         @objective(m, Max, z)
-        @test_throws ArgumentError pwaffine(
-            m,
-            xv,
-            dc;
-            formulation = LambdaFormulation(),
-        )
+        @test_throws ArgumentError dc(xv; formulation = LambdaFormulation())
     end
     # The relaxation of the Δ-formulation never undercuts the function: a
     # cheap segment after a concave kink cannot be reached without filling the
@@ -474,7 +464,7 @@ end
     for formulation ∈ (DeltaFormulation(), PhiFormulation())
         m = Model(optimizer)
         @variable(m, 0 ≤ xv ≤ 4)
-        z = pwaffine(m, xv, g; formulation, direction = Epigraph())
+        z = g(xv; formulation, direction = Epigraph())
         for x̂ ∈ range(0, 4; length = 9)
             c = @constraint(m, xv == x̂)
             @objective(m, Min, z)
@@ -489,18 +479,8 @@ end
     dc2 = approx(f2, DC(), Cluster(planes = 2, rng = StableRNG(1)))
     m = Model()
     @variable(m, -1 ≤ xv[1:2] ≤ 1)
-    @test_throws ArgumentError pwaffine(
-        m,
-        xv,
-        dc2;
-        formulation = DeltaFormulation(),
-    )
-    @test_throws ArgumentError pwaffine(
-        m,
-        xv,
-        dc2;
-        formulation = PhiFormulation(),
-    )
+    @test_throws ArgumentError dc2(xv; formulation = DeltaFormulation())
+    @test_throws ArgumentError dc2(xv; formulation = PhiFormulation())
 end
 
 @testset "Domain and direction" begin
@@ -548,7 +528,7 @@ end
     for formulation ∈ (LambdaFormulation(), DeltaFormulation(), PhiFormulation())
         m = Model(optimizer)
         @variable(m, xv)
-        z = pwaffine(m, xv, pwa; formulation)
+        z = pwa(xv; formulation)
         @constraint(m, xv == 2.0)
         @objective(m, Min, z)
         optimize!(m)
@@ -556,13 +536,13 @@ end
         # Explicit bounds override the domain, and are required without one
         m = Model()
         @variable(m, xv)
-        @test_throws ArgumentError pwaffine(m, xv, g; formulation)
-        pwaffine(m, xv, g; formulation, bounds = [(0, 1)])
+        @test_throws ArgumentError g(xv; formulation)
+        g(xv; formulation, bounds = [(0, 1)])
     end
     # ... and of the big-M selection of a difference of convex function
     m = Model(optimizer)
     @variable(m, xv)
-    z = pwaffine(m, xv, dc)
+    z = dc(xv)
     @constraint(m, xv == 1.5)
     @objective(m, Max, z)
     optimize!(m)
@@ -570,7 +550,7 @@ end
     # The Ψ formulation adds no constraints unless bounds are given
     m = Model()
     @variable(m, xv)
-    z = pwaffine(m, xv, pwa)
+    z = pwa(xv)
     @test num_constraints(m, AffExpr, MOI.LessThan{Float64}) == 0
     @test !has_lower_bound(z)
 
@@ -579,7 +559,7 @@ end
     function solve(fn, x̂, sense; kwargs...)
         m = Model(optimizer)
         @variable(m, 0 ≤ xv ≤ 2π)
-        z = pwaffine(m, xv, fn; kwargs...)
+        z = fn(xv; kwargs...)
         @constraint(m, xv == x̂)
         @objective(m, sense, z)
         optimize!(m)
@@ -592,12 +572,17 @@ end
         z, nb = solve(pwa, x̂, MOI.MIN_SENSE)
         @test z ≈ v atol = 1e-6
         @test nb == 0
+        z, nb = solve(pwa, x̂, MOI.MAX_SENSE; direction = Graph(), formulation = PsiFormulation())
+        @test z ≈ v atol = 1e-6
+        @test nb == 3
+        z, nb = solve(pwa, x̂, MOI.MAX_SENSE; direction = Hypograph(), formulation = PsiFormulation())
+        @test z ≈ v atol = 1e-6
+        @test nb == 3
+        # The default for one variable is the Δ-formulation, with a binary
+        # variable per kink
         z, nb = solve(pwa, x̂, MOI.MAX_SENSE; direction = Graph())
         @test z ≈ v atol = 1e-6
-        @test nb == 3
-        z, nb = solve(pwa, x̂, MOI.MAX_SENSE; direction = Hypograph())
-        @test z ≈ v atol = 1e-6
-        @test nb == 3
+        @test nb == 2
         z, nb = solve(pwa, x̂, MOI.MAX_SENSE; direction = Graph(), formulation = DeltaFormulation())
         @test z ≈ v atol = 1e-6
         @test nb == 2
@@ -605,9 +590,9 @@ end
         w = evaluate(cc, (x̂,))
         @test solve(cc, x̂, MOI.MAX_SENSE)[1] ≈ w atol = 1e-6
         @test solve(cc, x̂, MOI.MAX_SENSE)[2] == 0
-        z, nb = solve(cc, x̂, MOI.MIN_SENSE; direction = Epigraph())
+        z, nb = solve(cc, x̂, MOI.MIN_SENSE; direction = Epigraph(), formulation = PsiFormulation())
         @test z ≈ w atol = 1e-6
         @test nb == 3
     end
-    @test_throws TypeError pwaffine(Model(), (@variable(Model(), 0 ≤ q ≤ 1)), pwa; direction = :graph)
+    @test_throws TypeError pwa((@variable(Model(), 0 ≤ q ≤ 1)); direction = :graph)
 end

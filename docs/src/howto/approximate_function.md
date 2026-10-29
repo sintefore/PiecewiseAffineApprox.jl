@@ -12,7 +12,7 @@ optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
 m = Model(optimizer)
 @variable(m, x)
 pwa = approx(x -> sum(x.^2), [(-1, 1)], Convex(), MILP(optimizer = optimizer, planes=5))
-z = pwaffine(m, x, pwa)
+z = pwa(x)
 
 typeof(z)
 

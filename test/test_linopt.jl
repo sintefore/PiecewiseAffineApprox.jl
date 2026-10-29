@@ -15,7 +15,7 @@
         @variable(m, -1 ≤ x ≤ 3)
         @variable(m, z)
         @objective(m, Min, z)
-        pwaffine(m, x, pwa; z = z, formulation = f())
+        pwa(x; z = z, formulation = f())
         optimize!(m)
         @test termination_status(m) == OPTIMAL
         @test value(x) ≈ x_min[1]
@@ -54,14 +54,7 @@ end
         set_silent(m)
         @variable(m, x[1:2])
         @variable(m, z)
-        pwaffine(
-            m,
-            x,
-            pwa;
-            z = z,
-            formulation = f(),
-            bounds = [(-1, 1), (-1, 1)],
-        )
+        pwa(x; z = z, formulation = f(), bounds = [(-1, 1), (-1, 1)])
         @objective(m, Min, z)
         optimize!(m)
         @test termination_status(m) == OPTIMAL
@@ -83,7 +76,7 @@ function _solve_pwa(pwa::PWAFunc{C}, f, xlo; bounds) where {C}
     m = JuMP.Model(HiGHS.Optimizer)
     set_silent(m)
     @variable(m, x ≥ xlo)
-    z = pwaffine(m, x, pwa; formulation = f(), bounds = bounds)
+    z = pwa(x; formulation = f(), bounds = bounds)
     C == Convex ? @objective(m, Min, z) : @objective(m, Max, z)
     optimize!(m)
     return termination_status(m), value(x), value(z)
@@ -125,7 +118,7 @@ end
     for f ∈ [LambdaFormulation, DeltaFormulation, PhiFormulation]
         m = JuMP.Model()
         @variable(m, x ≥ 0)
-        @test_throws ArgumentError pwaffine(m, x, pwa; formulation = f())
+        @test_throws ArgumentError pwa(x; formulation = f())
     end
 
     # Δ and Φ are only available in 1D
@@ -137,13 +130,7 @@ end
     for f ∈ [DeltaFormulation, PhiFormulation]
         m = JuMP.Model()
         @variable(m, x[1:2])
-        @test_throws ArgumentError pwaffine(
-            m,
-            x,
-            pwa2d;
-            formulation = f(),
-            bounds = [(-1, 1), (-1, 1)],
-        )
+        @test_throws ArgumentError pwa2d(x; formulation = f(), bounds = [(-1, 1), (-1, 1)])
     end
 
     # f(x,y) = max(x, y, 0) has a single vertex at the origin, but with bounds λ covers the box
@@ -151,7 +138,7 @@ end
         m = JuMP.Model(HiGHS.Optimizer)
         set_silent(m)
         @variable(m, -1 ≤ x[1:2] ≤ 1)
-        z = pwaffine(m, x, pwa2d; formulation = f())
+        z = pwa2d(x; formulation = f())
         @constraint(m, x[1] + x[2] ≥ 1.5)
         @objective(m, Min, z)
         optimize!(m)
@@ -178,32 +165,26 @@ end
     @variable(m, x[1:2])
     for f ∈
         [PsiFormulation, LambdaFormulation, DeltaFormulation, PhiFormulation]
-        @test_throws ArgumentError pwaffine(
-            m,
-            x,
-            pwa;
-            formulation = f(),
-            bounds = [(-1, 1)],
-        )
+        @test_throws ArgumentError pwa(x; formulation = f(), bounds = [(-1, 1)])
     end
 
     # Ψ: z is bounded by the function values over the box if bounds are given
     m = JuMP.Model()
     @variable(m, x)
-    z = pwaffine(m, x, pwa)
+    z = pwa(x)
     @test !has_lower_bound(z) && !has_upper_bound(z)
     # (from below only, for a convex function in the epigraph direction)
-    z = pwaffine(m, x, pwa; bounds = [(-1, 1)])
+    z = pwa(x; bounds = [(-1, 1)])
     @test lower_bound(z) ≈ -0.0625
     @test !has_upper_bound(z)
     # A bounded z is not modified, the bounds are added as a constraint instead
     @variable(m, zz ≥ -10)
-    pwaffine(m, x, pwa; z = zz, bounds = [(-1, 1)])
+    pwa(x; z = zz, bounds = [(-1, 1)])
     @test lower_bound(zz) == -10
     @test !has_upper_bound(zz)
     @test !isnothing(constraint_by_name(m, "pwa_3_zbounds"))
     # Concave
-    z = pwaffine(m, x, PWAFunc{Concave,1}(planes); bounds = [(-1, 1)])
+    z = (PWAFunc{Concave,1}(planes))(x; bounds = [(-1, 1)])
     @test !has_lower_bound(z)
     @test upper_bound(z) ≈ 0.0625
 end
@@ -219,7 +200,7 @@ end
         m = JuMP.Model(HiGHS.Optimizer)
         set_silent(m)
         @variable(m, x ≥ 0.8)
-        z = pwaffine(m, x, pwa; formulation = f(), bounds = [(-1, 1)])
+        z = pwa(x; formulation = f(), bounds = [(-1, 1)])
         @test num_variables(m) == 2 + nvars
         @objective(m, Min, z)
         optimize!(m)

@@ -40,19 +40,12 @@
 
     tuple_var = (xvar, yvar)
 
-    y = PWA.pwaffine(
-        m,
-        tuple_var,
-        approx(
-            FunctionEvaluations(mat2tuples(X), z),
-            Convex(),
-            MILP(
-                optimizer = optimizer,
-                planes = np,
-                strict = :outer,
-                metric = :l1,
-            ),
-        );
+    y = (approx(
+        FunctionEvaluations(mat2tuples(X), z),
+        Convex(),
+        MILP(optimizer = optimizer, planes = np, strict = :outer, metric = :l1),
+    ))(
+        tuple_var;
         z = test_f,
     )
 
@@ -75,12 +68,12 @@
 
     tuple_var_conc = (xvar_conc, yvar_conc)
 
-    y_concave = PWA.pwaffine(
-        m,
-        tuple_var_conc,
+    y_concave = approx(
         FunctionEvaluations(mat2tuples(X), z_concave),
         Concave(),
-        MILP(optimizer = optimizer, planes = np, strict = :outer, metric = :l1);
+        MILP(optimizer = optimizer, planes = np, strict = :outer, metric = :l1),
+    )(
+        tuple_var_conc;
         z = f_conc,
     )
 

@@ -433,7 +433,7 @@ _numtype(::Type) = Float64
 
 The box `[(lower, upper), …]` the function was fitted on, with one tuple for
 each variable, or `nothing`. [`approx`](@ref) sets it to the range of the
-data, and [`pwaffine`](@ref) uses it as the default for `bounds`.
+data, and [`add_pwaformulation`](@ref) uses it as the default for `bounds`.
 """
 domain(f::AbstractPWAFunc) = f.domain
 

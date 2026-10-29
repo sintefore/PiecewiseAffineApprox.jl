@@ -29,7 +29,7 @@ m = Model(HiGHS.Optimizer)
 # Create a piecewise linear approximation to x^2 on the interval [-1, 1]
 pwa = approx(x -> x[1]^2, [(-1, 1)], Convex(), MILP(optimizer = HiGHS.Optimizer, planes=5))
 # Add the pwa function to the model
-z = pwaffine(m, x, pwa)
+z = pwa(x)
 # Minimize
 @objective(m, Min, z)
 # Check approximation/solution at x = 0.5
@@ -38,12 +38,12 @@ optimize!(m)
 value(z) # 0.2653
 ```
 
-A non-convex function is approximated as a difference of convex functions, and added to a model in the same way. Here `z` is only minimized, so with `direction = Epigraph()` only the concave part needs binary variables:
+A non-convex function is approximated as a difference of convex functions, and added to a model in the same way. Here `z` is only minimized, so with `direction = PiecewiseAffineApprox.Epigraph()` only the concave part needs binary variables:
 
 ```julia
 dc = approx(sin, [(0, 2π)], DC(), Interpol(optimizer = HiGHS.Optimizer, planes = 3))
 @variable(m, 0 ≤ y ≤ 2π)
-w = pwaffine(m, (y,), dc; direction = Epigraph())
+w = dc(y; direction = PiecewiseAffineApprox.Epigraph())
 ```
 
 To keep dependencies light, PiecewiseAffineApprox does not include plotting by default. If the `Makie` or `Plots` package is loaded

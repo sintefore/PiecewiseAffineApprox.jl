@@ -6,15 +6,15 @@
         # Test with constraints added to existing model
         m = Model()
         @variable(m, x)
-        y = PWA.pwaffine(
-            m,
-            tuple(x),
+        y = approx(
             FunctionEvaluations(
                 [tuple(i.first) for i ∈ points],
                 [i.second for i ∈ points],
             ),
             Convex(),
             MILP(optimizer = optimizer, metric = :l1, planes = 5),
+        )(
+            tuple(x),
         )
         @objective(m, Min, y)
         set_optimizer(m, optimizer)
@@ -29,16 +29,15 @@
         m = Model()
         @variable(m, x)
         @variable(m, test_y)
-        y = PWA.pwaffine(
-            m,
-            tuple(x),
+        y = approx(
             FunctionEvaluations(
                 [tuple(i.first) for i ∈ points],
                 [i.second for i ∈ points],
             ),
             Convex(),
             MILP(optimizer = optimizer, metric = :l1, planes = 5),
-            ;
+        )(
+            tuple(x);
             z = test_y,
         )
         @objective(m, Min, y)
@@ -56,15 +55,15 @@
         ]
             m = Model()
             @variable(m, x)
-            y = PWA.pwaffine(
-                m,
-                tuple(x),
+            y = approx(
                 FunctionEvaluations(
                     [tuple(i.first) for i ∈ points],
                     [i.second for i ∈ points],
                 ),
                 Convex(),
-                met;
+                met,
+            )(
+                tuple(x),
             )
             @objective(m, Min, y)
             set_optimizer(m, optimizer)

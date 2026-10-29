@@ -69,3 +69,7 @@ p = plot(x, f.(x), dc)
 plot(x, f.(x), dc; parts = false)
 ```
 
+An approximation fitted with `approx` records its domain, so it can also be
+plotted on its own, without the data, e.g. `plot(dc)` or `plot(pwa)`. This works
+for functions of one or two variables.
+

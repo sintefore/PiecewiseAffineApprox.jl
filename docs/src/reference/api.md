@@ -31,7 +31,7 @@ domain
 ## Formulations
 
 ```@docs
-PWAFormulation
+PWAMethod
 PsiFormulation
 LambdaFormulation
 DeltaFormulation
@@ -61,6 +61,13 @@ supported_metrics
 supported_strict
 ```
 
+The interface for adding a formulation method, see [Add a formulation](@ref).
+
+```@docs
+formulate!
+record!
+```
+
 ## Functions
 
 ```@docs
@@ -71,8 +78,7 @@ enforce_curvature
 dc_decomposition
 approximation_error
 evaluate
-pwaffine
-add_pwaffine
-PWARecord
+add_pwaformulation
+PWAFormulation
 Formulated
 ```

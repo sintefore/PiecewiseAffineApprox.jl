@@ -7,6 +7,7 @@ using LinearAlgebra
 using Logging
 using Pajarito
 using PiecewiseAffineApprox
+using PiecewiseAffineApprox: Direction, Graph, Epigraph, Hypograph
 using Random
 using StableRNGs
 using Test
