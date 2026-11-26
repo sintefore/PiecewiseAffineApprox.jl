@@ -477,7 +477,8 @@ end
     @test r.details.error ≤ 0.02
     @test r.details.error ≈ approximation_error(r.func, f, :max)
     r = fit(f, Convex(), Progressive(optimizer = optimizer, tolerance = 0.02, strict = :none))
-    @test r.details.converged && r.details.error ≤ 0.02
+    # (the band is met exactly, up to rounding)
+    @test r.details.converged && r.details.error ≤ 0.02 * (1 + 1e-9)
     # The check itself, with a fit that misses the tolerance
     one = approx(f, Convex(), Progressive(optimizer = optimizer, tolerance = 1.0, metric = :max))
     @test length(one.planes) == 1

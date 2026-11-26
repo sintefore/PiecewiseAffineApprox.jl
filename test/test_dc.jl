@@ -613,6 +613,11 @@ end
         s == :outer && @test maximum(d) ≤ 1e-7
         s == :inner && @test minimum(d) ≥ -1e-7
     end
+    # Above the data, the tolerance is a largest deviation whatever the metric
+    # of the algorithm, which the part fitted below its data must then use too
+    r = fit(f1, DC(), Progressive(; optimizer, tolerance = 0.05, strict = :inner))
+    @test maxerr(f1, r.func) ≤ 0.05 * (1 + 1e-6)
+    @test r.metric == :l1 && r.details.converged
     # Also in the mean absolute deviation
     a = Progressive(; optimizer, tolerance = 0.02, metric = :l1)
     r = fit(f1, DC(), a)
@@ -647,6 +652,7 @@ end
     )
     r = fit(f1, DC(), a)
     @test !r.details.converged && r.details.error > 1e-4
+    @test_throws ErrorException fit(f1, DC(), PWA.with(a; unmet = :error))
 
     # Different tolerances for the parts of an Alternating apply to each part
     a = Alternating(
@@ -655,4 +661,49 @@ end
     )
     r = fit(f1, DC(), a)
     @test maxerr(f1, r.func) ≤ 0.15 * (1 + 1e-6)
+end
+
+@testset "Difference of convex fits are independent of the units of the data" begin
+    # The same data in other units: points a x + b, values 1000 z - 3
+    function rescaled(f::FunctionEvaluations{D}) where {D}
+        a, b = [10.0^(i - 2) for i ∈ 1:D], [5.0i for i ∈ 1:D]
+        g = FunctionEvaluations(
+            [Tuple(a .* p .+ b) for p ∈ f.points],
+            1000 .* f.values .- 3,
+        )
+        return g, x -> Tuple(a .* x .+ b)
+    end
+    spread(f) = maximum(f.values) - minimum(f.values)
+    r = StableRNG(1)
+    x = collect(range(-3, 3; length = 60))
+    f1 = FunctionEvaluations(x, sin.(x) .+ 0.02 .* randn(r, 60))
+    pts = [(a, b) for a ∈ range(-1, 1; length = 9) for b ∈ range(-1, 1; length = 9)]
+    f2 = FunctionEvaluations(pts, [sin(2p[1]) * cos(2p[2]) + p[1]^2 for p ∈ pts])
+
+    # The decomposition is unique, also where it is found by a linear program
+    for f ∈ (f1, f2)
+        g, _ = rescaled(f)
+        p, q = dc_decomposition(f, optimizer), dc_decomposition(g, optimizer)
+        @test q.concave.values ./ 1000 ≈ p.concave.values atol = 1e-9 * spread(f)
+    end
+
+    # Fits to a tolerance: ties between planes at a point, and between equally
+    # good planes, are not decided by rounding errors
+    for (f, algs) ∈ (
+        (f1, ((:none, :max), (:outer, :max), (:outer, :l1))),
+        (f2, ((:outer, :l1),)),
+    )
+        g, to = rescaled(f)
+        for (s, m) ∈ algs
+            alg(tol) = Progressive(; optimizer, tolerance = tol, metric = m, strict = s)
+            tol = 0.05 * spread(f)
+            p, q = approx(f, DC(), alg(tol)), approx(g, DC(), alg(1000tol))
+            @test PWA._planes(p) == PWA._planes(q)
+            dev = maximum(
+                abs(evaluate(p, x) - (evaluate(q, to(x)) + 3) / 1000) for
+                x ∈ f.points
+            )
+            @test dev ≤ 1e-8 * spread(f)
+        end
+    end
 end

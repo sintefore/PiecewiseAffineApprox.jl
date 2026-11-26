@@ -277,14 +277,17 @@ function _full_order_plane(X, z, k, metric, optimizer; slack = 0.0)
     # (up to the given slack)
     r = [dz[l] - sum(a[i] * dX[i, l] for i ∈ 1:D) for l ∈ 1:N]
     @constraint(m, r .≥ -slack)
+    # Slightly different weights of the points make the plane unique, see
+    # `_generic_weights`
+    w = _generic_weights(N)
     if metric == :l1
-        @objective(m, Min, sum(r))
+        @objective(m, Min, sum(w[l] * r[l] for l ∈ 1:N))
     elseif metric ∈ (:l2, :rms)
         @objective(m, Min, sum(rₗ^2 for rₗ ∈ r))
     elseif metric == :max
         @variable(m, t)
         @constraint(m, t .≥ r)
-        @objective(m, Min, t)
+        @objective(m, Min, t + 1e-6 * sum(w[l] * r[l] for l ∈ 1:N) / N)
     end
     optimize!(m)
     if termination_status(m) ∈ (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED)
@@ -361,11 +364,16 @@ end
 function _envelope_support(f::FunctionEvaluations{D}, optimizer) where {D}
     X = [pt[i] for i ∈ 1:D, pt ∈ f.points]
     z = f.values
+    # The centroid of a group of grid points is often exactly at a data point
+    # or between two, where the envelope has a kink and several supporting
+    # planes. A small fixed offset then selects the same one whatever the
+    # rounding errors are (the points are normalized to the order of one).
+    offset = [1e-6 * (mod(i * 0.6180339887498949, 1.0) + 0.5) for i ∈ 1:D]
     if D == 1
         hx, hz = _lower_hull(X[1, :], z)
         return function (c)
             length(hx) == 1 && return Plane((0.0,), hz[1])
-            j = clamp(searchsortedlast(hx, c[1]), 1, length(hx) - 1)
+            j = clamp(searchsortedlast(hx, c[1] + offset[1]), 1, length(hx) - 1)
             a = (hz[j+1] - hz[j]) / (hx[j+1] - hx[j])
             return Plane((a,), hz[j] - a * hx[j])
         end
@@ -382,7 +390,7 @@ function _envelope_support(f::FunctionEvaluations{D}, optimizer) where {D}
     return function (c)
         yield() # Avoid blocking of main thread causing hangs in some cases, see
         # https://github.com/sintefore/PiecewiseAffineApprox.jl/issues/11
-        @objective(m, Max, sum(a[i] * c[i] for i ∈ 1:D) + b)
+        @objective(m, Max, sum(a[i] * (c[i] + offset[i]) for i ∈ 1:D) + b)
         optimize!(m)
         if !is_solved_and_feasible(m; allow_local = true)
             error(
@@ -424,7 +432,11 @@ function _group_fitter(
                 bₐ = b(a)
                 r = (max(z[l] - a * x[l] - bₐ, 0.0) for l ∈ g)
                 agg = metric == :max ? maximum(r) : sum(abs2, r)
-                return agg + μ * sum(r) / length(g)
+                # The mean gap to all points makes the slope unique when a
+                # range of slopes fits the group equally well, e.g. for a
+                # single point, where rounding errors would otherwise decide
+                all = sum(z[l] - a * x[l] - bₐ for l ∈ eachindex(z)) / length(z)
+                return agg + μ * sum(r) / length(g) + μ^2 * all
             end
             a = _golden_section(obj, minimum(slopes), maximum(slopes))
             return Plane((a,), b(a))
@@ -439,7 +451,17 @@ function _group_fitter(
         plane(l) = sum(a[i] * X[i, l] for i ∈ 1:D) + b
         @constraint(m, [l ∈ eachindex(z)], plane(l) ≤ z[l])
         @constraint(m, [l ∈ g], t ≥ z[l] - plane(l))
-        @objective(m, Min, t + μ * sum(z[l] - plane(l) for l ∈ g) / length(g))
+        # The mean gap to all points makes the plane unique when several fit
+        # the group equally well, see the one-dimensional case
+        # (with terms large enough to count at the tolerances of a solver)
+        w = _generic_weights(length(z); spread = 0.2)
+        @objective(
+            m,
+            Min,
+            t +
+            μ * sum(w[l] * (z[l] - plane(l)) for l ∈ g) / length(g) +
+            0.1μ * sum(w[l] * (z[l] - plane(l)) for l ∈ eachindex(z)) / length(z)
+        )
         optimize!(m)
         if !is_solved_and_feasible(m; allow_local = true)
             error(
@@ -494,7 +516,16 @@ end
 
 # The hyperplane being active at the point x for a convex pwa function
 function _active_plane(pwl::PWAFunc{Convex,D}, x) where {D}
-    return argmax(collect(evaluate(p, x) for p ∈ pwl.planes))
+    return _first_argmax(collect(evaluate(p, x) for p ∈ pwl.planes))
+end
+
+# The index of the first value within a small tolerance of the maximum. The
+# values are of normalized data, of the order of one. A point where planes
+# meet, and equal gaps, are ties that would otherwise be decided by rounding
+# errors, which makes the result depend on the units of the data.
+function _first_argmax(values; τ = 1e-6)
+    m = maximum(values)
+    return findfirst(≥(m - τ), values)
 end
 
 # Map data points to the active plane for the piecewise approximation
@@ -518,7 +549,8 @@ function _allocation_improvement(
     prev_obj = Inf64
     fit(U, p) = _reduced_order_pwa(f, p, U, optimizer; support, fitter, metric)
     obj, pwa_red = fit(U, p)
-    while obj < prev_obj
+    # An improvement at the level of the rounding errors does not count
+    while obj < prev_obj - 1e-8 * max(1.0, abs(obj))
         prev_obj = obj
         U = _update_allocation(f, pwa_red)
         obj, pwa_red = fit(U, p)
@@ -534,7 +566,7 @@ end
 # the point is allocated to it in the updated allocation.
 function _increase_order(f::FunctionEvaluations, pwa_red, pwa)
     s = [z - evaluate(pwa_red, x) for (x, z) ∈ f]
-    push!(pwa_red.planes, pwa.planes[argmax(s)])
+    push!(pwa_red.planes, pwa.planes[_first_argmax(s)])
     return _update_allocation(f, pwa_red)
 end
 
@@ -678,7 +710,7 @@ function _progressive_band(
         # largest gaps, without refitting, until the total gap has decreased
         φ₀ = φ
         while maximum(gaps) > ε && φ ≥ φ₀ * (1 - 1e-6)
-            push!(planes, _band_plane(X, v, argmax(gaps), optimizer))
+            push!(planes, _band_plane(X, v, _first_argmax(gaps), optimizer))
             gaps = [
                 max(v[l] - maximum(evaluate(q, X[:, l]) for q ∈ planes), 0.0)
                 for l ∈ 1:N
@@ -697,7 +729,10 @@ end
 # Allocate each point to the plane that is active at the point, and remove the
 # planes that are not active at any point
 function _active_allocation(X, planes)
-    U = [argmax([evaluate(q, X[:, l]) for q ∈ planes]) for l ∈ axes(X, 2)]
+    U = [
+        _first_argmax([evaluate(q, X[:, l]) for q ∈ planes]) for
+        l ∈ axes(X, 2)
+    ]
     active = sort(unique(U))
     index = Dict(k => i for (i, k) ∈ enumerate(active))
     return [index[k] for k ∈ U], planes[active]
@@ -756,7 +791,15 @@ function _band_lp(
     @variable(m, t[1:N])
     @constraint(m, t .≥ v .- z)
     @constraint(m, t .≥ z .- v)
-    @objective(m, Min, sum(v[l] - plane(U[l], l) for l ∈ 1:N) + μ * sum(t))
+    # Slightly different weights of the points make the optimum unique, see
+    # `_generic_weights`
+    w, w′ = _generic_weights(N, 1), _generic_weights(N, 2)
+    @objective(
+        m,
+        Min,
+        sum(w[l] * (v[l] - plane(U[l], l)) for l ∈ 1:N) +
+        μ * sum(w′[l] * t[l] for l ∈ 1:N)
+    )
     while true
         optimize!(m)
         is_solved_and_feasible(m; allow_local = true) || break
@@ -795,6 +838,18 @@ function _band_lp(
     planes = [Plane(Tuple(value.(a[k, :])), value(b[k])) for k ∈ 1:p]
     gaps = [max(v̂[l] - evaluate(planes[U[l]], X[:, l]), 0.0) for l ∈ 1:N]
     return v̂, planes, gaps
+end
+
+# Weights close to one for N points, different for each point (a low
+# discrepancy sequence, with a different one for each `k`). A linear program
+# over the points often has several optimal solutions, e.g. for symmetric data
+# or when a point can be allocated to either of two planes, and rounding errors
+# then decide which of them the solver returns, so that the result depends on
+# the units of the data. With these weights in the objective the optimum is
+# unique in general, at a negligible change of the objective.
+function _generic_weights(N, k = 1; spread = 1e-3)
+    α = (0.6180339887498949, 0.4142135623730951, 0.7320508075688772)[k]
+    return [1 + spread * (mod(l * α, 1.0) - 0.5) for l ∈ 1:N]
 end
 
 # Constraints ensuring that the one-dimensional points (x, v), with distinct x,

@@ -109,11 +109,16 @@ function _dc_approx(
     iterations,
 ) where {D}
     # The tolerance is found before the strictness of the concave algorithm is
-    # interchanged, which can change the metric of its tolerance to :max (the
-    # band of Progressive). A part within its tolerance in :max is within it
-    # in the other metrics as well, so the division remains valid.
+    # interchanged, which can change the metric of its tolerance: Progressive
+    # measures it in :max within a band and in its `metric` below the data. A
+    # part within its tolerance in :max is within it in the other metrics as
+    # well, but not the other way around, so the concave part is then fitted
+    # in :max too.
     δ, δmetric = _dc_tolerance(ag, ah)
     ah = _dc_concave_algorithm(ah)
+    if δmetric == :max && tolerance_metric(ah) != :max
+        ah = with(ah; metric = :max)
+    end
     metric = _dc_metric(ag)
     x = f.points
     z = f.values
@@ -156,7 +161,10 @@ function _dc_approx(
             # once with the unused tolerance added to its own, and the refit
             # is kept if it has fewer planes and the sum still meets the
             # tolerance.
-            met(g, h) = approximation_error(DCFunc(g, h), f, δmetric) ≤ δ
+            # (a part often meets its tolerance exactly, so the comparison
+            # allows for rounding errors)
+            δ⁺ = δ + 1e-6 * (δ + _value_range(z))
+            met(g, h) = approximation_error(DCFunc(g, h), f, δmetric) ≤ δ⁺
             if all(converged) && met(g, h)
                 for convex ∈ (false, true)
                     slack = δ - approximation_error(DCFunc(g, h), f, δmetric)
@@ -196,6 +204,12 @@ function _dc_approx(
         # The tolerance is reported for the sum of the parts
         e = approximation_error(best, f, δmetric)
         met = e ≤ δ + 1e-6 * (δ + _value_range(z))
+        # Reported as the algorithm says, also when each part met its share
+        met || _unmet_tolerance(
+            _option(ag, :unmet, :warn),
+            "The difference of convex approximation does not meet the " *
+            "tolerance $δ (error $e in :$δmetric)",
+        )
         return best, (; details..., converged = met, error = e)
     end
     isempty(converged) && return best, details
@@ -299,7 +313,10 @@ function dc_decomposition(
         @variable(m, t[1:N])
         @constraint(m, t .≥ r)
         @constraint(m, t .≥ -r)
-        @objective(m, Min, sum(t))
+        # Slightly different weights of the points make the decomposition
+        # unique, see `_generic_weights`
+        w = _generic_weights(N)
+        @objective(m, Min, sum(w[l] * t[l] for l ∈ 1:N))
     end
 
     while true
