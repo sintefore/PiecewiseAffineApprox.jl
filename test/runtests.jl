@@ -31,6 +31,7 @@ const qp_optimizer = optimizer_with_attributes(
 @testset "PiecewiseAffineApprox" begin
     nologger = ConsoleLogger(devnull, Logging.Debug)
     with_logger(nologger) do
+        include("test_aqua.jl")
         include("test_types.jl")
         include("concave.jl")
         include("testquadapprox.jl")
@@ -39,7 +40,7 @@ const qp_optimizer = optimizer_with_attributes(
         include("test_2D_convexapprox.jl")
         include("test_big_M.jl")
         include("test_cluster.jl")
-        include("test_structtype.jl")
+        include("test_json.jl")
         include("test_kazda_li.jl")
         include("test_dc.jl")
         include("test_everywhere.jl")

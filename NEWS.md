@@ -1,6 +1,77 @@
 PiecewiseAffineApprox release notes
 ===================================
 
+Version 0.7.0 (unreleased)
+--------------------------
+Breaking:
+- Remove the JSON3 extension and the dependency on StructTypes. Serialization
+  is provided by the JSON extension, which reads and writes the same file format
+- Deprecate `pwaffine`: add an approximation to a model by calling it, `f(x)`,
+  or with `add_pwaformulation`
+- `Cluster` uses `metric = :l2` by default
+- Remove the `:knots` convexify option of `Interpol`
+
+New features:
+- Difference of convex approximations of non-convex functions with `DC()` and
+  `DCFunc`, and `dc_decomposition`
+- Common fitting interface with `ApproximationAlgorithm`, `fit` and `FitResult`
+- `Select` to choose the number of planes by tolerance, AIC/BIC or cross
+  validation, `Restart` for randomized algorithms and `Alternating`
+- `approximation_error` and `error_bounds`, and one-sided approximations over
+  the whole domain with `everywhere = true`
+- Formulations `PsiFormulation`, `LambdaFormulation`, `DeltaFormulation` and
+  `PhiFormulation` (with Greek aliases), recorded in a `PWAFormulation` that
+  can be rolled back, and the `formulate!`/`record!` interface for new ones
+- Fitted functions record their domain, which is used as default bounds and
+  for plotting without data
+- Vertex enumeration and plotting of 2D functions with their vertices
+- Precompilation workload
+
+Improvements:
+- `Interpol` uses exact dynamic programming for knot selection, with options
+  to convexify the data and adjust values or breakpoints
+- `Cluster` normalizes the data, has a closed-form least squares fit for `:l2`,
+  an `rng` option for reproducible results and an optional optimizer
+- `MILP` solves on normalized data with tighter big-M values and warm starts
+- `Progressive` and `FullOrder` support two-sided and inner error bands, lazy
+  constraint generation and results independent of the scale of the data
+- Replace the dependency on Distributions with an internal sampler
+
+Version 0.6.6 (2026-03-26)
+--------------------------
+- Support Makie 0.24 (#32)
+
+Version 0.6.5 (2026-03-26)
+--------------------------
+- Serialization with JSON v1 (#27)
+
+Version 0.6.4 (2025-06-23)
+--------------------------
+- Fix strictness for concave functions (#26)
+
+Version 0.6.3 (2025-02-18)
+--------------------------
+- Serialization of approximations with StructTypes and a JSON3 extension
+- Fix printing of concave functions
+- Support newer Makie versions
+
+Version 0.6.2 (2024-10-22)
+--------------------------
+- Fix hang in the full order fit of `Progressive`
+- Log with `@debug` instead of `@info`
+
+Version 0.6.1 (2024-07-14)
+--------------------------
+- Doctests for the documentation
+- Fix plot of the active segment
+
+Version 0.6.0 (2024-07-14)
+--------------------------
+- Documentation with Documenter
+- Rename the algorithm types and the `pen`/`penalty` options to `metric`
+- `enforce_curvature` to make data convex or concave
+- Improved printing of function evaluations and approximations
+
 Version 0.5.0 (2024-05-31)
 --------------------------
 - Using affine rather than linear in naming

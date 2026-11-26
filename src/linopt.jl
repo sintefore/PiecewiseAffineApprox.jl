@@ -95,9 +95,13 @@ struct DeltaFormulation <: PWAMethod end
 struct PhiFormulation <: PWAMethod end
 
 # Greek aliases, following the notation of Coffrin et al. (2021)
+"Alias for [`PsiFormulation`](@ref), in the notation of Coffrin et al. (2021)."
 const Ψ_Formulation = PsiFormulation
+"Alias for [`LambdaFormulation`](@ref), in the notation of Coffrin et al. (2021)."
 const λ_Formulation = LambdaFormulation
+"Alias for [`DeltaFormulation`](@ref), in the notation of Coffrin et al. (2021)."
 const Δ_Formulation = DeltaFormulation
+"Alias for [`PhiFormulation`](@ref), in the notation of Coffrin et al. (2021)."
 const Φ_Formulation = PhiFormulation
 
 const VarOrAff = Union{JuMP.VariableRef,JuMP.AffExpr}
@@ -437,8 +441,14 @@ function formulate!(
     )
 end
 
-# Deprecated in version 0.7: functions are added by calling them, `f(x)`, or
-# with add_pwaformulation
+"""
+    pwaffine(m::JuMP.Model, x, f; kwargs...)
+    pwaffine(m::JuMP.Model, x, data::FunctionEvaluations, c::Curvature, a::ApproximationAlgorithm; kwargs...)
+
+Deprecated in version 0.7: add an approximation `f` to a model by calling it,
+`f(x)`, or with [`add_pwaformulation`](@ref), and fit data first with
+[`approx`](@ref).
+"""
 function pwaffine(m::JuMP.Model, x, f; kwargs...)
     Base.depwarn(
         "`pwaffine(m, x, f)` is deprecated, use `f(x)` or " *

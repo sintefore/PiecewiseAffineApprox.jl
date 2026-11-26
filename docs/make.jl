@@ -45,9 +45,10 @@ Documenter.makedocs(
         assets = String[],
     ),
     doctest = true,
-    # modules = [PiecewiseAffineApprox],
+    modules = [PiecewiseAffineApprox],
+    checkdocs = :exports,
     pages = pages,
-    remotes = nothing,
+    repo = Remotes.GitHub("sintefore", "PiecewiseAffineApprox.jl"),
 )
 
 Documenter.deploydocs(;

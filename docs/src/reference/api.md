@@ -36,6 +36,10 @@ PsiFormulation
 LambdaFormulation
 DeltaFormulation
 PhiFormulation
+Ψ_Formulation
+λ_Formulation
+Δ_Formulation
+Φ_Formulation
 Direction
 Graph
 Epigraph
@@ -84,4 +88,10 @@ evaluate
 add_pwaformulation
 PWAFormulation
 Formulated
+```
+
+## Deprecated
+
+```@docs
+pwaffine
 ```

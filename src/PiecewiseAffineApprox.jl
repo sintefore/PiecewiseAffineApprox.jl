@@ -3,7 +3,6 @@ module PiecewiseAffineApprox
 using Combinatorics
 using JuMP
 using LinearAlgebra
-using Printf
 using Random
 using StableRNGs
 using Statistics

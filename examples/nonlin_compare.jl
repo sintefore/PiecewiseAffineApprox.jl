@@ -7,15 +7,15 @@ using Hypatia
 using Random
 
 using PiecewiseAffineApprox
-PWA = PiecewiseAffineApprox
 optimizer = HiGHS.Optimizer
 
 f(x) = x[1]^2 + x[2]^2
-vals = PWA._sample_uniform(f, [(-1, 1), (-1, 1)], 10)
 pwa = approx(
-    vals,
+    f,
+    [(-1, 1), (-1, 1)],
     Convex(),
-    Cluster(optimizer = optimizer, planes = 10, metric = :l2),
+    Cluster(optimizer = optimizer, planes = 10, metric = :l2);
+    nsamples = 10,
 )
 
 struct Instance
@@ -38,7 +38,7 @@ function linear_model(instance)
     @variable(model, y[I])
     z = []
     for i ∈ I
-        zi = PWA.pwaffine(model, [x[i], y[i]], instance.pwa)
+        zi = instance.pwa([x[i], y[i]])
         @constraint(model, zi >= x[i] + y[i] + 2 + instance.rnd[i])
         push!(z, zi)
     end
