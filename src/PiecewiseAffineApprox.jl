@@ -7,7 +7,6 @@ using Printf
 using Random
 using StableRNGs
 using Statistics
-using StructTypes
 using Base.Threads: @spawn
 
 include("types.jl")
@@ -21,7 +20,6 @@ include("kazda_li.jl")
 include("interpolation.jl")
 include("dcapprox.jl")
 include("everywhere.jl")
-include("struct_types.jl")
 
 export Convex, Concave, DC
 export MILP, Cluster, Interpol, Alternating, Select, Restart

@@ -47,12 +47,18 @@ end
         PWAFunc{Concave,2}([Plane((0.5, 0.5), 0.0)]),
     )
     tmp = mktempdir()
-    fn = joinpath(tmp, "dc3.json")
-    JSON3.write(fn, f)
-    @test JSON3.read(fn, DCFunc) == f
     fn = joinpath(tmp, "dc.json")
     JSON.json(fn, f)
     @test JSON.parsefile(fn, DCFunc) == f
+    # A part without planes
+    for (i, g) ∈ enumerate((
+        DCFunc(PWAFunc{Convex,1}([Plane((1.0,), 0.0)]), PWAFunc{Concave,1}()),
+        DCFunc(PWAFunc{Convex,1}(), PWAFunc{Concave,1}([Plane((1.0,), 0.0)])),
+    ))
+        fn = joinpath(tmp, "part$i.json")
+        JSON.json(fn, g)
+        @test JSON.parsefile(fn, DCFunc) == g
+    end
 end
 
 @testset "DC decomposition" begin
@@ -512,16 +518,10 @@ end
 
     # Serialization keeps the domain, and files without one can be read
     tmp = mktempdir()
-    # (one file per object, as a file read by JSON3 stays memory mapped)
-    for (name, write, read) ∈ (
-        ("a", JSON3.write, (fn, T) -> JSON3.read(fn, T)),
-        ("b", JSON.json, (fn, T) -> JSON.parsefile(fn, T)),
-    )
-        for (i, (obj, T)) ∈ enumerate(((pwa, PWAFunc), (dc, DCFunc), (g, PWAFunc)))
-            fn = joinpath(tmp, "$(name)$(i).json")
-            write(fn, obj)
-            @test read(fn, T) == obj
-        end
+    for (i, (obj, T)) ∈ enumerate(((pwa, PWAFunc), (dc, DCFunc), (g, PWAFunc)))
+        fn = joinpath(tmp, "b$(i).json")
+        JSON.json(fn, obj)
+        @test JSON.parsefile(fn, T) == obj
     end
 
     # The domain is the default bounds of the formulations that need bounds
