@@ -20,6 +20,34 @@ typeof(z)
 VariableRef (alias for GenericVariableRef{Float64})
 ```
 
+## Approximations on one side of the function
+
+With `strict = :outer`, the approximation of a convex function lies below the
+sampled values, and with `strict = :inner` above them (interchanged for concave
+functions). Between the samples it can still cross the function. With
+`everywhere = true` it stays on its side over the whole box, as needed for a
+valid relaxation, a bound or a conservative constraint:
+
+```jldoctest
+using PiecewiseAffineApprox, HiGHS, JuMP
+optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
+
+algorithm = Progressive(; optimizer, tolerance = 0.05, metric = :max, strict = :inner)
+r = fit(x -> x[1]^2, [(-1, 1)], Convex(), algorithm; everywhere = true)
+b = r.details.bounds
+b.below ≤ 0, round(b.above; digits = 3)
+
+# output
+(true, 0.054)
+```
+
+The function must be convex or concave on the box as stated, which is used to
+find where the approximation is furthest on the wrong side, and its planes are
+shifted by that amount. Here the approximation is above ``x^2`` everywhere, by
+at most 0.054: the tolerance at the samples plus the shift. `bounds` are the
+largest deviations over the box, see [`error_bounds`](@ref), which also gives
+them for any convex or concave approximation of a function.
+
 ## Non-convex functions
 
 A function that is neither convex nor concave is approximated with `DC()` as a
@@ -40,3 +68,7 @@ length(dc.convex.planes), length(dc.concave.planes)
 ```
 
 Use `Alternating` to fit the two parts with different algorithms.
+
+A tolerance, as in `Progressive` or `Select` with `criterion = :tolerance`,
+applies to the approximation as a whole: it is divided between the two parts
+so that their sum is within the tolerance of the data.

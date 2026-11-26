@@ -596,3 +596,63 @@ end
     end
     @test_throws TypeError pwa((@variable(Model(), 0 ≤ q ≤ 1)); direction = :graph)
 end
+
+@testset "A tolerance applies to the difference of convex approximation as a whole" begin
+    maxerr(d, dc) = approximation_error(dc, d, :max)
+    x = collect(range(-2, 2; length = 101))
+    f1 = FunctionEvaluations(x, sin.(3 .* x) .+ x .^ 2)
+    pts = [(a, b) for a ∈ range(-1, 1; length = 9) for b ∈ range(-1, 1; length = 9)]
+    f2 = FunctionEvaluations(pts, [sin(2p[1]) * cos(2p[2]) for p ∈ pts])
+    for (data, tol) ∈ ((f1, 0.1), (f1, 0.03), (f2, 0.04)), s ∈ (:outer, :none, :inner)
+        a = Progressive(; optimizer, tolerance = tol, metric = :max, strict = s)
+        r = fit(data, DC(), a)
+        @test maxerr(data, r.func) ≤ tol * (1 + 1e-6)
+        @test r.details.converged
+        @test r.details.error ≈ maxerr(data, r.func)
+        d = [evaluate(r.func, p) - z for (p, z) ∈ data]
+        s == :outer && @test maximum(d) ≤ 1e-7
+        s == :inner && @test minimum(d) ≥ -1e-7
+    end
+    # Also in the mean absolute deviation
+    a = Progressive(; optimizer, tolerance = 0.02, metric = :l1)
+    r = fit(f1, DC(), a)
+    @test approximation_error(r.func, f1, :l1) ≤ 0.02 * (1 + 1e-6)
+    @test r.metric == :l1 && r.details.converged
+
+    # Selection of the number of planes by tolerance
+    s = Select(
+        Cluster(planes = 12, rng = StableRNG(1));
+        criterion = :tolerance,
+        tolerance = 0.05,
+        metric = :max,
+    )
+    @test PWA.tolerance(s) == 0.05 && PWA.tolerance_metric(s) == :max
+    @test PWA.with(s; tolerance = 0.1).tolerance == 0.1
+    r = fit(f1, DC(), s)
+    @test maxerr(f1, r.func) ≤ 0.05 * (1 + 1e-6) && r.details.converged
+    @test isnothing(PWA.tolerance(Cluster(planes = 3)))
+    @test isnothing(PWA.tolerance(Select(Cluster(planes = 3))))
+    i = Interpol(planes = 10, selection = :tolerance, tolerance = 0.05, metric = :max; optimizer)
+    @test PWA.tolerance(i) == 0.05
+    r = fit(f1, DC(), i)
+    @test maxerr(f1, r.func) ≤ 0.05 * (1 + 1e-6)
+
+    # A tolerance that cannot be met is reported for the whole
+    a = Select(
+        Cluster(planes = 2, rng = StableRNG(1));
+        criterion = :tolerance,
+        tolerance = 1e-4,
+        metric = :max,
+        unmet = :ignore,
+    )
+    r = fit(f1, DC(), a)
+    @test !r.details.converged && r.details.error > 1e-4
+
+    # Different tolerances for the parts of an Alternating apply to each part
+    a = Alternating(
+        convex = Progressive(; optimizer, tolerance = 0.05, metric = :max),
+        concave = Progressive(; optimizer, tolerance = 0.1, metric = :max),
+    )
+    r = fit(f1, DC(), a)
+    @test maxerr(f1, r.func) ≤ 0.15 * (1 + 1e-6)
+end

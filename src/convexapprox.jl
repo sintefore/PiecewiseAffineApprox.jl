@@ -107,6 +107,22 @@ Additional keyword arguments:
     the optimization problem grows with the number of points,
   - [`Cluster`](@ref) and [`Interpol`](@ref): `3 * planes` in each dimension,
   - other algorithms: about 100 points in total.
+- `everywhere`: with `true`, the `strict` option of the algorithm holds over
+  the whole box and not only at the sampled points: with `:outer` the
+  approximation of a convex function lies below the function everywhere, and
+  with `:inner` above it (interchanged for concave functions). The function
+  must be convex or concave as given by `c` on the box, which is not checked;
+  `DC()` is not supported. The planes are shifted by the largest amount
+  the approximation is on the wrong side. With `refinements > 0` (default 0),
+  the approximation is first refitted up to that many times with the points
+  where it is on the wrong side added to the data, which can give a smaller
+  shift at the cost of the refits, and of more planes for an algorithm with a
+  tolerance. The details
+  of the [`FitResult`](@ref) then have `bounds`, the largest deviations from
+  the function over the box (see [`error_bounds`](@ref), which also describes
+  how the deviations are found and when they are exact), the largest `shift`
+  and the number of `refinements`. With `strict = :none` only the `bounds` are
+  added.
 """
 function approx(
     f::Function,
@@ -114,8 +130,9 @@ function approx(
     c::Curvature,
     a::ApproximationAlgorithm;
     nsamples = _default_samples(a, length(bbox)),
+    kwargs...,
 )
-    return fit(f, bbox, c, a; nsamples).func
+    return fit(f, bbox, c, a; nsamples, kwargs...).func
 end
 
 function fit(
@@ -124,9 +141,13 @@ function fit(
     c::Curvature,
     a::ApproximationAlgorithm;
     nsamples = _default_samples(a, length(bbox)),
+    everywhere::Bool = false,
+    refinements::Int = 0,
 )
     nsamples ≥ 2 || throw(ArgumentError("nsamples must be at least 2"))
-    return fit(_sample_uniform(f, bbox, nsamples), c, a)
+    data = _sample_uniform(f, bbox, nsamples)
+    everywhere || return fit(data, c, a)
+    return _fit_everywhere(f, bbox, data, c, a, refinements)
 end
 
 # Default number of samples in each of D dimensions

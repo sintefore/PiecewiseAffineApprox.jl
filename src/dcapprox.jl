@@ -29,7 +29,10 @@ The algorithm `a` is used for both parts, as described for
 `a.concave_planes` in the concave part for the algorithms that have these
 options. Use `Alternating` to fit the parts with different algorithms. The
 `strict` option of the algorithm applies to the approximation as a whole: with
-`:outer` it lies below the data and with `:inner` above it.
+`:outer` it lies below the data and with `:inner` above it. A `tolerance` of the
+algorithm, see [`tolerance`](@ref), also applies to the approximation as a
+whole: it is divided between the two parts, and `converged` and `error` in the
+details of the [`FitResult`](@ref) refer to the sum of the parts.
 """
 function fit(
     input::FunctionEvaluations{D},
@@ -105,6 +108,11 @@ function _dc_approx(
     optimizer,
     iterations,
 ) where {D}
+    # The tolerance is found before the strictness of the concave algorithm is
+    # interchanged, which can change the metric of its tolerance to :max (the
+    # band of Progressive). A part within its tolerance in :max is within it
+    # in the other metrics as well, so the division remains valid.
+    δ, δmetric = _dc_tolerance(ag, ah)
     ah = _dc_concave_algorithm(ah)
     metric = _dc_metric(ag)
     x = f.points
@@ -131,8 +139,40 @@ function _dc_approx(
         # The split uses the default metric (a linear program), independent
         # of the metric of the fits
         parts = dc_decomposition(f, optimizer)
-        g = part(parts.convex, Convex(), ag)
-        h = part(parts.concave, Concave(), ah)
+        if isnothing(δ)
+            g = part(parts.convex, Convex(), ag)
+            h = part(parts.concave, Concave(), ah)
+        else
+            # A tolerance applies to the sum of the parts, whose error is at
+            # most the sum of the errors of the parts in all metrics. The
+            # convex part gets half of it, and the concave part what the
+            # convex part did not use.
+            g = part(parts.convex, Convex(), with(ag; tolerance = δ / 2))
+            e₉ = approximation_error(g, parts.convex, δmetric)
+            δₕ = max(δ - e₉, δ / 4)
+            h = part(parts.concave, Concave(), with(ah; tolerance = δₕ))
+            # The largest errors of the parts rarely coincide, so the sum is
+            # usually well within the tolerance. Each part is then refitted
+            # once with the unused tolerance added to its own, and the refit
+            # is kept if it has fewer planes and the sum still meets the
+            # tolerance.
+            met(g, h) = approximation_error(DCFunc(g, h), f, δmetric) ≤ δ
+            if all(converged) && met(g, h)
+                for convex ∈ (false, true)
+                    slack = δ - approximation_error(DCFunc(g, h), f, δmetric)
+                    slack > 0.05δ || break
+                    if convex
+                        r = fit(parts.convex, Convex(), with(ag; tolerance = δ / 2 + slack))
+                        ok = _planes(r.func) < _planes(g) && met(r.func, h)
+                        ok && (g = r.func)
+                    else
+                        r = fit(parts.concave, Concave(), with(ah; tolerance = δₕ + slack))
+                        ok = _planes(r.func) < _planes(h) && met(g, r.func)
+                        ok && (h = r.func)
+                    end
+                end
+            end
+        end
     end
     best = DCFunc(g, h)
     eᵇᵉˢᵗ = approximation_error(best, f, metric)
@@ -152,8 +192,27 @@ function _dc_approx(
         eᵖʳᵉᵛ = e
     end
     details = (refits = length(errors) - 1, errors = errors)
+    if !isnothing(δ)
+        # The tolerance is reported for the sum of the parts
+        e = approximation_error(best, f, δmetric)
+        met = e ≤ δ + 1e-6 * (δ + _value_range(z))
+        return best, (; details..., converged = met, error = e)
+    end
     isempty(converged) && return best, details
     return best, (; details..., converged = all(converged))
+end
+
+_value_range(z) = isempty(z) ? 0.0 : maximum(z) - minimum(z)
+
+# The tolerance of a difference of convex approximation and its metric, when
+# both parts are fitted to the same tolerance, and otherwise nothing: the
+# tolerances of the two algorithms of an Alternating then apply to each part
+function _dc_tolerance(ag::ApproximationAlgorithm, ah::ApproximationAlgorithm)
+    δ = tolerance(ag)
+    (isnothing(δ) || δ ≤ 0) && return nothing, nothing
+    m = tolerance_metric(ag)
+    (tolerance(ah) == δ && tolerance_metric(ah) == m) || return nothing, nothing
+    return δ, m
 end
 
 # Whether the decomposition can be computed without an optimizer: for

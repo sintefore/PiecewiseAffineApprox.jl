@@ -54,6 +54,8 @@ concave_planes
 metric
 strict
 optimizer
+tolerance
+tolerance_metric
 with
 supported_dimensions
 requires_convex_data
@@ -77,8 +79,9 @@ FitResult
 enforce_curvature
 dc_decomposition
 approximation_error
+error_bounds
 evaluate
 add_pwaformulation
 PWAFormulation
 Formulated
-```
+```

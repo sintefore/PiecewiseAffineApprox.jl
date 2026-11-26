@@ -683,6 +683,7 @@ function _nnls(A, b; maxiter = 3size(A, 2) + 10)
 end
 
 supported_dimensions(::Interpol) = 1:1
+tolerance(a::Interpol) = a.selection == :tolerance ? a.tolerance : nothing
 
 function _fit(a::Interpol, input::FunctionEvaluations{1})
     a = _validate(a)

@@ -915,6 +915,8 @@ function _nearest_neighbours(X, n)
 end
 
 requires_convex_data(::Progressive) = true
+tolerance(a::Progressive) = a.tolerance
+tolerance_metric(a::Progressive) = a.strict == :outer ? a.metric : :max
 requires_convex_data(::FullOrder) = true
 supported_metrics(::FullOrder) = (:l1, :l2, :rms, :max, :none)
 

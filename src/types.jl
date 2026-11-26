@@ -264,6 +264,11 @@ concave part, this means the opposite of what the option means for a concave
 approximation on its own, and the option is interchanged internally. The
 concave part has `concave_planes` planes of the algorithm `concave`, which by
 default is its `planes`.
+
+If both algorithms have the same [`tolerance`](@ref) in the same metric, it
+also applies to the approximation as a whole, and is divided between the
+parts. Otherwise each part is fitted to the tolerance of its algorithm, and
+the error of the sum can be as large as the sum of the two.
 """
 @kwdef struct Alternating{A<:ApproximationAlgorithm,B<:ApproximationAlgorithm,T} <: ApproximationAlgorithm
     convex::A

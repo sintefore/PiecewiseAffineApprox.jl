@@ -72,6 +72,12 @@ algorithms that need data that can be interpolated by a convex function. Such
 algorithms are used on the parts of a decomposition of non-convex data, but
 not to refit them.
 
+An algorithm that adds planes until an error is reached returns that error
+from [`tolerance`](@ref), measured in [`tolerance_metric`](@ref), and has
+`tolerance` as an option for `with`. For a difference of convex approximation,
+the tolerance is then divided between the two parts so that it holds for
+their sum.
+
 ## Conventions
 
 - An option `metric` takes the values `:l1`, `:l2` (with `:rms` as an alias)

@@ -139,6 +139,26 @@ to `:none` without one.
 strict(a::ApproximationAlgorithm) = _option(a, :strict, :none)
 
 """
+    tolerance(a::ApproximationAlgorithm)
+
+The error that `a` adds planes to reach, or `nothing` if the algorithm has a
+fixed number of planes. Defaults to `nothing`; [`Progressive`](@ref) returns
+its `tolerance`, and [`Select`](@ref) and [`Interpol`](@ref) theirs when the
+planes are selected by tolerance. The error is measured by
+[`tolerance_metric`](@ref). An algorithm with a tolerance has `tolerance` as an
+option for [`with`](@ref).
+"""
+tolerance(::ApproximationAlgorithm) = nothing
+
+"""
+    tolerance_metric(a::ApproximationAlgorithm)
+
+The metric in which the [`tolerance`](@ref) of `a` is measured. Defaults to
+that used for reporting errors, the metric of the algorithm or `:l1`.
+"""
+tolerance_metric(a::ApproximationAlgorithm) = _report_metric(a)
+
+"""
     optimizer(a::ApproximationAlgorithm)
 
 The optimizer used by `a`, or `nothing`. Defaults to the field `optimizer`.
@@ -310,6 +330,8 @@ end
 Select(inner::ApproximationAlgorithm; kwargs...) = Select(; inner, kwargs...)
 
 planes(s::Select) = planes(s.inner)
+tolerance(s::Select) = s.criterion == :tolerance ? s.tolerance : nothing
+tolerance_metric(s::Select) = s.metric
 concave_planes(s::Select) = concave_planes(s.inner)
 strict(s::Select) = strict(s.inner)
 optimizer(s::Select) = optimizer(s.inner)
@@ -325,8 +347,12 @@ function with(s::Select; options...)
                 ),
             )
     end
-    inner = (k => v for (k, v) ∈ options if hasfield(typeof(s.inner), k))
-    outer = (k => v for (k, v) ∈ options if !hasfield(typeof(s.inner), k))
+    # The tolerance is that of the selection when the planes are selected by it
+    toinner(k) =
+        hasfield(typeof(s.inner), k) &&
+        !(k == :tolerance && s.criterion == :tolerance)
+    inner = (k => v for (k, v) ∈ options if toinner(k))
+    outer = (k => v for (k, v) ∈ options if !toinner(k))
     s =
         isempty(inner) ? s :
         Select(; _fields(s)..., inner = with(s.inner; inner...))

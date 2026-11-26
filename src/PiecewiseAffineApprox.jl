@@ -20,6 +20,7 @@ include("magnani_boyd.jl")
 include("kazda_li.jl")
 include("interpolation.jl")
 include("dcapprox.jl")
+include("everywhere.jl")
 include("struct_types.jl")
 
 export Convex, Concave, DC
@@ -36,7 +37,7 @@ export Ψ_Formulation, λ_Formulation, Δ_Formulation, Φ_Formulation
 export domain
 export evaluate
 export enforce_curvature
-export approximation_error
+export approximation_error, error_bounds
 export dc_decomposition
 
 include("precompile.jl")
