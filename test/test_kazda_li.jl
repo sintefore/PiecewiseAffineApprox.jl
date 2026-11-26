@@ -338,6 +338,48 @@ end
     end
 end
 
+@testset "Outer fitting and curvature independent of data scale" begin
+    x = collect(range(0, 1; length = 30))
+    noise = 0.05 .* randn(StableRNG(1), 30)
+    grid = [(u, v) for u ∈ range(0, 1; length = 6) for v ∈ range(0, 1; length = 6)]
+    noise2 = 0.05 .* randn(StableRNG(2), 36)
+    for (xs, zs, zo) ∈ ((1.0, 1.0, 0.0), (1e6, 1e-6, 0.0), (1e-3, 1e4, -1e6), (1e6, 1e-6, 1.0))
+        # Rounding of the offset limits the accuracy of the values
+        τ = 1e-6 + 10eps(max(abs(zo), zs)) / zs
+        f = FunctionEvaluations(tuple.(xs .* x), zs .* x .^ 2 .+ zo)
+        for (metric, planes) ∈ ((:max, 18), (:l1, 9))
+            alg = Progressive(;
+                optimizer,
+                tolerance = 1e-3zs,
+                metric,
+                strict = :outer,
+                unmet = :error,
+            )
+            r = fit(f, Convex(), alg)
+            @test r.details.converged
+            @test approximation_error(r.func, f, metric) ≤ 1e-3zs * (1 + τ)
+            @test all(evaluate(r.func, p) ≤ z + τ * zs for (p, z) ∈ f)
+            @test abs(length(r.func.planes) - planes) ≤ 1
+        end
+
+        # Noisy data is made convex at all scales, and full order fitting
+        # accepts the result and rejects the noisy data
+        for (pts, vals) ∈ (
+            (tuple.(xs .* x), x .^ 2 .+ noise),
+            ([xs .* p for p ∈ grid], [sum(abs2, p) for p ∈ grid] .+ noise2),
+        )
+            g = FunctionEvaluations(pts, zs .* vals .+ zo)
+            gc = enforce_curvature(g, Convex(), optimizer)
+            @test count(gc.values .!= g.values) ≥ 5
+            @test 0.01zs ≤ maximum(abs, gc.values .- g.values) ≤ 0.2zs
+            @test enforce_curvature(gc, Convex(), optimizer) === gc
+            @test_throws ErrorException approx(g, Convex(), FullOrder(; optimizer))
+            pwa = approx(gc, Convex(), FullOrder(; optimizer))
+            @test approximation_error(pwa, gc, :max) ≤ τ * zs
+        end
+    end
+end
+
 @testset "Progressive planes fitted in the tolerance metric" begin
     x = sort(rand(StableRNG(3), 40))
     z = exp.(2 .* x)
@@ -425,4 +467,27 @@ end
         Convex(),
         Progressive(optimizer = optimizer, tolerance = 0.005, strict = :inner),
     )
+end
+
+@testset "Progressive reports an unmet tolerance" begin
+    x = collect(range(-1, 1; length = 30))
+    f = FunctionEvaluations(tuple.(x), x .^ 2)
+    r = fit(f, Convex(), Progressive(optimizer = optimizer, tolerance = 0.02, metric = :max))
+    @test r.details.converged
+    @test r.details.error ≤ 0.02
+    @test r.details.error ≈ approximation_error(r.func, f, :max)
+    r = fit(f, Convex(), Progressive(optimizer = optimizer, tolerance = 0.02, strict = :none))
+    @test r.details.converged && r.details.error ≤ 0.02
+    # The check itself, with a fit that misses the tolerance
+    one = approx(f, Convex(), Progressive(optimizer = optimizer, tolerance = 1.0, metric = :max))
+    @test length(one.planes) == 1
+    @test !PWA._check_tolerance(f, one, :max, 1e-3, 1, :ignore)
+    @test_logs (:warn, r"without meeting the tolerance") PWA._check_tolerance(f, one, :max, 1e-3, 1, :warn)
+    @test_throws ErrorException PWA._check_tolerance(f, one, :max, 1e-3, 1, :error)
+    @test PWA._check_tolerance(f, one, :max, 1.0, 1, :error)
+    @test_throws ArgumentError approx(f, Convex(), Progressive(optimizer = optimizer, unmet = :silent))
+    # The flag of the parts of a difference of convex fit
+    g = FunctionEvaluations(tuple.(x), sin.(3x))
+    r = fit(g, DC(), Progressive(optimizer = optimizer, tolerance = 0.05, strict = :none))
+    @test haskey(r.details, :converged) && r.details.converged
 end

@@ -115,24 +115,32 @@ function _dc_approx(
             [z[l] - evaluate(pwa, x[l]) for l ∈ eachindex(x)],
         )
     end
+    # The parts are fitted with `fit`, so that a tolerance-driven algorithm
+    # that stopped without meeting its tolerance is reported for the whole
+    converged = Bool[]
+    function part(data, c, a)
+        r = fit(data, c, a)
+        haskey(r.details, :converged) && push!(converged, r.details.converged)
+        return r.func
+    end
     if isnothing(optimizer) && !_dc_closed_form(f)
         # Without a decomposition, start from a convex fit to the data
-        g = approx(f, Convex(), ag)
-        h = approx(residual(g), Concave(), ah)
+        g = part(f, Convex(), ag)
+        h = part(residual(g), Concave(), ah)
     else
         # The split uses the default metric (a linear program), independent
         # of the metric of the fits
         parts = dc_decomposition(f, optimizer)
-        g = approx(parts.convex, Convex(), ag)
-        h = approx(parts.concave, Concave(), ah)
+        g = part(parts.convex, Convex(), ag)
+        h = part(parts.concave, Concave(), ah)
     end
     best = DCFunc(g, h)
     eᵇᵉˢᵗ = approximation_error(best, f, metric)
     eᵖʳᵉᵛ = eᵇᵉˢᵗ
     errors = [eᵇᵉˢᵗ]
     for _ ∈ 1:iterations
-        g = approx(residual(h), Convex(), ag)
-        h = approx(residual(g), Concave(), ah)
+        g = part(residual(h), Convex(), ag)
+        h = part(residual(g), Concave(), ah)
         dc = DCFunc(g, h)
         e = approximation_error(dc, f, metric)
         push!(errors, e)
@@ -143,7 +151,9 @@ function _dc_approx(
         abs(e - eᵖʳᵉᵛ) ≤ 1e-9 * max(e, eᵖʳᵉᵛ) && break
         eᵖʳᵉᵛ = e
     end
-    return best, (refits = length(errors) - 1, errors = errors)
+    details = (refits = length(errors) - 1, errors = errors)
+    isempty(converged) && return best, details
+    return best, (; details..., converged = all(converged))
 end
 
 # Whether the decomposition can be computed without an optimizer: for

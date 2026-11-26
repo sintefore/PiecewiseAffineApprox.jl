@@ -269,7 +269,10 @@ Select the number of planes for the algorithm `inner`, which is fitted with
 `1` to `planes(inner)` planes, by `criterion`:
 
 - `:tolerance`: the fewest planes with an [`approximation_error`](@ref) of at
-  most `tolerance` in `metric`.
+  most `tolerance` in `metric`. If `planes(inner)` planes do not reach it, the
+  fit with the most planes is returned and `unmet` decides what else happens:
+  `:warn` (default), `:error`, or `:ignore`; `converged` in the details of the
+  [`FitResult`](@ref) is `false` in all cases.
 - `:aic`, `:bic`: minimize the Akaike or Bayesian information criterion,
   assuming normally (`:l2`) or Laplace (`:l1`) distributed errors, with
   `D + 1` parameters per plane for functions of `D` variables.
@@ -291,6 +294,18 @@ A warning is given when the maximum number of planes is selected.
     tolerance::Float64 = 0.0
     folds::Int = 5
     metric::Symbol = something(PiecewiseAffineApprox.metric(inner), :l1)
+    unmet::Symbol = :warn
+end
+
+# Report that a tolerance was not met, as the option `unmet` says; returns
+# false for use as the `converged` flag of the details
+function _unmet_tolerance(unmet::Symbol, message::AbstractString)
+    if unmet == :error
+        error(message)
+    elseif unmet == :warn
+        @warn message
+    end
+    return false
 end
 Select(inner::ApproximationAlgorithm; kwargs...) = Select(; inner, kwargs...)
 
@@ -342,6 +357,7 @@ function _fit(s::Select, data::FunctionEvaluations{D}) where {D}
     s.criterion == :cv &&
         s.folds < 2 &&
         throw(ArgumentError("criterion = :cv requires folds ≥ 2"))
+    _check_option(s, "unmet", s.unmet, (:warn, :error, :ignore))
     s.criterion ∈ (:aic, :bic) &&
         s.metric == :max &&
         throw(
@@ -354,6 +370,7 @@ function _fit(s::Select, data::FunctionEvaluations{D}) where {D}
 
     # The score of each number of planes, reported in the details
     scores = Float64[]
+    converged = true
     k, fits = if s.criterion == :cv
         E = _cv_errors(s, data, K, fitp)
         F = size(E, 1)
@@ -368,8 +385,11 @@ function _fit(s::Select, data::FunctionEvaluations{D}) where {D}
             scores = e
             k = findfirst(≤(s.tolerance), e)
             if isnothing(k)
-                @warn "Tolerance $(s.tolerance) not reached with $K planes " *
-                      "(error $(minimum(e)))"
+                converged = _unmet_tolerance(
+                    s.unmet,
+                    "Tolerance $(s.tolerance) not reached with $K planes " *
+                    "(error $(minimum(e)))",
+                )
                 k = K
             end
             k, fits
@@ -396,7 +416,8 @@ function _fit(s::Select, data::FunctionEvaluations{D}) where {D}
     end
     @debug "Select chose $k planes by :$(s.criterion)"
     func = isnothing(fits) ? fitp(k, data) : fits[k]
-    return func, (criterion = s.criterion, planes = k, scores = scores)
+    return func,
+    (criterion = s.criterion, planes = k, scores = scores, converged = converged)
 end
 
 # Cross validation errors E[f, p] for fold f and p = 1, ..., K planes, with
@@ -536,6 +557,9 @@ struct Normalization
     T::Matrix{Float64}
     ν::Float64
     s::Float64
+    # Half the range of the points in each coordinate (1 for a constant
+    # coordinate), the scale of the coefficients of a plane
+    σ::Vector{Float64}
 end
 
 """
@@ -562,6 +586,7 @@ function _normalize(
     # Whitened points are centered at the mean, as the whitening makes them
     # have zero mean and unit covariance; otherwise at the mid-range
     μ = whiten ? vec(mean(X, dims = 2)) : (lo .+ hi) ./ 2
+    σ = [h > l ? (h - l) / 2 : 1.0 for (l, h) ∈ zip(lo, hi)]
     if whiten
         # Scaled by the ranges before whitening, so that coordinates with a
         # small but genuine range are not treated as degenerate
@@ -569,7 +594,6 @@ function _normalize(
         T = Matrix(_whitening(S * (X .- μ)) * S)
         X̃ = T * (X .- μ)
     else
-        σ = [h > l ? (h - l) / 2 : 1.0 for (l, h) ∈ zip(lo, hi)]
         T = Matrix{Float64}(Diagonal(1 ./ σ))
         X̃ = (X .- μ) ./ σ
     end
@@ -583,7 +607,25 @@ function _normalize(
         [ntuple(i -> X̃[i, l], D) for l ∈ axes(X̃, 2)],
         (data.values .- ν) ./ s,
     )
-    return normalized, Normalization(μ, T, ν, s)
+    return normalized, Normalization(μ, T, ν, s, σ)
+end
+
+"""
+    _clean_coefficients!(a, w, scale; rtol = 1e-12)
+
+Set the coefficients `a` of a plane to zero where they are rounding noise:
+where `|aⱼ| wⱼ`, the change of the plane over the width `wⱼ` of the domain in
+coordinate `j`, is at most `rtol` times the largest of `scale` and these
+changes. Fitted planes otherwise carry coefficients of the order of 1e-17
+instead of zero, which have misled the presolve of a MIP solver into a wrong
+optimum.
+"""
+function _clean_coefficients!(a::AbstractVector, w, scale; rtol = 1e-12)
+    τ = rtol * max(scale, maximum(abs(a[j]) * w[j] for j ∈ eachindex(a); init = 0.0))
+    for j ∈ eachindex(a)
+        abs(a[j]) * w[j] ≤ τ && (a[j] = zero(a[j]))
+    end
+    return a
 end
 
 # The whitening transform W of the centered points X (columns), such that
@@ -617,6 +659,9 @@ function _denormalize(p::Plane{D}, n::Normalization) where {D}
     ã = collect(p.α)
     a = n.s .* (n.T' * ã)
     b = n.ν + n.s * (p.β - dot(ã, n.T * n.μ))
+    # Coefficients that change the plane by less than 1e-12 of the range of
+    # the values over the data are rounding noise
+    _clean_coefficients!(a, n.σ, n.s)
     return Plane(Tuple(a), b)
 end
 function _denormalize(pwa::PWAFunc{Convex,D}, n::Normalization) where {D}

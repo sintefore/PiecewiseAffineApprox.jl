@@ -181,7 +181,7 @@ variable at each kink of the wrong curvature for the direction, i.e. at the
 concave kinks when `z` is minimized. These formulations are ideal and need no
 big-M values, so they are preferable to the Ψ-formulation in one dimension, and
 the Δ-formulation is the default when bounds are available. In
-the dispatch benchmark of the package (`benchmark/formulations.jl`) with 200
+the dispatch benchmark in PWABenchmarks.jl (`scripts/formulations.jl`) with 200
 non-convex cost functions, the Δ-formulation solved in 0.1 s and the Φ-formulation
 in 1.3 s, against 50 s for the Ψ-formulation with big-M selection, and with 1000
 functions the Ψ-formulation did not finish within two minutes.

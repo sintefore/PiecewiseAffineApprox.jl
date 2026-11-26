@@ -207,12 +207,18 @@ ways depending on `strict`:
   `tolerance` above it.
 
 For concave approximations, above and below are interchanged.
+
+The search can stop without meeting the tolerance. The approximation found is
+then returned, and `unmet` decides what else happens: `:warn` (default),
+`:error`, or `:ignore`. In all cases `converged` in the details of the
+[`FitResult`](@ref) is `false`, and `error` there is the error reached.
 """
 @kwdef struct Progressive{T} <: ApproximationAlgorithm
     tolerance::Float64 = 0.01
     metric::Symbol = defaultmetric()
     optimizer::T
     strict::Symbol = :outer
+    unmet::Symbol = :warn
 end
 
 """

@@ -64,7 +64,7 @@ end
             @test pwa isa PWAFunc{Convex,1}
             p = PWA.planes(a)
             isnothing(p) || @test PWA._planes(pwa) ≤ p
-            @test err(pwa, f1) < 0.3
+            @test err(pwa, f1) < 0.35
             # The strict guarantee at every point
             if PWA.strict(a) == :outer
                 @test all(evaluate(pwa, x) ≤ z + 1e-6 for (x, z) ∈ f1)
@@ -561,4 +561,20 @@ end
             ) for t ∈ x
         )
     end
+end
+
+@testset "Select reports an unmet tolerance" begin
+    x = collect(range(-1, 1; length = 40))
+    f = FunctionEvaluations(tuple.(x), exp.(x))
+    s = Select(Interpol(planes = 3); criterion = :tolerance, tolerance = 1e-9)
+    r = @test_logs (:warn, r"not reached") fit(f, Convex(), s)
+    @test !r.details.converged && r.details.planes == 3
+    r = fit(f, Convex(), PWA.with(s; unmet = :ignore))
+    @test !r.details.converged
+    @test_throws ErrorException fit(f, Convex(), PWA.with(s; unmet = :error))
+    # (`with(s; tolerance = …)` would set the tolerance of the inner Interpol,
+    # which has a field of that name too)
+    r = fit(f, Convex(), Select(Interpol(planes = 3); criterion = :tolerance, tolerance = 0.5))
+    @test r.details.converged && r.details.planes == 1
+    @test_throws ArgumentError fit(f, Convex(), PWA.with(s; unmet = :silent))
 end

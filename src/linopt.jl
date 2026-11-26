@@ -183,7 +183,7 @@ piecewise linear function/approximation `pwa` of JuMP-variables `x`, and return
 
 # Choosing a formulation
 With `formulation = nothing`, the method is chosen from the function and the direction,
-following the dispatch benchmark of the package (`benchmark/formulations.jl`):
+following the dispatch benchmark in PWABenchmarks.jl (`scripts/formulations.jl`):
 
 - The Ψ-formulation for a convex or concave function in its natural direction, which is a
   linear program; it gives the smallest model and needs no bounds.
@@ -328,6 +328,9 @@ function _pwaffine!(
     if created
         z = record!(m, JuMP.@variable(m, base_name = "z_$(name)"))
     end
+    # Coefficients that are rounding noise are removed from the planes, as
+    # they can mislead the presolve of the solver
+    f = _clean(f, _known_box(x, bounds, D, f.domain))
     # The inputs are passed as a vector
     box = formulate!(m, _inputs(x), z, f, formulation, direction; bounds, name, selection)
     # Bound the output over the box that x is restricted to, or else the box
@@ -353,6 +356,28 @@ function _default_formulation(f::DCFunc{D}, x, bounds) where {D}
         return DeltaFormulation()
     end
     return PsiFormulation()
+end
+
+# The function with the coefficients of its planes that are rounding noise set
+# to zero, see `_clean_coefficients!`: a coefficient is noise when its change
+# over the width of the box (or per unit without a box) is below 1e-12 of the
+# largest such change or intercept of any plane of the function
+function _clean(pwa::PWAFunc{C,D,T}, box) where {C,D,T}
+    isempty(pwa.planes) && return pwa
+    w = isnothing(box) ? ones(D) :
+        [hi > lo ? hi - lo : 1.0 for (lo, hi) ∈ box]
+    scale = max(
+        maximum(abs(p.α[j]) * w[j] for p ∈ pwa.planes, j ∈ 1:D),
+        maximum(abs(p.β) for p ∈ pwa.planes),
+    )
+    planes = map(pwa.planes) do p
+        a = _clean_coefficients!(collect(p.α), w, scale)
+        return Plane{D,T}(Tuple(a), p.β)
+    end
+    return PWAFunc{C,D,T}(planes, pwa.domain)
+end
+function _clean(f::DCFunc{D,T}, box) where {D,T}
+    return DCFunc{D,T}(_clean(f.convex, box), _clean(f.concave, box), f.domain)
 end
 
 # The smallest and largest value of the function over a box

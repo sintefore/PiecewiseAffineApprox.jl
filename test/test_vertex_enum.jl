@@ -190,3 +190,37 @@ end
         [(-Inf, 1)],
     )
 end
+
+@testset "PWA vertex enumeration with bounds and many planes" begin
+    # Tangent planes of |x|² at random points: at each vertex, the number of
+    # active planes and box faces is at least D + 1
+    for (D, K) ∈ ((2, 150), (3, 60))
+        rng = StableRNG(D)
+        planes = map(1:K) do _
+            c = 2 .* rand(rng, D) .- 1
+            return Plane(Tuple(2 .* c), -sum(abs2, c))
+        end
+        pwa = PWAFunc{Convex,D}(planes)
+        box = fill((-1.0, 1.0), D)
+        t = @elapsed verts = PWA.vertices_by_subsets(pwa, box)
+        @test t < 10
+        @test allunique(first.(verts))
+        # All corners of the box are vertices
+        @test count(v -> all(abs.(v[1]) .== 1), verts) == 2^D
+        for (x, z) ∈ verts
+            @test z == evaluate(pwa, x)
+            n = count(p -> abs(evaluate(p, x) - z) < 1e-8, planes)
+            @test n + count(abs.(x) .== 1) ≥ D + 1
+        end
+        # The function is the lower envelope of the convex hull of the
+        # vertices: the largest value over the box is at a vertex
+        @test maximum(last, verts) ≈
+              maximum(evaluate(pwa, c) for c ∈ Iterators.product(fill((-1.0, 1.0), D)...))
+    end
+
+    # A box without extent in one coordinate
+    pwa = PWAFunc{Convex,2}([Plane((1, 0), 0), Plane((0, 1), 0), Plane((0, 0), 0)])
+    verts = PWA.vertices_by_subsets(pwa, [(-1, 1), (0.5, 0.5)])
+    @test sort(first.(verts)) ≈ [[-1, 0.5], [0.5, 0.5], [1, 0.5]]
+    @test isempty(PWA.vertices_by_subsets(PWAFunc{Convex,2}(Plane{2}[]), [(0, 1), (0, 1)]))
+end

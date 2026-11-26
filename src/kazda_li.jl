@@ -62,9 +62,26 @@ function convexify(
             ),
         )
     end
-    if D == 1 && allunique(first.(f.points))
-        return _convexify_1d(f, optimizer, metric, curv_string)
+    # Work with normalized data, so that the solver tolerances and the
+    # threshold for a point being adjusted are independent of the scale and
+    # offset of the data
+    normalized, n = _normalize(f)
+    δ̂ = if D == 1 && allunique(first.(f.points))
+        _convexify_1d(normalized, optimizer, metric, curv_string)
+    else
+        _convexify_lazy(normalized, optimizer, metric, curv_string)
     end
+    return _adjusted_values(f, n.s .* δ̂, n.s, curv_string)
+end
+
+# The changes of the values making the (normalized) data convex, with the
+# convexity constraints generated lazily
+function _convexify_lazy(
+    f::FunctionEvaluations{D},
+    optimizer,
+    metric,
+    curv_string,
+) where {D}
     K = length(f)
     X = [pt[i] for i ∈ 1:D, pt ∈ f.points]
 
@@ -98,11 +115,12 @@ function convexify(
         )
     end
 
-    return _adjusted_values(f, value.(s⁺) .- value.(s⁻), curv_string)
+    return value.(s⁺) .- value.(s⁻)
 end
 
 # For one-dimensional data with distinct points, the data is convex if and only
-# if the slopes between consecutive points (sorted by x) are nondecreasing
+# if the slopes between consecutive points (sorted by x) are nondecreasing.
+# Returns the changes of the values.
 function _convexify_1d(f::FunctionEvaluations, optimizer, metric, curv_string)
     K = length(f)
     x = first.(f.points)
@@ -139,14 +157,14 @@ function _convexify_1d(f::FunctionEvaluations, optimizer, metric, curv_string)
             "$(termination_status(m)) ($(raw_status(m)))",
         )
     end
-    return _adjusted_values(f, value.(δ), curv_string)
+    return value.(δ)
 end
 
 # Function evaluations with the values adjusted by δ. Changes at the level of
-# the solver tolerance are ignored.
-function _adjusted_values(f::FunctionEvaluations, δ, curv_string)
+# the solver tolerance are ignored, relative to `scale`, the scale of the
+# values in the normalized data that the changes were computed for.
+function _adjusted_values(f::FunctionEvaluations, δ, scale, curv_string)
     K = length(f)
-    scale = max(maximum(abs, f.values), 1.0)
     adjusted = abs.(δ) .> 1e-7 * scale
     if !any(adjusted)
         @debug "Data points are $(curv_string)"
@@ -526,8 +544,15 @@ function _progressive_pwa(
     optimizer,
     δᵗᵒˡ,
     metric,
-    full_order_metric = :l1,
+    full_order_metric = :l1;
+    unmet = :warn,
 )
+    # Work with data normalized to the order of one, so that the thresholds
+    # of the fitting are independent of the scale and offset of the data. The
+    # metrics scale with the values, and the tolerance likewise.
+    original, δ = f, δᵗᵒˡ
+    f, n = _normalize(original; floor = δ)
+    δᵗᵒˡ = δ / n.s
     # Find the full order convex approximation, will error if the points are
     # not convex
     pwa = _full_order_pwa(f, optimizer, full_order_metric)
@@ -551,32 +576,52 @@ function _progressive_pwa(
         U = _increase_order(f, pwa_red, pwa)
         pwa_red = improve(U, length(pwa_red.planes))
     end
-    _check_tolerance(f, pwa_red, metric, δᵗᵒˡ, rounds)
-    return pwa_red, rounds
+    pwa_red = _denormalize(pwa_red, n)
+    met = _check_tolerance(original, pwa_red, metric, δ, rounds, unmet)
+    return pwa_red, rounds, met
 end
 
-# Warn if the fitting stopped without meeting the tolerance
-function _check_tolerance(f, pwa, metric, δ, rounds)
+# Whether the fitting met the tolerance (up to rounding); if not, warn or
+# error as `unmet` says
+function _check_tolerance(f, pwa, metric, δ, rounds, unmet)
     e = approximation_error(pwa, f, metric)
     p = length(pwa.planes)
     spread = maximum(f.values) - minimum(f.values)
     if e > δ + 1e-6 * (δ + spread) + 1e-12 * max(1.0, maximum(abs, f.values))
-        @warn "Progressive fitting stopped after $rounds rounds without " *
-              "meeting the tolerance $δ (error $e with $p planes)"
-    else
-        @debug "Fitting finished, error = $(round(e; sigdigits = 3)), p = $p"
+        return _unmet_tolerance(
+            unmet,
+            "Progressive fitting stopped after $rounds rounds without " *
+            "meeting the tolerance $δ (error $e with $p planes)",
+        )
     end
-    return nothing
+    @debug "Fitting finished, error = $(round(e; sigdigits = 3)), p = $p"
+    return true
 end
 
 # Map algorithm structure to correct parameters
 function _progressive_pwa(f::FunctionEvaluations, options::Progressive)
-    pwa, rounds = if options.strict == :outer
-        _progressive_pwa(f, options.optimizer, options.tolerance, options.metric)
+    _check_option(options, "unmet", options.unmet, (:warn, :error, :ignore))
+    pwa, rounds, converged = if options.strict == :outer
+        _progressive_pwa(
+            f,
+            options.optimizer,
+            options.tolerance,
+            options.metric;
+            unmet = options.unmet,
+        )
     else
-        _progressive_band(f, options.optimizer, options.tolerance, options.strict)
+        _progressive_band(
+            f,
+            options.optimizer,
+            options.tolerance,
+            options.strict;
+            unmet = options.unmet,
+        )
     end
-    return pwa, (rounds = rounds, planes = _planes(pwa))
+    # The error in the metric of the tolerance: per point for :outer, and the
+    # largest deviation for the band
+    e = approximation_error(pwa, f, options.strict == :outer ? options.metric : :max)
+    return pwa, (rounds = rounds, planes = _planes(pwa), converged = converged, error = e)
 end
 
 # Progressive fitting within a band around the data, following Kazda and Li
@@ -592,6 +637,7 @@ function _progressive_band(
     δ,
     strict;
     μ = 1e-4,
+    unmet = :warn,
 ) where {D}
     δ ≥ 0 || throw(ArgumentError("The tolerance must be nonnegative"))
     # Work with data normalized to the order of one, so that the thresholds
@@ -644,8 +690,8 @@ function _progressive_band(
         v, planes, gaps = lp(U, length(planes))
     end
     pwa = _denormalize(PWAFunc{Convex,D}(planes), n)
-    _check_tolerance(f, pwa, :max, δ, rounds)
-    return pwa, rounds
+    met = _check_tolerance(f, pwa, :max, δ, rounds, unmet)
+    return pwa, rounds, met
 end
 
 # Allocate each point to the plane that is active at the point, and remove the
@@ -874,5 +920,8 @@ supported_metrics(::FullOrder) = (:l1, :l2, :rms, :max, :none)
 
 _fit(a::Progressive, input::FunctionEvaluations) = _progressive_pwa(input, a)
 function _fit(a::FullOrder, input::FunctionEvaluations)
-    return _full_order_pwa(input, a.optimizer, a.metric)
+    # Normalized data, so that the tolerance for the data being convex and
+    # those of the solver are independent of the scale and offset of the data
+    normalized, n = _normalize(input)
+    return _denormalize(_full_order_pwa(normalized, a.optimizer, a.metric), n)
 end

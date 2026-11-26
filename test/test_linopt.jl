@@ -208,3 +208,35 @@ end
         @test objective_value(m) ≈ evaluate(pwa, 0.8) atol = 1e-6
     end
 end
+
+@testset "Rounding noise in the plane coefficients is removed" begin
+    a = [1.0, 1e-17, -2.0]
+    @test PWA._clean_coefficients!(copy(a), ones(3), 1.0) == [1.0, 0.0, -2.0]
+    # Relative to the width of the domain: a small coefficient over a wide
+    # domain is not noise, a large one over a tiny domain is
+    @test PWA._clean_coefficients!(copy(a), [1.0, 1e6, 1.0], 1.0) == a
+    @test PWA._clean_coefficients!([1.0, 1e-6], [1.0, 1e-8], 1.0) == [1.0, 0.0]
+    # Exact zeros stay zero and nothing else changes for a clean plane
+    @test PWA._clean_coefficients!([0.0, 0.5], ones(2), 1.0) == [0.0, 0.5]
+
+    pwa = PWAFunc{Convex,2}([Plane((1.0, 1e-17), 0.0), Plane((-1.0, 1e-19), 0.5)])
+    c = PWA._clean(pwa, [(-1.0, 1.0), (-1.0, 1.0)])
+    @test all(p.α[2] == 0 for p ∈ c.planes)
+    @test [p.α[1] for p ∈ c.planes] == [1.0, -1.0] && [p.β for p ∈ c.planes] == [0.0, 0.5]
+    @test PWA._clean(pwa, nothing).planes == c.planes
+    # The noise does not reach the model
+    m = Model(optimizer)
+    @variable(m, -1 ≤ x[1:2] ≤ 1)
+    z, _ = add_pwaformulation(m, x, pwa; formulation = PsiFormulation())
+    for con ∈ all_constraints(m, AffExpr, MOI.GreaterThan{Float64})
+        @test normalized_coefficient(con, x[2]) == 0
+    end
+    # Fits of a function of the first variable only have exact zeros for the
+    # second, after the denormalization of the whitened coordinates
+    pts = [(a, b) for a ∈ range(-1, 1; length = 7) for b ∈ range(-1, 1; length = 7)]
+    data = FunctionEvaluations(pts, [p[1]^2 for p ∈ pts])
+    for alg ∈ (Cluster(planes = 3, rng = StableRNG(1)), Progressive(optimizer = optimizer, tolerance = 0.05, strict = :none))
+        fitted = approx(data, Convex(), alg)
+        @test all(p.α[2] == 0 for p ∈ fitted.planes)
+    end
+end

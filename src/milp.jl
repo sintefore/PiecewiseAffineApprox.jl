@@ -211,9 +211,16 @@ function _milp(
         end
     end
 
+    # Not all solvers report the gap, e.g. when the problem is solved in presolve
+    gap = try
+        relative_gap(m)
+    catch
+        NaN
+    end
     details = (
         status = status,
         objective = objective_value(m),
+        relative_gap = gap,
         big_M_rounds = big_M_rounds,
         solve_time = time() - t₀,
     )

@@ -39,4 +39,6 @@ export enforce_curvature
 export approximation_error
 export dc_decomposition
 
+include("precompile.jl")
+
 end # module
