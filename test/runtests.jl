@@ -1,52 +1,84 @@
-using COSMO
-using HiGHS
-using JuMP
-using JSON
-using LinearAlgebra
-using Logging
-using Pajarito
-using PiecewiseAffineApprox
-using PiecewiseAffineApprox: Direction, Graph, Epigraph, Hypograph
-using Random
-using StableRNGs
+# The test files are run in groups of about equal run time, each group in its
+# own Julia process, with the groups in parallel. Much of the time of the tests
+# is compilation, so the processes use -O0, which compiles faster.
+#
+# Arguments select the files whose names contain one of them, e.g.
+# `Pkg.test(test_args = ["dc", "milp"])`. With the argument "--serial", the
+# selected files run one after the other in this process instead.
 using Test
-rng = StableRNG(123)
 
-const PWA = PiecewiseAffineApprox
-const optimizer =
-    optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent() => true)
-const qp_optimizer = optimizer_with_attributes(
-    Pajarito.Optimizer,
-    "oa_solver" => optimizer_with_attributes(
-        HiGHS.Optimizer,
-        MOI.Silent() => true,
-        "mip_feasibility_tolerance" => 1e-8,
-        "mip_rel_gap" => 1e-6,
-    ),
-    "conic_solver" =>
-        optimizer_with_attributes(COSMO.Optimizer, MOI.Silent() => true),
-    MOI.Silent() => true,
-)
+const GROUPS = [
+    ["test_dc.jl"],
+    [
+        "test_milp.jl",
+        "test_vertex_enum.jl",
+        "test_json.jl",
+        "test_types.jl",
+        "test_record.jl",
+    ],
+    ["test_kazda_li.jl", "test_everywhere.jl", "test_cluster.jl", "test_linopt.jl"],
+    ["test_aqua.jl", "test_interpolation.jl", "test_algorithms.jl"],
+]
+const FILES = reduce(vcat, GROUPS)
 
-@testset "PiecewiseAffineApprox" begin
-    nologger = ConsoleLogger(devnull, Logging.Debug)
-    with_logger(nologger) do
-        include("test_aqua.jl")
-        include("test_types.jl")
-        include("concave.jl")
-        include("testquadapprox.jl")
-        include("convex_interpolation.jl")
-        include("testconvexapprox.jl")
-        include("test_2D_convexapprox.jl")
-        include("test_big_M.jl")
-        include("test_cluster.jl")
-        include("test_json.jl")
-        include("test_kazda_li.jl")
-        include("test_dc.jl")
-        include("test_everywhere.jl")
-        include("test_vertex_enum.jl")
-        include("test_linopt.jl")
-        include("test_algorithms.jl")
-        include("test_record.jl")
+# Every test file must belong to a group, so that none is left out
+let ungrouped = setdiff(filter(startswith("test_"), readdir(@__DIR__)), FILES)
+    isempty(ungrouped) ||
+        error("Test files not in a group in runtests.jl: $(join(ungrouped, ", "))")
+end
+
+function selected(args)
+    names = filter(!=("--serial"), args)
+    isempty(names) && return FILES
+    files = filter(f -> any(a -> occursin(a, f), names), FILES)
+    isempty(files) && error("No test files match $(join(names, ", "))")
+    return files
+end
+
+if "--serial" ∈ ARGS || get(ENV, "PWA_TEST_WORKER", "") == "true"
+    include("setup.jl")
+    @testset "PiecewiseAffineApprox" begin
+        with_logger(ConsoleLogger(devnull, Logging.Debug)) do
+            for file ∈ selected(ARGS)
+                include(file)
+            end
+        end
+    end
+else
+    files = selected(ARGS)
+    groups = filter(!isempty, [filter(∈(files), g) for g ∈ GROUPS])
+    # The processes inherit the options of this one, e.g. for coverage and
+    # deprecation warnings, and use the same environment
+    function command(group)
+        cmd = `$(Base.julia_cmd()) -O0 --project=$(Base.active_project())
+            $(joinpath(@__DIR__, "runtests.jl")) $group`
+        return addenv(cmd, "PWA_TEST_WORKER" => "true")
+    end
+    passed = fill(false, length(groups))
+    @sync for (i, group) ∈ enumerate(groups)
+        @async begin
+            output = IOBuffer()
+            t = @elapsed begin
+                process = run(
+                    pipeline(command(group); stdout = output, stderr = output);
+                    wait = false,
+                )
+                wait(process)
+            end
+            passed[i] = success(process)
+            status = passed[i] ? "passed" : "FAILED"
+            println(
+                "\n── Group $i ($status in $(round(t; digits = 1)) s): ",
+                join(group, ", "),
+            )
+            print(String(take!(output)))
+        end
+    end
+    @testset "PiecewiseAffineApprox" begin
+        for (i, group) ∈ enumerate(groups)
+            @testset "Group $i: $(join(group, ", "))" begin
+                @test passed[i]
+            end
+        end
     end
 end

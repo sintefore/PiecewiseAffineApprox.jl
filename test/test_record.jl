@@ -279,10 +279,22 @@ end
     cvx = approx(data, Convex(), Interpol(planes = 3))
     m = Model()
     @variable(m, 0 ≤ xv ≤ 2π)
-    z = @test_deprecated pwaffine(m, xv, cvx)
-    @test z isa VariableRef
-    z = @test_deprecated pwaffine(m, xv, data, Convex(), Interpol(planes = 3))
-    @test z isa VariableRef
+    if Base.JLOptions().depwarn == 2
+        # With --depwarn=error, as in CI, the deprecation is an error
+        @test_throws ErrorException pwaffine(m, xv, cvx)
+        @test_throws ErrorException pwaffine(
+            m,
+            xv,
+            data,
+            Convex(),
+            Interpol(planes = 3),
+        )
+    else
+        z = @test_deprecated pwaffine(m, xv, cvx)
+        @test z isa VariableRef
+        z = @test_deprecated pwaffine(m, xv, data, Convex(), Interpol(planes = 3))
+        @test z isa VariableRef
+    end
     # Constant inputs with a given output add the function to its model
     m = Model(optimizer)
     @variable(m, zv)

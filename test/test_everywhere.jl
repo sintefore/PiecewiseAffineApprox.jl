@@ -50,11 +50,11 @@ end
         ((x, y) -> x^2 + 2y^2, [(-1.0, 1.0), (-1.0, 1.0)], Convex()),
         ((x, y) -> sqrt(x * y), [(0.5, 3.0), (0.5, 3.0)], Concave()),
     )
-    for (f, box, c) ∈ cases, s ∈ (:outer, :inner)
+    for (i, (f, box, c)) ∈ enumerate(cases), s ∈ (:outer, :inner)
         fx = x -> f(x...)
         n = length(box) == 1 ? 2001 : 151
         # A new algorithm for each fit, as the fits advance its rng
-        alg() = Cluster(planes = 5, metric = :l1, strict = s; optimizer, rng = StableRNG(2))
+        alg() = Cluster(trials = 4, planes = 5, metric = :l1, strict = s; optimizer, rng = StableRNG(2))
         # At the samples only, the side is violated between them
         plain = approx(f, box, c, alg())
         r = fit(f, box, c, alg(); everywhere = true, refinements = length(box) == 1 ? 3 : 1)
@@ -74,8 +74,10 @@ end
         @test r.details.shift ≥ 0 && 0 ≤ r.details.refinements ≤ 3
         @test domain(r.func) == box
         @test r.func isa PWAFunc{typeof(c)}
-        # approx passes the option on
-        @test approx(f, box, c, alg(); everywhere = true, refinements = r.details.refinements) == r.func
+        # approx passes the option on (checked once, as it fits again)
+        if i == 1 && s == :outer
+            @test approx(f, box, c, alg(); everywhere = true, refinements = r.details.refinements) == r.func
+        end
     end
 
     # Without refits, the planes are only shifted

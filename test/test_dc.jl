@@ -320,8 +320,7 @@ end
     for (fe, alg) ∈ (
         (
             f,
-            Cluster(
-                planes = 4,
+            Cluster(trials = 4, planes = 4,
                 metric = :l1,
                 strict = :outer;
                 optimizer,
@@ -330,8 +329,7 @@ end
         ),
         (
             f,
-            Cluster(
-                planes = 4,
+            Cluster(trials = 4, planes = 4,
                 metric = :l1,
                 strict = :inner;
                 optimizer,
@@ -340,8 +338,7 @@ end
         ),
         (
             f,
-            Cluster(
-                planes = 4,
+            Cluster(trials = 4, planes = 4,
                 metric = :max,
                 strict = :outer;
                 optimizer,
@@ -350,8 +347,7 @@ end
         ),
         (
             f2,
-            Cluster(
-                planes = 4,
+            Cluster(trials = 4, planes = 4,
                 metric = :l1,
                 strict = :outer;
                 optimizer,
@@ -360,8 +356,7 @@ end
         ),
         (
             f2,
-            Cluster(
-                planes = 4,
+            Cluster(trials = 4, planes = 4,
                 metric = :l1,
                 strict = :inner;
                 optimizer,
@@ -384,8 +379,7 @@ end
     end
     # Also with different algorithms for the parts
     alg = Alternating(
-        convex = Cluster(
-            planes = 4,
+        convex = Cluster(trials = 4, planes = 4,
             metric = :l1,
             strict = :outer;
             optimizer,

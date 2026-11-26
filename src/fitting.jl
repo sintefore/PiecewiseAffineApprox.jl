@@ -173,15 +173,21 @@ Defaults to calling the keyword constructor of the type of `a` with its
 fields, so algorithms defined with `@kwdef` need no method. Throws an
 `ArgumentError` for an option the algorithm does not have.
 """
-function with(a::ApproximationAlgorithm; options...)
-    T = typeof(a)
+function with(a::A; options...) where {A<:ApproximationAlgorithm}
     for name ∈ keys(options)
-        hasfield(T, name) ||
-            throw(ArgumentError("$(nameof(T)) has no option $name"))
+        hasfield(A, name) ||
+            throw(ArgumentError("$(nameof(A)) has no option $name"))
     end
-    fields = (name => getfield(a, name) for name ∈ fieldnames(T))
-    return T.name.wrapper(; fields..., options...)
+    return _constructor(A)(; _fields(a)..., options...)
 end
+
+# The fields of an algorithm as a named tuple, and the constructor of its type
+# without parameters. Both are known to the compiler, so that the type of the
+# algorithm returned by `with` can be inferred: it is usually the type of `a`.
+function _fields(a::A) where {A}
+    return NamedTuple{fieldnames(A)}(ntuple(i -> getfield(a, i), Val(fieldcount(A))))
+end
+@generated _constructor(::Type{A}) where {A} = Base.typename(A).wrapper
 
 """
     supported_metrics(a::ApproximationAlgorithm)
@@ -358,7 +364,6 @@ function with(s::Select; options...)
         Select(; _fields(s)..., inner = with(s.inner; inner...))
     return isempty(outer) ? s : Select(; _fields(s)..., outer...)
 end
-_fields(a) = (name => getfield(a, name) for name ∈ fieldnames(typeof(a)))
 
 function Base.show(io::IO, s::Select)
     print(io, "Select(", s.inner, "; criterion = :", s.criterion)

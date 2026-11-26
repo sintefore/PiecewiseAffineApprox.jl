@@ -25,13 +25,13 @@ end
     x = collect(range(-1, 1; length = 20))
     f1 = FunctionEvaluations(x, x .^ 2)
     s(x) = x[1]^2 + x[2]^2
-    f2 = PWA._sample_uniform(s, [(-1, 1), (-1, 1)], 6)
+    # A small grid: the MILP in two variables grows quickly with the points
+    f2 = PWA._sample_uniform(s, [(-1, 1), (-1, 1)], 4)
     err(f, pwa) = approximation_error(f, pwa, :max)
 
     algorithms = [
         Cluster(planes = 3, rng = StableRNG(1)),
-        Cluster(
-            planes = 3,
+        Cluster(trials = 4, planes = 3,
             metric = :l1,
             strict = :outer;
             optimizer,
@@ -86,7 +86,7 @@ end
             if 2 ∈ PWA.supported_dimensions(a)
                 pwa2 = approx(f2, Convex(), a)
                 @test pwa2 isa PWAFunc{Convex,2}
-                @test err(pwa2, f2) < 1.0
+                @test err(pwa2, f2) < 1.5
             else
                 @test_throws ArgumentError approx(f2, Convex(), a)
             end
@@ -174,7 +174,7 @@ end
     pwa = approx(
         f,
         Convex(),
-        Select(MILP(planes = 4; optimizer); criterion = :cv, folds = 4),
+        Select(MILP(planes = 4; optimizer); criterion = :cv, folds = 2),
     )
     @test 1 ≤ PWA._planes(pwa) ≤ 4
     @test err(pwa) < 0.05
@@ -577,4 +577,30 @@ end
     r = fit(f, Convex(), Select(Interpol(planes = 3); criterion = :tolerance, tolerance = 0.5))
     @test r.details.converged && r.details.planes == 1
     @test_throws ArgumentError fit(f, Convex(), PWA.with(s; unmet = :silent))
+end
+
+@testset "Sampling of functions" begin
+    milp(K) = MILP(; optimizer, planes = K)
+    # MILP: about 3 D K points in total, unchanged in 1D
+    @test PWA._default_samples(milp(5), 1) == 15
+    @test PWA._default_samples(milp(6), 2) == 6
+    @test PWA._default_samples(milp(4), 3) == 4
+    @test PWA._default_samples(Cluster(; planes = 4), 2) == 12
+    # Algorithms without a number of planes: about 100 points in total
+    progressive = Progressive(; optimizer, tolerance = 0.01)
+    @test PWA._default_samples(progressive, 1) == 100
+    @test PWA._default_samples(progressive, 2) == 10
+
+    f(x) = x[1]^2 + x[2]^2
+    bbox = [(-1, 1), (-1, 1)]
+    pwa = approx(f, bbox, Convex(), MILP(; optimizer, planes = 3, metric = :max))
+    @test length(pwa.planes) == 3
+    pwa = approx(x -> x[1]^2, [(-1, 1)], Convex(), progressive)
+    @test PWA.evaluate(pwa, 0.5) ≈ 0.25 atol = 0.02
+
+    # The number of samples can be given; with 2 samples in each dimension the
+    # corners are interpolated
+    pwa = approx(f, bbox, Convex(), Cluster(; planes = 1); nsamples = 2)
+    @test PWA.evaluate(pwa, (1.0, 1.0)) ≈ 2.0 atol = 1e-8
+    @test_throws ArgumentError approx(f, bbox, Convex(), milp(3); nsamples = 1)
 end

@@ -145,9 +145,13 @@ function fit(
     refinements::Int = 0,
 )
     nsamples ≥ 2 || throw(ArgumentError("nsamples must be at least 2"))
+    # The number of variables of the samples is only known at runtime. The
+    # fit is called with invokelatest, so that the compiler does not infer it
+    # for the abstract type of the samples, which is costly and of no use, but
+    # compiles it for the actual type when it is called.
     data = _sample_uniform(f, bbox, nsamples)
-    everywhere || return fit(data, c, a)
-    return _fit_everywhere(f, bbox, data, c, a, refinements)
+    everywhere || return Base.invokelatest(fit, data, c, a)
+    return Base.invokelatest(_fit_everywhere, f, bbox, data, c, a, refinements)
 end
 
 # Default number of samples in each of D dimensions
