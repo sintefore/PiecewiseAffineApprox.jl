@@ -133,7 +133,14 @@ function _enumerate_vertices_box(pwa::PWAFunc{Convex,D}, lo, hi, atol) where {D}
     verts = Tuple{Vector{Float64},Float64}[]
     K == 0 && return verts
     A = [p.α[i] for i ∈ 1:D, p ∈ planes]
-    β = [p.β for p ∈ planes]
+    # The heights are taken relative to the function at the center of the box,
+    # which does not move the vertices, so that the tolerance below scales with
+    # the variation of the planes over the box and not with a constant added to
+    # all of them. Otherwise, a kink can be lost for a function such as
+    # 10¹² + |x|. The values at the vertices are evaluated with the original
+    # function at the end.
+    ref = evaluate(pwa, (lo .+ hi) ./ 2)
+    β = [p.β - ref for p ∈ planes]
     # The range of each plane over the box
     pmin = [β[k] + sum(min(A[i, k] * lo[i], A[i, k] * hi[i]) for i ∈ 1:D) for k ∈ 1:K]
     pmax = [β[k] + sum(max(A[i, k] * lo[i], A[i, k] * hi[i]) for i ∈ 1:D) for k ∈ 1:K]

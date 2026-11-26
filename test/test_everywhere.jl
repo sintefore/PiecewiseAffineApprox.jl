@@ -26,6 +26,16 @@ end
     @test b.above ≈ 0.1 atol = 1e-9
     @test abs(b.x_above[1]) ≈ 0.5 atol = 1e-6
     @test b.below ≈ 0.15
+    # Adding the same constant to both functions gives the same bounds. Before,
+    # with a large constant, the vertex at 0 was lost and below was -0.5.
+    v = PWAFunc{Convex,1}([Plane((1.0,), 0.0), Plane((-1.0,), 0.0)]; domain = [(-1.0, 1.0)])
+    for c ∈ (0.0, 1e6, 1e12)
+        lifted = PWAFunc{Convex,1}([Plane(p.α, p.β + c) for p ∈ v.planes]; domain = [(-1.0, 1.0)])
+        b = error_bounds(lifted, x -> c + 0.5)
+        @test b.below ≈ 0.5
+        @test b.x_below[1] ≈ 0 atol = 1e-9
+        @test b.above ≈ 0.5 atol = 1e-3     # found by a search, near 10¹² the spacing is 10⁻⁴
+    end
     @test_throws ArgumentError error_bounds(up, f)
     # The same for the concave mirror image
     down = PWAFunc{Concave,1}(up.planes; domain = [(-1.0, 1.0)])

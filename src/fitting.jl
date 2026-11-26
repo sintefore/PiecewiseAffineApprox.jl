@@ -267,6 +267,11 @@ function approximation_error(
     z::AbstractVector,
     metric = :l1,
 )
+    size(X, 2) == length(z) || throw(
+        ArgumentError(
+            "X has $(size(X, 2)) points (columns), but there are $(length(z)) values",
+        ),
+    )
     return _deviation_measure(
         [abs(evaluate(f, x) - zᵢ) for (x, zᵢ) ∈ zip(eachcol(X), z)],
         metric,

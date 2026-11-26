@@ -176,6 +176,11 @@ end
     @test_throws ArgumentError approx(fe, Convex(), Cluster(; optimizer, strict = :bar))
     @test_throws ArgumentError approx(fe, Convex(), Cluster(; planes = 0))
     @test_throws ArgumentError approximation_error(PWAFunc{Convex,2}([Plane((0.0, 0.0), 0.0)]), zeros(2, 1), [0.0], :foo)
+    # The number of points and values must match, rather than the shorter being used
+    line = PWAFunc{Convex,1}([Plane((1.0,), 0.0)])
+    @test approximation_error(line, [0.0 1.0 2.0], [0.0, 1.0, 3.0], :max) ≈ 1.0
+    @test_throws ArgumentError approximation_error(line, [0.0 1.0 2.0], [0.0, 1.0])
+    @test_throws ArgumentError approximation_error(line, [0.0 1.0], [0.0, 1.0, 99.0])
 
     # Errors in the trials are reported directly, not as failed tasks
     failing = () -> error("no solver available")
@@ -224,6 +229,29 @@ end
         pwa = approx(fe, Convex(), alg)
         dev = [evaluate(pwa, x) - v for (x, v) ∈ fe]
         @test strict == :inner ? all(dev .≥ -1e-6) : all(dev .≤ 1e-6)
+    end
+end
+
+@testset "Cluster strict with dropped subsets" begin
+    # Subsets that do not determine a plane are dropped from the partition, and
+    # their points must be reassigned before a fit. Before, the fit to the
+    # remaining subsets could be returned, here the line through the first two
+    # points, which lies below the third.
+    X = [-1.0 0.0 1.0]
+    z = [1.0, 0.0, 1.0]
+    for itlim ∈ (0, 1, 3)
+        pwa = PWA._refine_partition(X, z, [[1, 2], [3]], itlim, :l1, optimizer, :inner)
+        @test all(evaluate(pwa, (x,)) ≥ v - 1e-9 for (x, v) ∈ zip(X, z))
+    end
+
+    # Fits that were below some of the points before, also with several trials
+    for (seed, trials) ∈ ((9, 4), (12, 1), (14, 4), (25, 1))
+        rng = StableRNG(seed)
+        pts = [(rand(rng), rand(rng)) for _ ∈ 1:30]
+        fe = FunctionEvaluations(pts, [a^2 + b^2 + 0.1 * sin(9a) for (a, b) ∈ pts])
+        alg = Cluster(; optimizer, metric = :l1, strict = :inner, planes = 8, trials, rng = StableRNG(seed))
+        pwa = approx(fe, Convex(), alg)
+        @test all(evaluate(pwa, x) ≥ v - 1e-6 for (x, v) ∈ fe)
     end
 end
 
@@ -278,22 +306,14 @@ end
         i ∈ eachindex(z)
     )
 
-    # Between the data points the concave function may lie slightly above the
-    # approximation, in particular where it is strongly curved (near p_out = p_in)
+    # Between the data points, which is not guaranteed, the concave function may
+    # lie slightly above the approximation, in particular where it is strongly
+    # curved (near p_out = p_in). A check of the quality of the fit, within the
+    # range of the data: the shortfall is below 1% (0.2-0.8% for different seeds).
     p_in = 175
     fraction = 0.05
-    total = 0
-    violations = 0
-    ϵ = 1e-3
-    for p_out ∈ 140:175
-        actual = PiecewiseAffineApprox.evaluate(pwa, (p_in, p_out, fraction))
-        expected = calculate_z(p_in, p_out, fraction)
-        total += 1
-        if actual < expected * (1 - ϵ)
-            violations += 1
-        end
+    shortfall = maximum(145:174) do p_out
+        return 1 - evaluate(pwa, (p_in, p_out, fraction)) / calculate_z(p_in, p_out, fraction)
     end
-
-    # Test that at least 90% of points satisfy the outer approximation
-    @test violations / total ≤ 0.10
+    @test shortfall < 0.01
 end

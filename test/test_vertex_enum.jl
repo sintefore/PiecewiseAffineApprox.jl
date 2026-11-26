@@ -224,3 +224,20 @@ end
     @test sort(first.(verts)) ≈ [[-1, 0.5], [0.5, 0.5], [1, 0.5]]
     @test isempty(PWA.vertices_by_subsets(PWAFunc{Convex,2}(Plane{2}[]), [(0, 1), (0, 1)]))
 end
+
+@testset "PWA vertex enumeration with a constant added" begin
+    # The vertices do not depend on a constant added to all planes. Before, the
+    # tolerance grew with the heights, and the kink of 10¹² + |x| was lost.
+    for c ∈ (0.0, 1e6, 1e12, -1e12)
+        verts = PWA.vertices_by_subsets(PWAFunc{Convex,1}([Plane((1.0,), c), Plane((-1.0,), c)]), [(-1, 1)])
+        @test sort(only.(first.(verts))) ≈ [-1.0, 0.0, 1.0]
+        # Small slopes at a moderate height
+        verts = PWA.vertices_by_subsets(PWAFunc{Convex,1}([Plane((1e-4,), c), Plane((-1e-4,), c)]), [(-1, 1)])
+        @test sort(only.(first.(verts))) ≈ [-1.0, 0.0, 1.0]
+        # Two variables: the pyramid max(x, y, 0) lifted by c
+        lifted = PWAFunc{Convex,2}([Plane([1, 0], c), Plane([0, 1], c), Plane([0, 0], c)])
+        verts = PWA.vertices_by_subsets(lifted, [(-1, 1), (-1, 1)])
+        @test length(verts) == 7
+        @test any(v -> v[1] ≈ [0, 0], verts)
+    end
+end

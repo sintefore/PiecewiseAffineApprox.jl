@@ -133,6 +133,13 @@ function _refine_partition(
     𝒫 = filter(determined, 𝒫)
     if isempty(𝒫)
         𝒫 = [collect(1:N)]
+    elseif sum(length, 𝒫) < N
+        # Reassign the points of the dropped subsets to the active plane among
+        # least squares fits to the remaining ones, so that the partition is
+        # complete. A fit to an incomplete partition would not hold strict at
+        # the missing points.
+        ls = _fit_planes(X, z, 𝒫, :l2, nothing, :none)
+        𝒫 = filter!(!isempty, _update_partition(X, ls))
     end
     refill && _refill!(𝒫, X, ones(N), K, determined)
     fit(q) = _fit_planes(X, z, q, metric, optimizer, strict)
