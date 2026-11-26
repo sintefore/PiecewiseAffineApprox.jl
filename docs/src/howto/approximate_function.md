@@ -1,74 +1,123 @@
 # Approximate a function
-Piecewise affine approximations can be obtained either for a given function 𝒻(x) or for a set of sampled points 𝒳 with their corresponding function values 𝒵 = {f(x): ∀x ∈ 𝒳}. Both methods have their applicability depending on the context and the specific application requirements. Methods that use the functions directly can be updated iteratively in real-time applications whereas approximations that use a collection of points may be more relevant when a dataset is provided for off-line construction of the approximate functions prior to optimization.
 
+A function is approximated by sampling it on a uniform grid over a box and
+fitting the samples. [`approx`](@ref) takes the function, the box with one
+`(lower, upper)` tuple for each variable, the shape of the approximation and
+the algorithm:
 
-For piecewise-affine approximations obtained from a pre-defined function, PWA provides a function called approx() which receives as the first arguments the sampling function and the region in the domain for the sampling. The following code creates a convex piecewise affine approximation to 𝓍² on the interval [-1,1] with 5 planes, or segments for this unidimensional case. Notice that the domain [-1,1] will be sampled uniformly thereby splitting the feasible region into 5 segments with corresponding 6 points.
- 
-```jldoctest
+```jldoctest function
+using PiecewiseAffineApprox
 
-using JuMP, PiecewiseAffineApprox, HiGHS
-optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
-
-m = Model(optimizer)
-@variable(m, x)
-pwa = approx(x -> sum(x.^2), [(-1, 1)], Convex(), MILP(optimizer = optimizer, planes=5))
-z = pwa(x)
-
-typeof(z)
+pwa = approx(x -> x[1]^2, [(-1, 1)], Convex(), Interpol(planes = 5))
+length(pwa.planes)
 
 # output
-VariableRef (alias for GenericVariableRef{Float64})
+
+5
 ```
 
-## Approximations on one side of the function
+The result is a [`PWAFunc`](@ref): the maximum of its planes for a convex
+approximation, and the minimum for a concave one. It is evaluated by calling
+it with numbers, and added to a JuMP model by calling it with variables, see
+[Add to a JuMP model](@ref).
 
-With `strict = :outer`, the approximation of a convex function lies below the
-sampled values, and with `strict = :inner` above them (interchanged for concave
-functions). Between the samples it can still cross the function. With
-`everywhere = true` it stays on its side over the whole box, as needed for a
-valid relaxation, a bound or a conservative constraint:
-
-```jldoctest
-using PiecewiseAffineApprox, HiGHS, JuMP
-optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
-
-algorithm = Progressive(; optimizer, tolerance = 0.05, metric = :max, strict = :inner)
-r = fit(x -> x[1]^2, [(-1, 1)], Convex(), algorithm; everywhere = true)
-b = r.details.bounds
-b.below ≤ 0, round(b.above; digits = 3)
+```jldoctest function
+round(pwa(0.5); digits = 4), round(evaluate(pwa, (0.5,)); digits = 4)
 
 # output
-(true, 0.054)
+
+(0.2755, 0.2755)
 ```
 
-The function must be convex or concave on the box as stated, which is used to
-find where the approximation is furthest on the wrong side, and its planes are
-shifted by that amount. Here the approximation is above ``x^2`` everywhere, by
-at most 0.054: the tolerance at the samples plus the shift. `bounds` are the
-largest deviations over the box, see [`error_bounds`](@ref), which also gives
-them for any convex or concave approximation of a function.
+## Functions of several variables
 
-## Non-convex functions
+The function is called with the point as a tuple if it accepts one, e.g.
+`x -> x[1]^2 + x[2]^2`, and otherwise with the coordinates as separate
+arguments, e.g. `sin` or `(x, y) -> x^2 + y^2`. [`Interpol`](@ref) handles one
+variable only, while [`Cluster`](@ref), [`MILP`](@ref),
+[`Progressive`](@ref) and [`FullOrder`](@ref) handle any number.
 
-A function that is neither convex nor concave is approximated with `DC()` as a
-difference of convex functions: the sum of a convex and a concave piecewise
-affine function. Any of the algorithms can be used, and fits both parts, with
-`planes` planes in the convex part and `concave_planes` in the concave part. The
-concave part is the expensive one to model, so it usually gets fewer planes.
+!!! tip "Functions of one variable"
+    A function with an untyped argument, e.g. `f(x) = exp(x) - 2x`, accepts a
+    tuple, so it is called with the tuple `(x,)` and fails. Either index the
+    point, `x -> exp(x[1]) - 2x[1]`, or restrict the argument to numbers,
+    `f(x::Real) = exp(x) - 2x`.
 
-```jldoctest
-using PiecewiseAffineApprox, HiGHS, JuMP
-optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
 
-dc = approx(sin, [(0, 2π)], DC(), Interpol(; optimizer, planes = 4, concave_planes = 2); nsamples = 30)
-length(dc.convex.planes), length(dc.concave.planes)
+```jldoctest function
+using StableRNGs
+
+f(x, y) = x^2 + y^2 + x * y
+pwa = approx(f, [(-1, 1), (-1, 1)], Convex(), Cluster(planes = 8, rng = StableRNG(1)))
+length(pwa.planes), domain(pwa)
 
 # output
-(4, 2)
+
+(8, [(-1.0, 1.0), (-1.0, 1.0)])
 ```
 
-Use `Alternating` to fit the two parts with different algorithms.
+The approximation records the box as its [`domain`](@ref), which is used as
+the default bounds of the inputs when it is added to a model, and for plotting.
 
-A tolerance, as in `Progressive` or `Select` with `criterion = :tolerance`,
-applies to the approximation as a whole: it is divided between the two parts
-so that their sum is within the tolerance of the data.
+## The number of samples
+
+The keyword `nsamples` sets the number of points in each dimension. By default
+it depends on the algorithm and the number of variables `D`:
+
+- [`MILP`](@ref): about `3 * D * planes` points in total, since the size of
+  the optimization problem grows with the number of points,
+- [`Cluster`](@ref) and [`Interpol`](@ref): `3 * planes` in each dimension,
+- other algorithms: about 100 points in total.
+
+More samples give a better picture of the function, at the cost of a longer
+fit:
+
+```jldoctest function
+x = range(0, 2; length = 1000)
+test = FunctionEvaluations(x, exp.(x))
+errors = map((5, 50)) do n
+    pwa = approx(x -> exp(x[1]), [(0, 2)], Convex(), Interpol(planes = 4); nsamples = n)
+    round(approximation_error(pwa, test, :max); digits = 3)
+end
+
+# output
+
+(0.181, 0.104)
+```
+
+Here [`approximation_error`](@ref) measures the largest deviation from the
+function on a fine grid.
+
+## Concave and non-convex functions
+
+A concave function is approximated in the same way with [`Concave`](@ref),
+and a function that is neither convex nor concave with [`DC`](@ref), as the
+sum of a convex and a concave part, see [Non-convex functions](@ref):
+
+```jldoctest function
+g = approx(x -> log(x[1]), [(0.5, 4)], Concave(), Interpol(planes = 4))
+h = approx(sin, [(0, 2π)], DC(), Interpol(planes = 4, concave_planes = 3))
+summary(g), summary(h)
+
+# output
+
+("PWAFunc{Concave, 1, Float64} with 4 planes on [0.5, 4.0]", "DCFunc{1, Float64} with 4 convex and 3 concave planes on [0.0, 6.283]")
+```
+
+## Diagnostics
+
+[`fit`](@ref) takes the same arguments as `approx`, and returns a
+[`FitResult`](@ref) with the approximation `func`, its `error` from the
+samples, the run time and `details` from the algorithm:
+
+```jldoctest function
+r = fit(x -> x[1]^2, [(-1, 1)], Convex(), Interpol(planes = 5))
+round(r.error; digits = 4), r.metric
+
+# output
+
+(0.0231, :l1)
+```
+
+To make the approximation lie on one side of the function, at the samples or
+over the whole box, see [Control the error](@ref).

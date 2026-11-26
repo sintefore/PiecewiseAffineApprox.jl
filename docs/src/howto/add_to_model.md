@@ -1,85 +1,16 @@
-# Add approximation to model
+# Add to a JuMP model
 
- A piecewise-affine approximation ̃𝓏 ≈ 𝒻(𝔁) can be added to a JuMP model for optimization purposes. In that case, the optimization variables 𝔁 will denote the coordinates in the domain whereas the approximate value of function 𝒻 will be represented by ̃𝓏.
- 
-The code below creates a piecewise affine approximate to 𝓍² on the interval [-1,1] using the JuMP variable 𝓍. The piecewise affine approximation is linked the other variable in the model 𝓏. The objective is set as the minimization of this variable suject to 𝓍 being greater or equal than 0.5. After the optimization of the constrained problem, the optimal value of 𝓏 is 0.2653.
+An approximation is used like a function in a JuMP model. Called with numbers
+it is evaluated, and called with JuMP variables or expressions it adds its
+constraints to their model and returns the output, which can be used in
+expressions, constraints and objectives:
 
-```jldoctest; output = false
+```jldoctest model; output = false
 using JuMP, PiecewiseAffineApprox, HiGHS
-
-
-optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
-m = Model(optimizer)
-@variable(m, x)
-# Create a piecewise linear approximation to x^2 on the interval [-1, 1]
-pwa = approx(x -> x[1]^2, [(-1, 1)], Convex(), MILP(optimizer = optimizer, planes=5))
-# Add the pwa function to the model
-z = pwa(x)
-# Minimize
-@objective(m, Min, z)
-# Check approximation/solution at x = 0.5
-@constraint(m, x >= 0.5)
-optimize!(m);
-round(value(z); digits=4)
-
-# output
-0.2653
-```
-
-A piecewise affine approximation can be also be linked to existing variables in an existing JuMP model. In the following code, a 3D piecewise affine approximation is obtained for existing variables of a model (xvar and yvar). The approximation is constructed for a given dataset (X,z) and then linked to a JuMP model, which is optimized in the sequence.
-
-
-```jldoctest; output=false
-using JuMP, PiecewiseAffineApprox, HiGHS
-optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
-
-xg = [i for i ∈ -1:0.5:1]
-yg = [j for j ∈ -1:0.5:1]
-X = [repeat(xg, inner = [size(yg, 1)]) repeat(yg, outer = [size(xg, 1)])]
-z = X[:, 1] .^ 2 + X[:, 2] .^ 2
-
-np = 17
-
-m = Model()
-@variable(m, xvar)
-@variable(m, yvar)
-@variable(m, approx_f)
-
-tuple_var = (xvar, yvar)
-
-pwa = approx(
-    FunctionEvaluations(tuple.(eachcol(X)...), z),
-    Convex(),
-    MILP(optimizer = optimizer, planes = np, strict = :outer, metric = :l1),
-)
-# Calling the approximation adds it to the model of the variables, here with
-# the existing variable approx_f as the output
-pwa(tuple_var; z = approx_f)
-
-@objective(m, Min, approx_f)
-set_optimizer(m, optimizer)
-@constraint(m, xvar == √0.5)
-@constraint(m, yvar == √0.5)
-optimize!(m)
-round(value(approx_f))
-# output
-1.0
-```
-
-
-## Calling the approximation
-
-An approximation can also be called like a function. With numbers it is
-evaluated, and with JuMP variables or expressions it is added to their model
-with `add_pwaformulation` and the output returned, so it can be used directly in
-expressions, constraints and objectives. `Formulated` stores the options of
-`add_pwaformulation` with the function.
-
-```jldoctest; output = false
-using JuMP, PiecewiseAffineApprox, HiGHS
-optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
+optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent() => true)
 
 cost = approx(x -> x[1]^2 + 1 / x[1], [(0.2, 2)], Convex(), Interpol(planes = 5))
+
 m = Model(optimizer)
 @variable(m, 0.2 ≤ x[1:3] ≤ 2)
 @constraint(m, sum(x) ≥ 3)
@@ -88,128 +19,136 @@ optimize!(m)
 round(objective_value(m); digits = 1), round(cost(1.0); digits = 1)
 
 # output
+
 (6.1, 2.0)
 ```
 
-`add_pwaformulation` returns the output together with a record of the variables and
-constraints that were added, which can be removed again with `delete`. If a
-function cannot be added, the model is left unchanged.
+Each call adds a new formulation, so an approximation of the same inputs that
+is used several times should be added once, e.g. with
+`@expression(m, c, cost(x[1]))`.
 
-```julia
-z, record = add_pwaformulation(m, x[1], cost; name = "cost1")
-delete(m, record)
+## Inputs and output
+
+A function of several variables takes the inputs as separate arguments, or as
+one vector or tuple. The output is a new variable, or an existing variable or
+expression given with the keyword `z`:
+
+```jldoctest model; output = false
+using StableRNGs
+paraboloid = approx((x, y) -> x^2 + y^2, [(-1, 1), (-1, 1)], Convex(),
+    Cluster(planes = 8, rng = StableRNG(1)))
+
+m = Model(optimizer)
+@variable(m, -1 ≤ y[1:2] ≤ 1)
+@variable(m, w)
+paraboloid(y; z = w)
+@constraint(m, y[1] + y[2] ≥ 1)
+@objective(m, Min, w)
+optimize!(m)
+round(value(w); digits = 2)
+
+# output
+
+0.47
 ```
 
-The output `z` is bounded by the smallest value of the function over the box
-that `x` is restricted to, unless the direction is `Hypograph()` (the direction types are not exported), and by the
-largest value, unless it is `Epigraph()`.
+## Bounds of the inputs and the output
 
-## Formulations
+The approximation is only valid on the box it was fitted on, which it records
+as its [`domain`](@ref). The formulations that need a bounded input take the
+box from the keyword `bounds = [(lo₁, hi₁), …]`, the domain, or the bounds of
+the variables, in that order. Give `bounds` explicitly when the input is an
+expression:
 
-PiecewiseAffineApprox.jl provides four different linear programming formulations for adding convex (or concave) piecewise affine functions to optimization models. All formulations are pure linear programs (no binary variables required) and differ in their computational structure and preprocessing requirements. Within the bounds of the input variables they model the same function. The formulations and their names follow [Coffrin et al. (2021)](https://doi.org/10.1016/j.epsr.2021.107191) (preprint: [arXiv:2005.14087](https://arxiv.org/abs/2005.14087)), which considers one-dimensional piecewise linear cost functions. The λ-formulation for functions of two or more variables is a natural extension of the one-dimensional formulation.
+```julia
+z = cost(x[1] + x[2]; bounds = [(0.2, 2)])
+```
 
-Note that all formulations model the epigraph `z ≥ f(x)` of a convex function (or the hypograph `z ≤ f(x)` of a concave function). The value of `z` is therefore only equal to `f(x)` when the objective pushes `z` towards the function, i.e. when minimizing a convex function or maximizing a concave function.
+Over the box, the output is bounded by the smallest and largest value of the
+function, except in the direction it is pushed: no upper bound for a convex
+function that is minimized, and no lower bound for a concave function that is
+maximized.
 
-The formulations are selected with the keyword argument `formulation` to `add_pwaformulation`, using the types `PsiFormulation`, `LambdaFormulation`, `DeltaFormulation` and `PhiFormulation`. The Greek names `Ψ_Formulation`, `λ_Formulation`, `Δ_Formulation` and `Φ_Formulation` are available as aliases.
+## Record and rollback
 
-**Ψ-Formulation (`PsiFormulation`):** Uses the plane representation directly without requiring vertex enumeration, with one constraint for each plane. This formulation is the most intuitive, works for any dimension and gives the smallest model. Bounds on the input variables are optional. If bounds are given explicitly, the output `z` is also bounded by the smallest and largest value of the function over the bounds, as in Coffrin et al. This requires vertex enumeration.
+[`add_pwaformulation`](@ref) does the same as calling the function, and also
+returns a [`PWAFormulation`](@ref), a record of the variables and constraints
+that were added, which `delete` removes again. If a function cannot be added,
+the model is left unchanged.
 
-**λ-Formulation (`LambdaFormulation`):** Represents the piecewise affine function as a convex combination of its vertices. This formulation works for any dimension. It requires vertex enumeration as a preprocessing step, which computes all vertices of the piecewise affine function's epigraph (for convex functions) or hypograph (for concave functions) restricted to the bounds of the input variables.
+```jldoctest model
+m = Model()
+@variable(m, 0.2 ≤ u ≤ 2)
+z, record = add_pwaformulation(m, u, cost; name = "cost")
+n = num_variables(m)
+delete(m, record)
+n, num_variables(m)
 
-**Δ-Formulation (`DeltaFormulation`):** A specialized formulation that exploits the ordered structure of breakpoints in one-dimensional piecewise affine functions. Each segment between two consecutive breakpoints is a "bin" with a variable for how much of the segment is used, i.e. the formulation integrates the slope of the function along the x-axis. It requires breakpoint enumeration as a preprocessing step. This formulation only works for 1D problems and will error for higher dimensions.
+# output
 
-**Φ-Formulation (`PhiFormulation`):** An alternative specialized formulation for one-dimensional problems. It extends the first segment over the whole domain and adds the change in slope at each later breakpoint, and is the mathematical dual of the Δ-formulation. It is uncommon in practice, and is included mainly for completeness. Like the Δ-formulation, it requires breakpoint enumeration and only works for 1D problems.
+(2, 1)
+```
 
-The λ, Δ and Φ formulations need a bounded domain for the input variables. The bounds are taken from the JuMP variables if they have finite bounds, or can be given explicitly with the keyword argument `bounds = [(lo₁, hi₁), …, (lo_D, hi_D)]`. Typically, these should be the bounds of the domain used to compute the approximation. For the one-dimensional formulations, adjacent segments with nearly equal slopes are merged to avoid redundant variables.
+## Direction and formulation
 
-```jldoctest; output = false
-using JuMP, PiecewiseAffineApprox, HiGHS
+A convex function is modelled by its epigraph, `z ≥ f(x)`, and a concave
+function by its hypograph, `z ≤ f(x)`, as pure linear programs. The output
+then only equals the function when the objective pushes it towards the
+function: when a convex function is minimized or a concave function is
+maximized. The keyword `direction` changes this:
 
-optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
-pwa = approx(x -> x[1]^2, [(-1, 1)], Convex(), MILP(optimizer = optimizer, planes=5))
+| Direction | Relation | Use when | Binary variables for |
+|:--|:--|:--|:--|
+| `Epigraph()` | `z ≥ f(x)` | `z` is only minimized | the concave part |
+| `Hypograph()` | `z ≤ f(x)` | `z` is only maximized | the convex part |
+| `Graph()` | `z = f(x)` | anything else | both parts |
+
+The directions are not exported, and are given as e.g.
+`PiecewiseAffineApprox.Graph()`. The default is the direction that needs no
+binary variables for a convex or concave function, and `Graph()` for a
+[`DCFunc`](@ref).
+
+The keyword `formulation` selects how the function is modelled: by its planes
+([`PsiFormulation`](@ref), the default for convex and concave functions), its
+vertices ([`LambdaFormulation`](@ref)), its segments
+([`DeltaFormulation`](@ref), the default in one variable when binary variables
+are needed) or its slope changes ([`PhiFormulation`](@ref)). All model the same
+function within the bounds; see [Formulations](@ref) for when each is best.
+
+```jldoctest model
+pwa = approx(x -> x[1]^2, [(-1, 1)], Convex(), Interpol(planes = 4))
 
 function solve(formulation)
     m = Model(optimizer)
-    @variable(m, -1 <= x <= 1)
-    z = pwa(x; formulation = formulation)
+    @variable(m, -1 ≤ x ≤ 1)
+    z = pwa(x; formulation)
+    @constraint(m, x ≥ 0.5)
     @objective(m, Min, z)
-    @constraint(m, x >= 0.5)
     optimize!(m)
-    return round(value(z); digits=4)
+    return round(value(z); digits = 4)
 end
 
-[solve(f) for f in (LambdaFormulation(), PsiFormulation(), DeltaFormulation(), PhiFormulation())]
+[solve(F) for F ∈ (PsiFormulation(), LambdaFormulation(), DeltaFormulation(), PhiFormulation())]
 
 # output
+
 4-element Vector{Float64}:
- 0.2653
- 0.2653
- 0.2653
- 0.2653
+ 0.2727
+ 0.2727
+ 0.2727
+ 0.2727
 ```
 
-The bounds can also be given explicitly, e.g. when the input is an expression:
+## Store the options with the function
+
+[`Formulated`](@ref) keeps the options of `add_pwaformulation` with the
+function, so that every call uses them:
 
 ```julia
-z = pwa(x + y; formulation = DeltaFormulation(), bounds = [(-1, 1)])
+cost = Formulated(approx(sin, [(0, 2π)], DC(), Interpol(planes = 4));
+    formulation = DeltaFormulation(), direction = PiecewiseAffineApprox.Epigraph())
+@objective(m, Min, cost(x))
 ```
 
-**Choosing a formulation:**
-- **Linear programs** (e.g. HiGHS): The choice of formulation has limited impact. In the experiments of Coffrin et al. (DC optimal power flow), λ and Δ were fastest on average, but all formulations were within a factor of 1.7 of the best.
-- **Nonlinear models with interior point solvers** (e.g. Ipopt, Knitro): Avoid the Ψ-formulation. Coffrin et al. found it on average 5 times, and up to 10 times, slower than the other formulations for AC optimal power flow. The λ and Δ formulations performed best, with λ best for convex (second order cone) relaxations.
-- For **1D problems**: All four formulations are available.
-- For **2D and higher**: Only λ-Formulation and Ψ-Formulation are available (Δ and Φ will error).
-- **Preprocessing considerations**: λ, Δ, and Φ formulations require enumeration of vertices or breakpoints, which may be computationally expensive for complex approximations. The Ψ-formulation works directly with planes and avoids this preprocessing step.
-- **Default**: When no formulation is specified, the Ψ-formulation is used for a convex or concave function in its natural direction, where it requires no preprocessing and no bounds and works well for linear programs. For a function of one variable that needs binary variables, a difference of convex function or another direction, the Δ-formulation is used if bounds are available, as it was by far the fastest in the dispatch benchmark below.
-
-Other formulation methods can be added outside the package, see [Add a formulation](@ref).
-
-## Non-convex functions
-
-A difference of convex approximation, see [`DC`](@ref), is added to a model in
-the same way. The function is modelled as the sum of its convex and concave
-parts, and the part that is bounded against the direction of its curvature
-needs one binary variable per plane to select the active plane. The binary
-variables select the active plane with big-M constraints computed from the
-bounds on the variables, so the variables must be bounded, or the bounds given
-with the `bounds` keyword. With `selection = :indicator`, indicator
-constraints are used instead for solvers that support them.
-
-For functions of one variable, the Δ- and Φ-formulations are also available.
-They model the function by its breakpoints over the bounds, with one binary
-variable at each kink of the wrong curvature for the direction, i.e. at the
-concave kinks when `z` is minimized. These formulations are ideal and need no
-big-M values, so they are preferable to the Ψ-formulation in one dimension, and
-the Δ-formulation is the default when bounds are available. In
-the dispatch benchmark in PWABenchmarks.jl (`scripts/formulations.jl`) with 200
-non-convex cost functions, the Δ-formulation solved in 0.1 s and the Φ-formulation
-in 1.3 s, against 50 s for the Ψ-formulation with big-M selection, and with 1000
-functions the Ψ-formulation did not finish within two minutes.
-
-By default `z` equals the approximation. If `z` is only minimized, pass
-`direction = PiecewiseAffineApprox.Epigraph()`, and if it is only maximized `direction = PiecewiseAffineApprox.Hypograph()`.
-Then only the concave or the convex part, respectively, needs binary variables.
-The same keyword makes a convex or concave `PWAFunc` exact, `direction = PiecewiseAffineApprox.Graph()`,
-at the cost of binary variables.
-
-A function fitted with `approx` records the range of its data as its `domain`,
-which is the default for `bounds` in all formulations that need bounds.
-
-```jldoctest; output = false
-using JuMP, PiecewiseAffineApprox, HiGHS
-optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
-
-m = Model(optimizer)
-@variable(m, 0 ≤ x ≤ 2π)
-# A difference of convex approximation of sin(x) on [0, 2π]
-dc = approx(sin, [(0, 2π)], DC(), Interpol(; optimizer, planes = 3))
-# Only minimized, so binary variables are needed at the concave kinks only
-z = dc(x; direction = PiecewiseAffineApprox.Epigraph(), formulation = DeltaFormulation())
-@constraint(m, x ≥ 4)
-@objective(m, Min, z)
-optimize!(m)
-round(value(z); digits = 2)
-
-# output
--1.0
-```
+For difference of convex approximations in a model, see
+[Non-convex functions](@ref).

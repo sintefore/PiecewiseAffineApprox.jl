@@ -1,87 +1,114 @@
-# Approximate points
-For piecewise-affine approximations obtained from a dataset, the function FunctionEvaluations(𝒳, 𝒵) can be used to create a structure that contains a tuple with the points in the domain 𝒳 and their corresponding function values 𝒵. The function approx will receive this struct as input to calculate the approximations that best fit the dataset.
+# Approximate data
 
-## Unidimensional funcions (1D)
+Measured or precomputed data is wrapped in [`FunctionEvaluations`](@ref), the
+points together with their function values, and passed to [`approx`](@ref).
+The points can be given
 
-The following code creates a 2D full-order piecewise affine approximation for a tuple (x,z) where x is a collection of points with their corresponding function values stores in z. The selected approximation is convex, uses 5 planes (linear segments), and applies l₁-norm regulazation as the error measure.
+- as a vector of numbers, for a function of one variable,
+- as a vector of tuples, one tuple per point,
+- as a matrix with one point per row (`dims = 1`, the default) or per column
+  (`dims = 2`).
 
-```jldoctest
-using PiecewiseAffineApprox, JuMP, HiGHS
-optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
-
-x = collect(range(-1, 1; length = 10))
-z = x .^ 2
-
-pwa = approx(
-    FunctionEvaluations(Tuple.(x), z),
-    Convex(),
-    MILP(;optimizer, metric = :l1, planes = 5),
-)
-
-length(pwa.planes)
-
-# output
-5
-```
-
-# Bi-variate functions (3D)
-A dataset can also be used as input for 3D piecewise affine approximations. The following code creates a uniformly sampled domain X within (-1,1) and calculates the corresponding function values for a concave function z_concave.
-
-```jldoctest
-using PiecewiseAffineApprox, JuMP, HiGHS
-optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
-
-xg = [i for i ∈ -1:0.5:1]
-yg = [j for j ∈ -1:0.5:1]
-
-X = [repeat(xg, inner = [size(yg, 1)]) repeat(yg, outer = [size(xg, 1)])]
-
-z = X[:, 1] .^ 2 + X[:, 2] .^ 2
-z_concave = z .* -1
-
-np = 17
-
-pwa = approx(
-    FunctionEvaluations(tuple.(eachcol(X)...), z),
-    Convex(),
-    MILP(
-        ;optimizer,
-        planes = np,
-        strict = :outer,
-        metric = :l1,
-    ),
-)
-length(pwa.planes)
-
-# output
-17
-```
-
-## Non-convex data
-
-Data that is neither convex nor concave is approximated with `DC()` as the sum
-of a convex and a concave piecewise affine function. The data is first split
-into a convex and a concave part by `dc_decomposition`, each part is fitted,
-and the parts are then refitted alternately, each to the data minus the other
-part.
-
-The points can be given as a vector of tuples, as a vector of numbers for a
-function of one variable, or as a matrix with one point per row.
-
-```jldoctest
-using PiecewiseAffineApprox, JuMP, HiGHS, StableRNGs
-optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent()=>true)
+```jldoctest points
+using PiecewiseAffineApprox
 
 x = collect(range(-1, 1; length = 30))
-z = sin.(3x)
+z = x .^ 2 .+ 0.02 .* sin.(40 .* x)       # convex with some noise
+data = FunctionEvaluations(x, z)
 
-dc = approx(
-    FunctionEvaluations(x, z),
-    DC(),
-    Cluster(planes = 4, rng = StableRNG(1)),
-)
-typeof(dc)
+pwa = approx(data, Convex(), Interpol(planes = 4))
+length(pwa.planes), domain(pwa)
 
 # output
-DCFunc{1, Float64}
+
+(4, [(-1.0, 1.0)])
+```
+
+The range of the data is recorded as the [`domain`](@ref) of the
+approximation. The points do not need to be sorted, and repeated measurements
+at the same point are allowed.
+
+## Several variables
+
+For data in several variables, use [`Cluster`](@ref) for many points,
+[`MILP`](@ref) for the best fit of a small data set, or [`Progressive`](@ref)
+to meet a tolerance. Here 200 random points of a convex function of two
+variables, given as a matrix with one point per row:
+
+```jldoctest points
+using StableRNGs
+
+rng = StableRNG(1)
+X = 2 .* rand(rng, 200, 2) .- 1
+z = [x^2 + y^2 + x * y for (x, y) ∈ eachrow(X)]
+data2 = FunctionEvaluations(X, z)
+
+pwa = approx(data2, Convex(), Cluster(planes = 6, rng = StableRNG(2)))
+length(pwa.planes)
+
+# output
+
+6
+```
+
+[`Cluster`](@ref) starts from random partitions of the points. Pass a seeded
+generator such as `StableRNG(2)` from StableRNGs.jl as `rng` for reproducible
+results.
+
+## Concave data
+
+Concave data is approximated with [`Concave`](@ref), as the minimum of planes:
+
+```jldoctest points
+pwa = approx(FunctionEvaluations(x, -x .^ 2), Concave(), Interpol(planes = 4))
+pwa(0.0) ≤ 0
+
+# output
+
+true
+```
+
+## Noisy and non-convex data
+
+The data does not have to be exactly convex:
+
+- [`MILP`](@ref), [`Cluster`](@ref) and [`Interpol`](@ref) fit any data with
+  a convex function. Interpol can make the data convex first with
+  `convexify = :data`, see [Interpol](@ref).
+- [`Progressive`](@ref) with `strict = :none` or `:inner` handles noise up to
+  its tolerance.
+- [`Progressive`](@ref) with the default `strict = :outer`, and
+  [`FullOrder`](@ref), need data that can be interpolated by a convex function.
+  [`enforce_curvature`](@ref) changes the values as little as possible to make
+  it so:
+
+```jldoctest points
+using HiGHS, JuMP
+optimizer = optimizer_with_attributes(HiGHS.Optimizer, MOI.Silent() => true)
+
+convex = enforce_curvature(data, Convex(), optimizer)
+pwa = approx(convex, Convex(), Progressive(; optimizer, tolerance = 0.02))
+length(pwa.planes)
+
+# output
+
+4
+```
+
+Data that is clearly neither convex nor concave is approximated with
+[`DC`](@ref), see [Non-convex functions](@ref).
+
+## Check the fit
+
+[`approximation_error`](@ref) measures the deviation of an approximation from
+data, and [`fit`](@ref) reports it together with diagnostics from the
+algorithm, see [Control the error](@ref):
+
+```jldoctest points
+r = fit(data, Convex(), Interpol(planes = 4, metric = :l2))
+round(r.error; digits = 4), round(approximation_error(r.func, data, :max); digits = 4)
+
+# output
+
+(0.0384, 0.0884)
 ```

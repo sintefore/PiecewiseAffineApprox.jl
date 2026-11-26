@@ -1,39 +1,33 @@
 using Documenter, JuMP, PiecewiseAffineApprox
 
-# TODO: Consider generating figures as part of build
-docdir = @__DIR__
-cp(
-    joinpath(docdir, "approx.svg"),
-    joinpath(docdir, "src/assets/approx.svg"),
-    force = true,
-)
-cp(
-    joinpath(docdir, "approx_3D.png"),
-    joinpath(docdir, "src/assets/approx_3D.png"),
-    force = true,
-)
-cp(
-    joinpath(docdir, "approxanim.mp4"),
-    joinpath(docdir, "src/assets/approxanim.mp4"),
-    force = true,
-)
-cp(
-    joinpath(docdir, "rotation.mp4"),
-    joinpath(docdir, "src/assets/rotation.mp4"),
-    force = true,
-)
+# The figures of the background pages are static images in src/assets/figures,
+# the plots of the manual are made when the documentation is built.
 
 pages = [
     "Introduction" => "index.md",
-    "How to" => [
+    "Manual" => [
         "Approximate a function" => "howto/approximate_function.md",
-        "Approximate points" => "howto/approximate_points.md",
-        "Add constraints to a model" => "howto/add_to_model.md",
+        "Approximate data" => "howto/approximate_points.md",
+        "Control the error" => "howto/control_error.md",
+        "Choose the number of planes" => "howto/choose_planes.md",
+        "Non-convex functions" => "howto/nonconvex.md",
+        "Add to a JuMP model" => "howto/add_to_model.md",
         "Plot approximations" => "howto/plot_approximation.md",
+        "Save and load" => "howto/save_load.md",
+    ],
+    "Methods" => [
+        "Overview" => "background/overview.md",
+        "MILP" => "background/milp.md",
+        "Cluster" => "background/cluster.md",
+        "Interpol" => "background/interpol.md",
+        "Progressive and FullOrder" => "background/progressive.md",
+        "Difference of convex" => "background/dc.md",
+        "Formulations" => "background/formulations.md",
+    ],
+    "Extending" => [
         "Add an algorithm" => "howto/add_algorithm.md",
         "Add a formulation" => "howto/add_formulation.md",
     ],
-    "Background" => "background/background.md",
     "API reference" => "reference/api.md",
 ]
 
@@ -42,7 +36,7 @@ Documenter.makedocs(
     format = Documenter.HTML(;
         prettyurls = get(ENV, "CI", "false") == "true",
         edit_link = "main",
-        assets = String[],
+        assets = ["assets/figures.css"],
     ),
     doctest = true,
     modules = [PiecewiseAffineApprox],

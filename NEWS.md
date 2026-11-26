@@ -36,6 +36,8 @@ Improvements:
 - `Progressive` and `FullOrder` support two-sided and inner error bands, lazy
   constraint generation and results independent of the scale of the data
 - Replace the dependency on Distributions with an internal sampler
+- Rewritten documentation, with a manual, a page on each method and the
+  formulations, and figures
 
 Version 0.6.6 (2026-03-26)
 --------------------------

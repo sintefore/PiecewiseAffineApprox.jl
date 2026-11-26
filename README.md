@@ -5,67 +5,60 @@
 [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://sintefore.github.io/PiecewiseAffineApprox.jl/stable/)
 [![In Development](https://img.shields.io/badge/docs-dev-blue.svg)](https://sintefore.github.io/PiecewiseAffineApprox.jl/dev/)
 
+Piecewise affine approximations of functions and data, ready to use in
+[JuMP](https://jump.dev/) optimization models.
 
+![A wiggly function and its piecewise affine approximation](docs/src/assets/figures/hero.png)
 
-Add convex, concave or general (difference of convex) piecewise linear approximations of functions or a set of points to optimization models modelled in [JuMP](https://jump.dev/). 
+PiecewiseAffineApprox fits convex, concave or general (difference of convex)
+piecewise affine functions to a function or to data, and adds them to JuMP
+models as linear or mixed-integer constraints. Convex and concave
+approximations become pure linear programs, and general ones need binary
+variables only where the curvature works against the objective.
 
-This package provides three main methods to fit a set of points: 
+Five fitting algorithms share one interface:
 
-1. creates and solves a MILP to fit a set of points, and adds the resulting linear constraints to the optimization model. This method is partially based on [Toriello & Vielma, 2012](https://doi.org/10.1016/j.ejor.2011.12.030). 
-2. uses a heuristic to fit the set of points. This method is based on [Magnani & Boyd, 2009](https://doi.org/10.1007/s11081-008-9045-3).
-3. a progressive heuristic to add planes until a certain accuracy is met. This method is based on [Kazda & Li, 2024](https://doi.org/10.1016/j.ejor.2023.07.026)
+| Algorithm | Idea | Based on |
+|:--|:--|:--|
+| `MILP` | Optimal assignment of points to planes | [Toriello & Vielma (2012)](https://doi.org/10.1016/j.ejor.2011.12.030) |
+| `Cluster` | Partition the points and refit, from random starts | [Magnani & Boyd (2009)](https://doi.org/10.1007/s11081-008-9045-3) |
+| `Interpol` | Best knots among the data points, as a shortest path with at most K arcs (one variable) | [Dahl & Realfsen (2000)](https://doi.org/10.1002/1097-0037(200008)36:1%3C1::AID-NET1%3E3.0.CO;2-B) |
+| `Progressive` | Add planes until a tolerance is met | [Kazda & Li (2024)](https://doi.org/10.1016/j.ejor.2023.07.026) |
+| `FullOrder` | One plane per data point | [Kazda & Li (2024)](https://doi.org/10.1016/j.ejor.2023.07.026) |
 
-The number of planes can be selected automatically with `Select`, which wraps any of the methods and chooses the fewest planes within a tolerance, or by an information criterion or cross validation. The deviation of an approximation from the data is measured with `approximation_error`.
-
-Non-convex functions are approximated as a difference of convex functions with `DC()`: the sum of a convex and a concave piecewise linear function, fitted with any of the methods above. The resulting `DCFunc` is added to a JuMP model with binary variables selecting the active plane of the concave part.
+The number of planes can be chosen with `Select`, by a tolerance, an
+information criterion or cross validation, and the error is measured with
+`approximation_error`. Approximations can be restricted to one side of the
+data, or of a function over its whole domain.
 
 ## Usage
 
 ```julia
 using JuMP, PiecewiseAffineApprox, HiGHS
 
+# A convex approximation of x² + 1/x on [0.2, 2] with five planes
+cost = approx(x -> x[1]^2 + 1 / x[1], [(0.2, 2)], Convex(), Interpol(planes = 5))
+
 m = Model(HiGHS.Optimizer)
-@variable(m, x)
-# Create a piecewise linear approximation to x^2 on the interval [-1, 1]
-pwa = approx(x -> x[1]^2, [(-1, 1)], Convex(), MILP(optimizer = HiGHS.Optimizer, planes=5))
-# Add the pwa function to the model
-z = pwa(x)
-# Minimize
-@objective(m, Min, z)
-# Check approximation/solution at x = 0.5
-@constraint(m, x >= 0.5)
+@variable(m, 0.2 ≤ x[1:3] ≤ 2)
+@constraint(m, sum(x) ≥ 3)
+# Calling the approximation on JuMP variables adds it to the model
+@objective(m, Min, sum(cost(x[i]) for i in 1:3))
 optimize!(m)
-value(z) # 0.2653
+objective_value(m)  # 6.1
 ```
 
-A non-convex function is approximated as a difference of convex functions, and added to a model in the same way. Here `z` is only minimized, so with `direction = PiecewiseAffineApprox.Epigraph()` only the concave part needs binary variables:
+A non-convex function is approximated as the sum of a convex and a concave
+part with `DC()`. When the output is only minimized, only the concave part
+needs binary variables:
 
 ```julia
-dc = approx(sin, [(0, 2π)], DC(), Interpol(optimizer = HiGHS.Optimizer, planes = 3))
+dc = approx(sin, [(0, 2π)], DC(), Interpol(planes = 5, concave_planes = 2))
 @variable(m, 0 ≤ y ≤ 2π)
 w = dc(y; direction = PiecewiseAffineApprox.Epigraph())
 ```
 
-To keep dependencies light, PiecewiseAffineApprox does not include plotting by default. If the `Makie` or `Plots` package is loaded
-before using the module, some simple plotting routines will be available
-
-The following demonstrates how this can be achieved:
-
-```julia
-using PiecewiseAffineApprox, CairoMakie, HiGHS
-
-x = LinRange(0, 1, 20)
-f(x) = first(x)^2
-pwa = approx(f, [(0, 1)], Convex(), MILP(optimizer = HiGHS.Optimizer, planes = 3))
-p = plot(x, f.(x), pwa)
-
-save("approx.svg", p)
-```
-![](docs/approx.svg)
-
-Animation showing the accuracy when adding more cuts:
-Approximation of 3D function
-
- <video loop src="docs/rotation.mp4">  video </video> 
-
-![](docs/approx_3D.png)
+Plotting is available when Makie or Plots is loaded, and saving and loading
+when JSON is loaded. See the
+[documentation](https://sintefore.github.io/PiecewiseAffineApprox.jl/stable/)
+for more.

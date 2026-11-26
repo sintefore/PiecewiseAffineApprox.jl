@@ -1,0 +1,34 @@
+/* Rows of figures, written as Markdown tables with an image in each cell. The
+   tables are recognized by containing images, so tables of text keep the
+   default layout. */
+.content table:has(img) {
+  table-layout: fixed;
+  width: 100%;
+  border: none;
+}
+.content table:has(img) th,
+.content table:has(img) td {
+  text-align: center;
+  vertical-align: top;
+  border: none;
+  background: none;
+  padding: 0.3em 0.4em;
+}
+.content table:has(img) tr {
+  background: none;
+}
+.content table:has(img) img {
+  width: 100%;
+  height: auto;
+  margin: 0;
+}
+/* The figures have a white background, which is kept in the dark themes */
+.content img[src*="assets/figures/"] {
+  background: #fff;
+  border-radius: 4px;
+}
+.content p > img[src*="assets/figures/"] {
+  display: block;
+  margin: 0.5em auto;
+  max-width: min(100%, 720px);
+}

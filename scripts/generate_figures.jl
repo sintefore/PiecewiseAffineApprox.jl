@@ -13,7 +13,7 @@ pwa = approx(
 p = plot(x, f.(x), pwa)
 
 using CairoMakie
-save(joinpath(@__DIR__, "..", "docs", "approx.svg"), p; backend = CairoMakie)
+save(joinpath(@__DIR__, "..", "docs", "src", "assets", "approx.svg"), p; backend = CairoMakie)
 
 function pwademo(x, f, Ns = 1:5; opt = HiGHS.Optimizer, C = Convex())
     fig = Figure(size = (600, 400))
@@ -57,7 +57,7 @@ p = pwademo(x, f, 3:3)
 save("approx.svg", p.fig; backend = CairoMakie)
 
 # Create animation
-record(p.fig, joinpath(@__DIR__, "..", "docs", "approxanim.mp4")) do io
+record(p.fig, joinpath(@__DIR__, "..", "docs", "src", "assets", "approxanim.mp4")) do io
     for n = 1:5
         add_mplane!(p.ax, x, f, Convex(), HiGHS.Optimizer, n, p.linerecords)
         for _ = 1:30
@@ -81,7 +81,7 @@ function rotated_plot()
         # Cluster(; optimizer = HiGHS.Optimizer, planes = 9, strict = :none),
     )
     p = plot(vals, pwa)
-    save(joinpath(@__DIR__, "..", "docs", "approx_3D.png"), p)
+    save(joinpath(@__DIR__, "..", "docs", "src", "assets", "approx_3D.png"), p)
 
     # 3D animation
     x = xmat'
@@ -107,7 +107,7 @@ function rotated_plot()
 
     record(
         fig,
-        joinpath(@__DIR__, "..", "docs", "rotation.mp4"),
+        joinpath(@__DIR__, "..", "docs", "src", "assets", "rotation.mp4"),
         1:120,
     ) do frame
         return ax1.azimuth[] = 1.7pi + 0.3 * sin(2pi * frame / 120)

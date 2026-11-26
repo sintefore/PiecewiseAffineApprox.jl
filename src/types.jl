@@ -76,7 +76,14 @@ end
 """
     Interpol
 
-Compute affine approximation by method proposed by Flatberg. Only available for 1D.
+Compute a convex approximation by interpolating a subset of the data points.
+Only available for 1D.
+
+Choosing the knots among the data points is the cardinality-constrained
+shortest path problem of Dahl & Realfsen (2000): a path from the first to the
+last point through an acyclic graph, with an arc for each candidate segment and
+at most `planes` arcs. It is solved exactly by dynamic programming, with the
+convexity of the interpolant as a constraint on consecutive arcs.
 
 The points do not need to be sorted, and points with the same x-value are merged
 using the average of their function values. The number of `planes` must be less

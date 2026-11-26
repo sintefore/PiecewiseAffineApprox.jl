@@ -28,7 +28,7 @@ DCFunc
 domain
 ```
 
-## Formulations
+## Formulation methods and directions
 
 ```@docs
 PWAMethod
