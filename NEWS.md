@@ -25,6 +25,9 @@ New features:
 - Fitted functions record their domain, which is used as default bounds and
   for plotting without data
 - Vertex enumeration and plotting of 2D functions with their vertices
+- Piecewise quadratic approximations, the maximum of convex quadratic pieces,
+  with `Cluster(pieces = :quadratic)`, returned as a `PWQFunc` of `Quadratic`
+  pieces and added to a model as rotated second order cones
 - Precompilation workload
 
 Improvements:

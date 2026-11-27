@@ -25,6 +25,8 @@ Plane
 FunctionEvaluations
 PWAFunc
 DCFunc
+Quadratic
+PWQFunc
 domain
 ```
 

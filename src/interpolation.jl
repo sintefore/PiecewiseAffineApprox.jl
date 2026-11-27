@@ -659,8 +659,10 @@ function _nnls(A, b; maxiter = 3size(A, 2) + 10)
     x = zeros(n)
     P = falses(n)
     w = A' * (b - A * x)
+    # The loops use broadcasts rather than closures, as closures over x and w,
+    # which are reassigned, are slow
     for _ ∈ 1:maxiter
-        candidates = findall(j -> !P[j] && w[j] > tol, 1:n)
+        candidates = findall(.!P .& (w .> tol))
         isempty(candidates) && break
         P[candidates[argmax(w[candidates])]] = true
         while true
@@ -671,8 +673,8 @@ function _nnls(A, b; maxiter = 3size(A, 2) + 10)
                 break
             end
             # Step towards s until a variable hits zero, and remove it
-            J = findall(j -> P[j] && s[j] ≤ tol, 1:n)
-            α = minimum(x[j] / (x[j] - s[j]) for j ∈ J)
+            J = findall(P .& (s .≤ tol))
+            α = minimum(x[J] ./ (x[J] .- s[J]))
             x .+= α .* (s .- x)
             P .&= x .> tol
             x[.!P] .= 0.0

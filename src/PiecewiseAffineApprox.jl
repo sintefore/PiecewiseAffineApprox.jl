@@ -19,6 +19,7 @@ include("kazda_li.jl")
 include("interpolation.jl")
 include("dcapprox.jl")
 include("everywhere.jl")
+include("quadratic.jl")
 
 export Convex, Concave, DC
 export MILP, Cluster, Interpol, Alternating, Select, Restart
@@ -26,6 +27,7 @@ export Progressive, FullOrder
 export Plane
 export FunctionEvaluations
 export PWAFunc, DCFunc
+export Quadratic, PWQFunc
 export approx, fit, FitResult
 export add_pwaformulation, PWAFormulation, Formulated
 export pwaffine # deprecated

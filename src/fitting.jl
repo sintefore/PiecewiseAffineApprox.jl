@@ -703,3 +703,29 @@ end
 function _denormalize(pwa::PWAFunc{Convex,D}, n::Normalization) where {D}
     return PWAFunc{Convex,D}([_denormalize(p, n) for p ∈ pwa.planes])
 end
+
+# A quadratic x̃ᵀGx̃ + ãᵀx̃ + b̃ fitted to normalized points and values, in the
+# original coordinates: with M = TᵀGT, Q = s M, a = s (Tᵀã - 2Mμ) and
+# b = ν + s (b̃ - ãᵀTμ + μᵀMμ). Q is positive semidefinite if G is.
+function _denormalize(q::Quadratic{D}, n::Normalization) where {D}
+    ã = collect(q.α)
+    M = n.T' * q.Q * n.T
+    a = n.s .* (n.T' * ã .- 2 .* (M * n.μ))
+    b = n.ν + n.s * (q.β - dot(ã, n.T * n.μ) + dot(n.μ, M * n.μ))
+    return Quadratic(n.s .* M, a, b)
+end
+function _denormalize(f::PWQFunc{Convex,D}, n::Normalization) where {D}
+    return PWQFunc{Convex,D}([_denormalize(q, n) for q ∈ f.pieces])
+end
+
+# Whether the algorithm fits quadratic pieces, see Cluster
+_quadratic_pieces(::ApproximationAlgorithm) = false
+_quadratic_pieces(a::Cluster) = a.pieces == :quadratic
+_quadratic_pieces(r::Restart) = _quadratic_pieces(r.inner)
+_quadratic_pieces(s::Select) = _quadratic_pieces(s.inner)
+
+function _check_affine_pieces(a::ApproximationAlgorithm, what)
+    _quadratic_pieces(a) &&
+        throw(ArgumentError("Quadratic pieces are not available for $what"))
+    return a
+end

@@ -85,6 +85,7 @@ _as_convex(pwa::PWAFunc{Concave,D,T}) where {D,T} =
     PWAFunc{Convex,D,T}(pwa.planes, pwa.domain)
 _as_concave(pwa::PWAFunc{Convex,D,T}) where {D,T} =
     PWAFunc{Concave,D,T}(pwa.planes, pwa.domain)
+_as_concave(f::PWQFunc{Convex,D,T}) where {D,T} = PWQFunc{Concave,D,T}(f.pieces, f.domain)
 
 # The maximum of f - pwa over the box for convex f, attained at a vertex of
 # pwa, and all vertices with their values of f - pwa
@@ -162,6 +163,7 @@ function _fit_everywhere(
         ),
     )
     refinements ≥ 0 || throw(ArgumentError("refinements must be nonnegative"))
+    _check_affine_pieces(a, "everywhere = true")
     side = strict(a)
     lo, hi = _check_bounds(bbox, D)
     σ = c isa Concave ? -1 : 1

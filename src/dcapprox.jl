@@ -39,12 +39,15 @@ function fit(
     c::DC,
     a::ApproximationAlgorithm,
 ) where {D}
+    _check_affine_pieces(a, "DC()")
     t = @elapsed dc, details =
         _dc_approx(input, a, a, optimizer(a), _dc_iterations(a))
     return _result(input, a, _with_domain(dc, _data_domain(input)), details, t)
 end
 
 function fit(input::FunctionEvaluations{D}, c::DC, a::Alternating) where {D}
+    _check_affine_pieces(a.convex, "DC()")
+    _check_affine_pieces(a.concave, "DC()")
     opt = a.optimizer
     if isnothing(opt)
         opt = optimizer(a.convex)

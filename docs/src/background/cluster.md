@@ -97,6 +97,35 @@ than the requested fit alone.
     e.g. Ipopt or Xpress for this combination. HiGHS works well for the linear
     programs of `:l1` and `:max`.
 
+## Quadratic pieces
+
+With `pieces = :quadratic`, Cluster fits the maximum of convex quadratic
+functions instead of planes, a [`PWQFunc`](@ref). Each piece has a
+nonnegative diagonal curvature along the principal axes of the data, and is
+fitted by least squares subject to lying below the data outside its own set.
+Without that constraint, a piece fitted where the function curves strongly
+rises above the data elsewhere and takes over the points of the others. The
+best of the planes and of quadratic pieces refined from two starts is kept,
+so the result is never worse than planes from the same start.
+
+A smooth function needs far fewer quadratic pieces than planes: for
+``e^{x} + y^2 + xy/2 + x^4/5``, three quadratic pieces fit as well as twelve
+planes. The gain is smaller for a function that is close to linear along
+rays, such as the Weymouth equation for the flow in a gas pipe,
+``q = c\sqrt{p_1^2 - p_2^2}``, where it is mostly in the first few pieces.
+
+In a model, each piece is a rotated second order cone, which needs a conic
+solver such as Clarabel or Mosek, or a solver for convex quadratic
+constraints such as Gurobi or Ipopt.
+
+```julia
+using Clarabel
+f = approx(data, Concave(), Cluster(planes = 3, pieces = :quadratic))
+m = Model(Clarabel.Optimizer)
+@variable(m, 145 ≤ p[1:2] ≤ 175)
+@objective(m, Max, f(p))
+```
+
 ## When to use Cluster
 
 | Points | 250 | 500 | 1 000 | 2 000 | 4 000 | 8 000 | 16 000 |

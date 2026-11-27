@@ -61,6 +61,30 @@ fit, which is both faster and better than the requested fit alone.
 
 For a difference of convex approximation, see [`DC`](@ref), the concave part
 has `concave_planes` planes (default: the same as `planes`).
+
+# Quadratic pieces
+
+With `pieces = :quadratic`, the approximation is the maximum of `planes`
+convex quadratic functions, a [`PWQFunc`](@ref), instead of planes (the
+minimum of concave quadratic functions for a concave approximation). Each
+piece has a nonnegative diagonal curvature along the principal axes of the
+data, so the curvature is a positive semidefinite matrix, which is diagonal
+when the coordinates of the data are uncorrelated, e.g. for a grid. A piece
+is fitted to its points subject to lying below the data at the points of the
+other pieces (except for `strict = :inner`), as a piece that curves up faster
+than the function would otherwise take over their points. The fits are
+closed form for `metric = :l2` with `strict = :none` (least squares with
+inequality constraints, by nonnegative least squares), and otherwise solve
+the same optimization problems as for planes. Each trial keeps the best of
+the planes fitted from its start and of quadratic pieces refined from this
+start and from the partition of the planes, so the result is never worse
+than planes from the same start. A piece needs at least 2D + 1 points.
+
+A smooth function typically needs fewer quadratic pieces than planes for the
+same error, but adding it to a model gives convex quadratic constraints,
+which need a solver that supports them (e.g. Gurobi, Ipopt, Clarabel or
+Mosek). Quadratic pieces are not available for `DC()`, or with
+`everywhere = true`.
 """
 @kwdef struct Cluster{T,R<:AbstractRNG} <: ApproximationAlgorithm
     planes::Int = defaultplanes()
@@ -71,6 +95,7 @@ has `concave_planes` planes (default: the same as `planes`).
     strict::Symbol = :none
     optimizer::T = nothing
     rng::R = Random.default_rng()
+    pieces::Symbol = :affine
 end
 
 """
@@ -396,8 +421,8 @@ evaluate(p::Plane, x, c::Type{Concave}) = -evaluate(p, x, Convex) # Flip for con
 """
     AbstractPWAFunc{D}
 
-A piecewise linear function of `D` variables, [`PWAFunc`](@ref) or
-[`DCFunc`](@ref).
+A piecewise function of `D` variables: a piecewise linear [`PWAFunc`](@ref)
+or [`DCFunc`](@ref), or a piecewise quadratic [`PWQFunc`](@ref).
 """
 abstract type AbstractPWAFunc{D} end
 
@@ -641,3 +666,119 @@ end
 
 _addplane!(pwa::PWAFunc{C,D}, p::Plane{D}) where {C,D} = push!(pwa.planes, p)
 _addplane!(pwa::PWAFunc, α, β) = push!(pwa.planes, Plane(α, β))
+
+"""
+    Quadratic{D,T<:Real}
+
+A convex quadratic function of D variables, z = xᵀQx + αᵀx + β, with `Q` a
+symmetric positive semidefinite D × D matrix, and coefficients of type `T`.
+
+    Quadratic(Q::AbstractMatrix, α, β)
+
+`Q` is symmetrized, and an `ArgumentError` is thrown if it is not positive
+semidefinite, as the formulations in a model rely on the convexity.
+"""
+struct Quadratic{D,T<:Real}
+    Q::Matrix{T}
+    α::NTuple{D,T}
+    β::T
+    function Quadratic{D,T}(Q::AbstractMatrix, α, β) where {D,T<:Real}
+        size(Q) == (D, D) || throw(
+            ArgumentError("Q must be a $D × $D matrix, got $(join(size(Q), " × "))"),
+        )
+        S = Matrix{T}((Q .+ Q') ./ 2)
+        if D > 0 && !isempty(S)
+            scale = max(maximum(abs, S), floatmin(Float64))
+            eigmin(Symmetric(Float64.(S))) ≥ -1e-10 * scale || throw(
+                ArgumentError("Q must be positive semidefinite for a convex quadratic"),
+            )
+        end
+        return new{D,T}(S, NTuple{D,T}(α), T(β))
+    end
+end
+function Quadratic(Q::AbstractMatrix, α, β::Real)
+    D = length(α)
+    T = float(promote_type(eltype(Q), map(typeof, Tuple(α))..., typeof(β)))
+    return Quadratic{D,T}(Q, Tuple(α), β)
+end
+
+Base.convert(::Type{Quadratic{D,T}}, q::Quadratic{D}) where {D,T} = Quadratic{D,T}(q.Q, q.α, q.β)
+function Base.:(==)(p::Quadratic{D}, q::Quadratic{D}) where {D}
+    return p.Q == q.Q && p.α == q.α && p.β == q.β
+end
+
+# xᵀQx for numbers, and for JuMP variables and expressions
+function _quadform(Q::AbstractMatrix, x)
+    D = size(Q, 1)
+    return sum(Q[i, j] * x[i] * x[j] for i ∈ 1:D, j ∈ 1:D; init = zero(eltype(Q)))
+end
+
+evaluate(q::Quadratic, x) = _quadform(q.Q, x) + dot(q.α, x) + q.β
+
+"""
+    PWQFunc{C<:Curvature,D,T<:Real}
+
+A convex or concave piecewise quadratic function of `D` variables: the
+pointwise maximum of convex [`Quadratic`](@ref) pieces for `C = Convex`, and
+the minimum of concave quadratic pieces for `C = Concave`, which is stored as
+the negative of a convex function, as for a [`PWAFunc`](@ref).
+
+It is fitted by [`Cluster`](@ref) with `pieces = :quadratic`, and added to a
+JuMP model with convex quadratic constraints, see [`add_pwaformulation`](@ref)
+for `PWQFunc`.
+
+    PWQFunc{C,D}(pieces; domain = nothing)
+"""
+struct PWQFunc{C<:Curvature,D,T<:Real} <: AbstractPWAFunc{D}
+    pieces::Vector{Quadratic{D,T}}
+    domain::Union{Nothing,Vector{Tuple{Float64,Float64}}}
+    function PWQFunc{C,D,T}(
+        pieces::Vector{Quadratic{D,T}},
+        domain = nothing,
+    ) where {C<:Curvature,D,T<:Real}
+        C === DC && throw(ArgumentError("A PWQFunc is either Convex or Concave"))
+        return new{C,D,T}(pieces, _check_domain(domain, D))
+    end
+end
+function PWQFunc{C,D}(
+    pieces::AbstractVector{<:Quadratic{D}};
+    domain = nothing,
+) where {C<:Curvature,D}
+    T = isempty(pieces) ? Float64 : mapreduce(p -> typeof(p.β), promote_type, pieces)
+    return PWQFunc{C,D,T}(convert(Vector{Quadratic{D,T}}, pieces), domain)
+end
+
+function evaluate(f::PWQFunc{Convex}, x)
+    return maximum(evaluate(q, x) for q ∈ f.pieces)
+end
+function evaluate(f::PWQFunc{Concave}, x)
+    return -maximum(evaluate(q, x) for q ∈ f.pieces)
+end
+
+_planes(f::PWQFunc) = length(f.pieces)
+_with_domain(f::PWQFunc{C,D,T}, domain) where {C,D,T} = PWQFunc{C,D,T}(f.pieces, domain)
+function Base.:(==)(f::PWQFunc{C,D}, g::PWQFunc{C,D}) where {C,D}
+    return f.pieces == g.pieces && f.domain == g.domain
+end
+
+function Base.summary(io::IO, f::PWQFunc)
+    n = _planes(f)
+    return print(
+        io,
+        "$(typeof(f)) with $n quadratic piece$(n == 1 ? "" : "s")",
+        _domain_text(f.domain),
+    )
+end
+function Base.show(io::IO, ::MIME"text/plain", f::PWQFunc{C}) where {C}
+    summary(io, f)
+    println(io, ":")
+    σ = C === Concave ? -1 : 1
+    sign = C === Concave ? "≤" : "≥"
+    r(v) = round(v; sigdigits = 4)
+    for q ∈ first(f.pieces, 10)
+        println(io, " z $sign xᵀQx + αᵀx + β with Q = ", r.(σ .* q.Q),
+            ", α = ", r.(σ .* q.α), ", β = ", r(σ * q.β))
+    end
+    length(f.pieces) > 10 && println(io, " ⋮ ($(length(f.pieces) - 10) more)")
+    return
+end

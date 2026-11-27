@@ -15,6 +15,7 @@ const GROUPS = [
         "test_json.jl",
         "test_types.jl",
         "test_record.jl",
+        "test_quadratic.jl",
     ],
     ["test_kazda_li.jl", "test_everywhere.jl", "test_cluster.jl", "test_linopt.jl"],
     ["test_aqua.jl", "test_interpolation.jl", "test_algorithms.jl"],

@@ -47,9 +47,7 @@ end
 
 function fit(input::FunctionEvaluations, c::Concave, a::ApproximationAlgorithm)
     r = fit(FunctionEvaluations(input.points, -input.values), Convex(), a)
-    cv = r.func
-    func = PWAFunc{Concave,dims(cv)}(cv.planes; domain = cv.domain)
-    return FitResult(func, r.error, r.metric, r.time, a, r.details)
+    return FitResult(_as_concave(r.func), r.error, r.metric, r.time, a, r.details)
 end
 
 # The range of the data in each variable, as the domain of the approximation
